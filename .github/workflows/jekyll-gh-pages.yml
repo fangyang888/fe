@@ -33,7 +33,7 @@ jobs:
         run: npm ci
       
       - name: Build project
-        run: npm run build
+        run: pnpm build
 
       - name: Upload dist folder
         uses: actions/upload-pages-artifact@v3

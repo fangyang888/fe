@@ -24,16 +24,16 @@ jobs:
 
       # 如果你需要构建（如 Vite、Vue、React 项目）
       # 取消下面的注释并根据实际命令修改
-      # - name: Setup Node.js
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: 20
-      #
-      # - name: Install dependencies
-      #   run: npm ci
-      #
-      # - name: Build project
-      #   run: npm run build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build project
+        run: npm run build
 
       - name: Upload dist folder
         uses: actions/upload-pages-artifact@v3

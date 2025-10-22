@@ -1,10 +1,9 @@
-# Deploy static site built with pnpm to GitHub Pages
 name: Deploy static site to GitHub Pages (pnpm)
 
 on:
   push:
-    branches: ["main"]   # 推送到 main 分支时自动部署
-  workflow_dispatch:      # 手动触发部署
+    branches: ["main"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,16 +22,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ✅ 安装 pnpm（必须在 Node.js 之前或之后）
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9 # 改成你项目使用的 pnpm 版本
+
+      # ✅ 安装 Node.js 并启用 pnpm 缓存
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9          # 根据项目pnpm版本修改（例如 8 或 9）
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -43,7 +44,7 @@ jobs:
       - name: Upload dist folder
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist        # 你的构建输出目录
+          path: ./dist
 
   deploy:
     environment:

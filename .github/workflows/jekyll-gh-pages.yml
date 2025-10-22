@@ -1,10 +1,10 @@
-# Deploy static site (dist folder) to GitHub Pages
-name: Deploy static site to GitHub Pages
+# Deploy static site built with pnpm to GitHub Pages
+name: Deploy static site to GitHub Pages (pnpm)
 
 on:
   push:
-    branches: ["main"]   # 当推送到 main 分支时自动部署
-  workflow_dispatch:      # 可手动触发
+    branches: ["main"]   # 推送到 main 分支时自动部署
+  workflow_dispatch:      # 手动触发部署
 
 permissions:
   contents: read
@@ -18,31 +18,32 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 如果你需要构建（如 Vite、Vue、React 项目）
-      # 取消下面的注释并根据实际命令修改
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
-       - name: Setup pnpm
+
+      - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 9  
+          version: 9          # 根据项目pnpm版本修改（例如 8 或 9）
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      
+
       - name: Build project
-        run: pnpm build
+        run: pnpm run build
 
       - name: Upload dist folder
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist    # 指定上传目录
+          path: ./dist        # 你的构建输出目录
 
   deploy:
     environment:

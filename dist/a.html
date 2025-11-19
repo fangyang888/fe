@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互斥随机数生成器</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify_content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h2 { color: #333; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 10px; color: #666; text-align: left; }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 100%;
+        }
+        button:hover { background-color: #0056b3; }
+        .result-box {
+            margin-top: 25px;
+            padding: 20px;
+            background-color: #e9ecef;
+            border-radius: 8px;
+            display: none;
+        }
+        .result-title { font-weight: bold; color: #333; margin-bottom: 10px; display: block;}
+        .numbers {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .num-ball {
+            width: 40px;
+            height: 40px;
+            background-color: #28a745;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .error { color: red; margin-top: 10px; font-size: 14px; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>下一组互斥号码生成器</h2>
+    
+    <label for="lastGroup">输入上一组数据 (用逗号分隔):</label>
+    <input type="text" id="lastGroup" value="3,29,10,39,49,22,38" placeholder="例如: 3,29,10,39,49,22,38">
+    
+    <button onclick="generateNext()">生成新数据</button>
+    
+    <div id="errorMsg" class="error"></div>
+
+    <div id="resultArea" class="result-box">
+        <span class="result-title">推荐结果 (不含上一组数字):</span>
+        <div class="numbers" id="numberContainer"></div>
+    </div>
+</div>
+
+<script>
+    function generateNext() {
+        const inputStr = document.getElementById('lastGroup').value;
+        const errorDiv = document.getElementById('errorMsg');
+        const resultArea = document.getElementById('resultArea');
+        const numContainer = document.getElementById('numberContainer');
+        
+        // 重置显示
+        errorDiv.style.display = 'none';
+        resultArea.style.display = 'none';
+        numContainer.innerHTML = '';
+
+        // 1. 解析输入
+        let lastGroup = [];
+        try {
+            // 处理中英文逗号，移除方括号
+            let cleanStr = inputStr.replace(/[\[\]]/g, '').replace(/，/g, ',');
+            lastGroup = cleanStr.split(',')
+                .map(s => parseInt(s.trim()))
+                .filter(n => !isNaN(n));
+            
+            if (lastGroup.length === 0) throw new Error("请输入有效数字");
+        } catch (e) {
+            errorDiv.textContent = "输入格式错误，请检查。";
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // 2. 算法核心：全集 - 排除集
+        const totalNumbers = 49; // 假设最大为49
+        const pickCount = 7;
+        
+        const universe = [];
+        for (let i = 1; i <= totalNumbers; i++) universe.push(i);
+        
+        // 过滤掉上一组出现的数字
+        const pool = universe.filter(n => !lastGroup.includes(n));
+        
+        if (pool.length < pickCount) {
+            errorDiv.textContent = `可用数字不足！排除后只剩 ${pool.length} 个数字。`;
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // 3. 随机抽取 (Fisher-Yates Shuffle 变体)
+        const result = [];
+        for (let i = 0; i < pickCount; i++) {
+            const randomIndex = Math.floor(Math.random() * pool.length);
+            result.push(pool[randomIndex]);
+            pool.splice(randomIndex, 1); // 移除已选，防止重复
+        }
+
+        // 4. 排序
+        result.sort((a, b) => a - b);
+
+        // 5. 显示结果
+        result.forEach(num => {
+            const ball = document.createElement('div');
+            ball.className = 'num-ball';
+            ball.textContent = num;
+            numContainer.appendChild(ball);
+        });
+        resultArea.style.display = 'block';
+    }
+</script>
+
+</body>
+</html>

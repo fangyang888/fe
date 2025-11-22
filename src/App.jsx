@@ -1,139 +1,168 @@
-
-// @ts-ignore
 import React, { useState } from 'react';
+import { Line } from 'react-chartjs-2';
+import 'chart.js/auto';
 
 export default function LotteryPredictor() {
   const [input, setInput] = useState('');
   const [results, setResults] = useState(null);
   const [metrics, setMetrics] = useState([]);
+  const [chartData, setChartData] = useState(null);
+  const [hotCold, setHotCold] = useState(null);
 
-  const clamp = (v) => {
-    v = Math.round(v);
-    return v < 1 ? 1 : v > 49 ? 49 : v;
-  };
+  const clamp = (v) => Math.max(1, Math.min(49, Math.round(v)));
 
   const linearFit = (xs, ys) => {
     const n = xs.length;
-    const meanX = xs.reduce((a,b)=>a+b)/n;
-    const meanY = ys.reduce((a,b)=>a+b)/n;
-    let num=0, den=0;
-    for (let i=0;i<n;i++){
-      num+=(xs[i]-meanX)*(ys[i]-meanY);
-      den+=(xs[i]-meanX)**2;
+    const meanX = xs.reduce((a, b) => a + b) / n;
+    const meanY = ys.reduce((a, b) => a + b) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (xs[i] - meanX) * (ys[i] - meanY);
+      den += Math.pow(xs[i] - meanX, 2);
     }
-    const a = den===0?0:num/den;
-    const b = meanY - a*meanX;
+    const a = den === 0 ? 0 : num / den;
+    const b = meanY - a * meanX;
 
-    let ssTot=0, ssRes=0;
-    for (let i=0;i<n;i++){
-      const pred=a*xs[i]+b;
-      ssTot+=(ys[i]-meanY)**2;
-      ssRes+=(ys[i]-pred)**2;
+    let ssTot = 0, ssRes = 0;
+    for (let i = 0; i < n; i++) {
+      const pred = a * xs[i] + b;
+      ssTot += Math.pow(ys[i] - meanY, 2);
+      ssRes += Math.pow(ys[i] - pred, 2);
     }
-    const r2 = ssTot===0?1:1-ssRes/ssTot;
+    const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
 
-    return { a,b,r2, residual:Math.sqrt(ssRes/n) };
+    return { a, b, r2, residual: Math.sqrt(ssRes / n) };
   };
 
-  const parseInput = () => {
-    return input.trim().split(/\n/).map(l => l.split(/[, ]+/).map(Number));
-  };
+  const parseInput = () => input.trim().split(/\n/) 
+    .map(line => line.split(/[, ]+/).map(Number));
 
   const predictB = (history) => {
-    const rows=history.length, xs=[...Array(rows).keys()];
-    const cols=7,res=[];
-    for (let c=0;c<cols;c++){
-      const ys=history.map(r=>r[c]);
-      const {a,b}=linearFit(xs,ys);
-      res.push(clamp(a*rows+b));
-    }
-    return res;
+    const rows = history.length;
+    const xs = Array.from({ length: rows }, (_, i) => i);
+    return history[0].map((_, c) => {
+      const ys = history.map(r => r[c]);
+      const { a, b } = linearFit(xs, ys);
+      return clamp(a * rows + b);
+    });
   };
 
   const predictC = (history) => {
-    const rows=history.length, cols=7, res=[];
-    const last=history[rows-1], prev=history[rows-2];
-    for (let c=0;c<cols;c++){
-      const diff=last[c]-prev[c];
-      res.push(clamp(last[c]+diff));
-    }
-    return res;
+    const last = history[history.length - 1];
+    const prev = history[history.length - 2];
+    return last.map((v, c) => clamp(v + (v - prev[c])));
   };
 
   const predictI = (history) => {
-    const rows=history.length, cols=7, res=[];
-    const last=history[rows-1];
-    for (let c=0;c<cols;c++){
-      const avg = history.reduce((s,r)=>s+r[c],0)/rows;
-      const trend = last[c] - history[rows-2][c];
-      res.push(clamp(avg + trend));
-    }
-    return res;
+    const rows = history.length;
+    const last = history[rows - 1];
+    const prev = history[rows - 2];
+    return last.map((v, c) => clamp(
+      history.reduce((s, r) => s + r[c], 0) / rows + (v - prev[c])
+    ));
+  };
+
+  const computeHotCold = (history) => {
+    const freq = Array(50).fill(0);
+    history.flat().forEach(num => freq[num]++);
+    const sorted = [...Array(49).keys()].map(i => i + 1)
+      .sort((a, b) => freq[b] - freq[a]);
+    return {
+      hot: sorted.slice(0, 7),
+      cold: sorted.slice(-7)
+    };
+  };
+
+  const buildChart = (history) => {
+    const labels = history.map((_, i) => `期${i + 1}`);
+    const datasets = Array.from({ length: 7 }, (_, col) => ({
+      label: `列 ${col + 1}`,
+      data: history.map(r => r[col])
+    }));
+    setChartData({ labels, datasets });
   };
 
   const runPrediction = () => {
-    const history=parseInput();
-    if (!history.length || history[0].length!==7){
-      alert("数据格式错误！");
-      return;
-    }
+    const history = parseInput();
+    if (!history.length || history[0].length !== 7) return alert("格式错误：每行必须是7个数字");
 
-    const rows=history.length;
-    const xs=[...Array(rows).keys()];
-    const metricsTemp=[];
-    for (let c=0;c<7;c++){
-      const ys=history.map(r=>r[c]);
-      metricsTemp.push(linearFit(xs,ys));
-    }
-    setMetrics(metricsTemp);
+    const rows = history.length;
+    const xs = Array.from({ length: rows }, (_, i) => i);
+
+    setMetrics(history[0].map((_, c) => 
+      linearFit(xs, history.map(row => row[c]))));
 
     setResults({
       B: predictB(history),
       C: predictC(history),
-      I: predictI(history)
+      I: predictI(history),
     });
+
+    setHotCold(computeHotCold(history));
+    buildChart(history);
   };
 
+
+
   return (
-    <div style={{padding:20,fontFamily:'Arial'}}>
-      <h2>（React版 B/C/I 三模型）</h2>
+    <div style={{ padding: 20 }}>
+      <h2>（增强版 B/C/I + 趋势图 + 热冷分析）</h2>
+
       <textarea
-        style={{width:'100%',height:160,fontSize:14}}
+        style={{ width: '100%', height: 140 }}
+        placeholder="输入历史数据，每行7个数字"
         value={input}
         onChange={e => setInput(e.target.value)}
-        placeholder="每行一组，用逗号分隔"
       />
-      <br/>
-      <button onClick={runPrediction} style={{padding:'8px 20px',marginTop:10}}>开始预测</button>
+      <button onClick={runPrediction} style={{ marginTop: 10 }}>开始预测</button>
 
       {results && (
-        <div style={{marginTop:20,fontSize:16}}>
-          <div><b>方法 B：</b>{results.B.join(', ')}</div>
-          <div><b>方法 C：</b>{results.C.join(', ')}</div>
-          <div><b>方法 I：</b>{results.I.join(', ')}</div>
+        <div style={{ marginTop: 20 }}>
+          <h3>预测结果</h3>
+          <p><b>B趋势回归：</b>{results.B.join(', ')}</p>
+          <p><b>C差值外推：</b>{results.C.join(', ')}</p>
+          <p><b>I平均+动量：</b>{results.I.join(', ')}</p>
         </div>
       )}
 
-      {metrics.length>0 && (
-        <table style={{width:'100%',borderCollapse:'collapse',marginTop:20}}>
-          <thead>
-            <tr>
-              <th>列</th><th>斜率a</th><th>截距b</th><th>R²</th><th>残差</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m,i)=>(
-              <tr key={i}>
-                <td>{i+1}</td>
-                <td>{m.a.toFixed(4)}</td>
-                <td>{m.b.toFixed(4)}</td>
-                <td>{m.r2.toFixed(4)}</td>
-                <td>{m.residual.toFixed(4)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {hotCold && (
+        <div style={{ marginTop: 20 }}>
+          <h3>热点分析</h3>
+          <p><b>热号 Top7：</b>{hotCold.hot.join(', ')}</p>
+          <p><b>冷号 Bottom7：</b>{hotCold.cold.join(', ')}</p>
+        </div>
+      )}
+
+      {chartData && (
+        <div style={{ marginTop: 20 }}>
+          <h3>走势图（7列分布变化）</h3>
+          
+          <Line data={chartData} />
+        </div>
+      )}
+
+      {metrics.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h3>线性拟合统计</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr><th>列</th><th>斜率</th><th>截距</th><th>R²</th><th>残差</th></tr>
+            </thead>
+            <tbody>
+              {metrics.map((m, i) => (
+                <tr key={i}>
+                  <td>{i + 1}</td>
+                  <td>{m.a.toFixed(3)}</td>
+                  <td>{m.b.toFixed(3)}</td>
+                  <td>{m.r2.toFixed(3)}</td>
+                  <td>{m.residual.toFixed(3)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
 }
+

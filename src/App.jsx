@@ -84,25 +84,9 @@ export default function LotteryPredictor() {
     setChartData({ labels, datasets });
   };
 
-  // 初始化时通过请求读取历史数据
-  // 优先级：API（开发环境）> /history.txt（生产环境）
+  // 初始化时从静态文件读取历史数据
   useEffect(() => {
     const loadHistory = async () => {
-      // 1. 尝试从 API 读取（开发环境）
-      try {
-        const response = await fetch("/api/read-history");
-        if (response.ok) {
-          const text = await response.text();
-          if (text.trim()) {
-            setInput(text.trim());
-            return;
-          }
-        }
-      } catch (err) {
-        // API 不可用（生产环境），继续尝试静态文件
-      }
-
-      // 2. 尝试从静态文件读取（生产环境）
       try {
         const response = await fetch("/fe/history.txt");
         if (response.ok) {

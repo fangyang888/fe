@@ -24,7 +24,7 @@ export default defineConfig({
               req.on("end", () => {
                 try {
                   const data = JSON.parse(body);
-                  const filePath = join(process.cwd(), "src", "history.txt");
+                  const filePath = join(process.cwd(), "public", "history.txt");
                   writeFileSync(filePath, data.content, "utf-8");
                   res.writeHead(200, { "Content-Type": "application/json" });
                   res.end(JSON.stringify({ success: true }));
@@ -45,7 +45,7 @@ export default defineConfig({
           (req: IncomingMessage, res: ServerResponse, next: () => void) => {
             if (req.method === "GET") {
               try {
-                const filePath = join(process.cwd(), "src", "history.txt");
+                const filePath = join(process.cwd(), "public", "history.txt");
                 const content = readFileSync(filePath, "utf-8");
                 res.writeHead(200, { "Content-Type": "text/plain" });
                 res.end(content);

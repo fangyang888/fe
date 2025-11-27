@@ -84,11 +84,27 @@ export default function LotteryPredictor() {
     setChartData({ labels, datasets });
   };
 
-  // 初始化时从 src/history.txt 读取内容
+  // 初始化时通过请求读取历史数据
+  // 优先级：API（开发环境）> /history.txt（生产环境）
   useEffect(() => {
     const loadHistory = async () => {
+      // 1. 尝试从 API 读取（开发环境）
       try {
         const response = await fetch("/api/read-history");
+        if (response.ok) {
+          const text = await response.text();
+          if (text.trim()) {
+            setInput(text.trim());
+            return;
+          }
+        }
+      } catch (err) {
+        // API 不可用（生产环境），继续尝试静态文件
+      }
+
+      // 2. 尝试从静态文件读取（生产环境）
+      try {
+        const response = await fetch("/fe/history.txt");
         if (response.ok) {
           const text = await response.text();
           if (text.trim()) {
@@ -104,8 +120,8 @@ export default function LotteryPredictor() {
   }, []);
 
   const saveHistoryToFile = async (historyString) => {
+    // 通过 API 请求保存到 public/history.txt（开发环境）
     try {
-      // 通过 API 保存到 src/history.txt
       const response = await fetch("/api/save-history", {
         method: "POST",
         headers: {
@@ -114,15 +130,19 @@ export default function LotteryPredictor() {
         body: JSON.stringify({ content: historyString }),
       });
 
-      const result = await response.json();
-      if (result.success) {
-        console.log("历史数据已保存到 src/history.txt");
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          console.log("历史数据已保存到 public/history.txt");
+        } else {
+          throw new Error(result.error || "保存失败");
+        }
       } else {
-        throw new Error(result.error || "保存失败");
+        throw new Error("保存请求失败");
       }
     } catch (err) {
-      console.error("保存文件失败:", err);
-      alert("保存文件失败: " + err.message);
+      // API 不可用（生产环境），这是正常的
+      console.log("生产环境无法保存文件，数据仅在当前会话有效");
     }
   };
 

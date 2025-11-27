@@ -87,18 +87,33 @@ export default function LotteryPredictor() {
   // 初始化时从静态文件读取历史数据
   useEffect(() => {
     const loadHistory = async () => {
-      try {
-        const response = await fetch("/fe/history.txt");
-        if (response.ok) {
-          const text = await response.text();
-          if (text.trim()) {
-            setInput(text.trim());
+      // 尝试多个可能的路径
+      const paths = [
+        "/fe/history.txt", // 生产环境（GitHub Pages）
+        "/history.txt", // 开发环境或根路径
+        "./history.txt", // 相对路径
+        "history.txt", // 当前目录
+      ];
+
+      for (const path of paths) {
+        try {
+          const response = await fetch(path);
+          if (response.ok) {
+            const text = await response.text();
+            if (text.trim()) {
+              setInput(text.trim());
+              console.log(`成功从 ${path} 加载历史数据`);
+              return;
+            }
           }
+        } catch (err) {
+          // 继续尝试下一个路径
+          console.log(`无法从 ${path} 加载:`, err.message);
         }
-      } catch (err) {
-        // 文件不存在或读取失败，忽略错误
-        console.log("未找到 history.txt 文件，使用空输入");
       }
+
+      // 所有路径都失败
+      console.log("未找到 history.txt 文件，使用空输入");
     };
     loadHistory();
   }, []);
@@ -162,16 +177,41 @@ export default function LotteryPredictor() {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>（增强版 B/C/I + 趋势图 + 热冷分析）</h2>
+    <div
+      style={{
+        padding: "20px",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        fontSize: "14px",
+      }}
+    >
+      <h2 style={{ fontSize: "18px", marginBottom: "15px" }}>
+        （增强版 B/C/I + 趋势图 + 热冷分析）
+      </h2>
 
       <textarea
-        style={{ width: "100%", height: 140 }}
+        style={{
+          width: "100%",
+          height: 140,
+          padding: "10px",
+          boxSizing: "border-box",
+          fontSize: "14px",
+          fontFamily: "monospace",
+        }}
         placeholder="输入历史数据，每行7个数字"
         value={input}
         onChange={(e) => setInput(e.target.value)}
       />
-      <button onClick={runPrediction} style={{ marginTop: 10 }}>
+      <button
+        onClick={runPrediction}
+        style={{
+          marginTop: 10,
+          padding: "12px 24px",
+          fontSize: "16px",
+          minHeight: "44px", // 移动端友好的触摸目标
+          cursor: "pointer",
+        }}
+      >
         开始预测
       </button>
 
@@ -208,34 +248,44 @@ export default function LotteryPredictor() {
       )}
 
       {chartData && (
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, overflowX: "auto" }}>
           <h3>走势图（7列分布变化）</h3>
-
-          <Line data={chartData} />
+          <div style={{ minWidth: "300px", maxWidth: "100%" }}>
+            <Line data={chartData} />
+          </div>
         </div>
       )}
 
       {metrics.length > 0 && (
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, overflowX: "auto" }}>
           <h3>线性拟合统计</h3>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              minWidth: "400px", // 确保表格在小屏幕上可以横向滚动
+              fontSize: "12px",
+            }}
+          >
             <thead>
               <tr>
-                <th>列</th>
-                <th>斜率</th>
-                <th>截距</th>
-                <th>R²</th>
-                <th>残差</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>列</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>斜率</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>截距</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>R²</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>残差</th>
               </tr>
             </thead>
             <tbody>
               {metrics.map((m, i) => (
                 <tr key={i}>
-                  <td>{i + 1}</td>
-                  <td>{m.a.toFixed(3)}</td>
-                  <td>{m.b.toFixed(3)}</td>
-                  <td>{m.r2.toFixed(3)}</td>
-                  <td>{m.residual.toFixed(3)}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{i + 1}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{m.a.toFixed(3)}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{m.b.toFixed(3)}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{m.r2.toFixed(3)}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                    {m.residual.toFixed(3)}
+                  </td>
                 </tr>
               ))}
             </tbody>

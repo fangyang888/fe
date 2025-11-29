@@ -145,14 +145,15 @@ export default function LotteryPredictor() {
     }
   };
 
-  const runPrediction = () => {
+  const runPrediction = (flag = true) => {
     const history = parseInput();
 
     if (!history.length || history[0].length !== 7) return alert("格式错误：每行必须是7个数字");
-
-    // 将 history 转换为字符串并保存
-    const historyString = history.map((row) => row.join(", ")).join("\n");
-    saveHistoryToFile(historyString);
+    if (flag) {
+      // 将 history 转换为字符串并保存
+      const historyString = history.map((row) => row.join(", ")).join("\n");
+      saveHistoryToFile(historyString);
+    }
 
     const rows = history.length;
     const xs = Array.from({ length: rows }, (_, i) => i);
@@ -213,6 +214,18 @@ export default function LotteryPredictor() {
         }}
       >
         开始预测
+      </button>
+      <button
+        onClick={() => runPrediction(false)}
+        style={{
+          marginTop: 10,
+          padding: "12px 24px",
+          fontSize: "16px",
+          minHeight: "44px", // 移动端友好的触摸目标
+          cursor: "pointer",
+        }}
+      >
+        开始预测不保存
       </button>
 
       {results && (

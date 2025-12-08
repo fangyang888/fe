@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Line } from "react-chartjs-2";
-import "chart.js/auto";
+// import { Line } from "react-chartjs-2";
+// import "chart.js/auto";
 
 export default function LotteryPredictor() {
   const [input, setInput] = useState("");
@@ -260,14 +260,14 @@ export default function LotteryPredictor() {
         </div>
       )}
 
-      {chartData && (
+      {/* {chartData && (
         <div style={{ marginTop: 20, overflowX: "auto" }}>
           <h3>走势图（7列分布变化）</h3>
           <div style={{ minWidth: "300px", maxWidth: "100%" }}>
             <Line data={chartData} />
           </div>
         </div>
-      )}
+      )} */}
 
       {metrics.length > 0 && (
         <div style={{ marginTop: 20, overflowX: "auto" }}>

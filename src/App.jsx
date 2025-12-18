@@ -8,8 +8,19 @@ export default function LotteryPredictor() {
   const [metrics, setMetrics] = useState([]);
   const [chartData, setChartData] = useState(null);
   const [hotCold, setHotCold] = useState(null);
+  const [tfStatus, setTfStatus] = useState("");
+  const [tfInfo, setTfInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+  const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
 
   const clamp = (v) => Math.max(1, Math.min(49, Math.round(v)));
+  const loadTf = async () => {
+    setTfStatus("正在加载 @tensorflow/tfjs ...");
+    const tf = await import("@tensorflow/tfjs");
+    setTfStatus("tfjs 已加载");
+    return tf;
+  };
 
   const linearFit = (xs, ys) => {
     const n = xs.length;
@@ -56,6 +67,240 @@ export default function LotteryPredictor() {
     const last = history[history.length - 1];
     const prev = history[history.length - 2];
     return last.map((v, c) => clamp(v + (v - prev[c])));
+  };
+
+  // 轻量级逻辑回归：用历史特征对 1-49 号做二分类，给出概率最高的 7 个
+  const buildFeatures = (history, num) => {
+    const rows = history.length;
+    const longFreq = rows === 0 ? 0 : history.flat().filter((n) => n === num).length / (rows * 7);
+    const shortWindow = history.slice(-Math.min(rows, 20));
+    const shortFreq =
+      shortWindow.length === 0
+        ? 0
+        : shortWindow.flat().filter((n) => n === num).length / (shortWindow.length * 7);
+    let lastSeen = rows;
+    for (let i = rows - 1; i >= 0; i--) {
+      if (history[i].includes(num)) {
+        lastSeen = rows - 1 - i;
+        break;
+      }
+    }
+    const recency = rows === 0 ? 1 : Math.min(lastSeen / rows, 1);
+    return [shortFreq, longFreq, recency];
+  };
+
+  const trainLogistic = (history) => {
+    const rows = history.length;
+    if (rows < 4) return null; // 数据太少就不训了
+    const X = [];
+    const y = [];
+    for (let i = 1; i < rows; i++) {
+      const past = history.slice(0, i);
+      for (let num = 1; num <= 49; num++) {
+        X.push(buildFeatures(past, num));
+        y.push(history[i].includes(num) ? 1 : 0);
+      }
+    }
+    const w = [0, 0, 0];
+    const lr = 0.5;
+    const epochs = 120;
+    const n = X.length;
+    for (let e = 0; e < epochs; e++) {
+      let g0 = 0,
+        g1 = 0,
+        g2 = 0;
+      for (let j = 0; j < n; j++) {
+        const [x0, x1, x2] = X[j];
+        const p = sigmoid(w[0] * x0 + w[1] * x1 + w[2] * x2);
+        const diff = p - y[j];
+        g0 += diff * x0;
+        g1 += diff * x1;
+        g2 += diff * x2;
+      }
+      w[0] -= (lr * g0) / n;
+      w[1] -= (lr * g1) / n;
+      w[2] -= (lr * g2) / n;
+    }
+    return w;
+  };
+
+  const predictM = (history) => {
+    const w = trainLogistic(history);
+    if (!w) return null;
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      const f = buildFeatures(history, num);
+      return { num, p: sigmoid(dot(w, f)) };
+    });
+    scores.sort((a, b) => b.p - a.p);
+    return scores.slice(0, 7).map((s) => s.num);
+  };
+
+  // TF.js 小型 MLP：用最近窗口训练多标签二分类，输出 Top7 概率最高的号
+  const normalize = (arr) => {
+    const n = arr.length;
+    if (n === 0) return arr;
+    const mean = arr.reduce((s, v) => s + v, 0) / n;
+    const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n;
+    const std = Math.sqrt(variance) || 1;
+    return arr.map((v) => (v - mean) / std);
+  };
+
+  const trainTfModel = async (history) => {
+    const rows = history.length;
+    if (rows < 12) return null; // 数据太少不训练
+    const tf = await loadTf();
+    const window = Math.min(20, rows - 1); // 窗口缩短，减少过拟合
+    const samples = [];
+    const labels = [];
+    for (let i = window; i < rows; i++) {
+      const past = history.slice(i - window, i);
+      // 位置感知：按顺序摊平并做标准化
+      const flat = normalize(past.flat().map((v) => v / 49));
+      const label = Array(49).fill(0);
+      history[i].forEach((num) => (label[num - 1] = 1));
+      samples.push(flat);
+      labels.push(label);
+    }
+    const xs = tf.tensor2d(samples, [samples.length, window * 7]);
+    const ys = tf.tensor2d(labels, [labels.length, 49]);
+    setTfInfo({ rows, window, samples: samples.length });
+    const model = tf.sequential();
+    model.add(tf.layers.dense({ units: 64, activation: "relu", inputShape: [window * 7] }));
+    model.add(tf.layers.dropout({ rate: 0.2 }));
+    model.add(tf.layers.dense({ units: 64, activation: "relu" }));
+    model.add(tf.layers.dropout({ rate: 0.2 }));
+    model.add(tf.layers.dense({ units: 49, activation: "sigmoid" }));
+    model.compile({ optimizer: tf.train.adam(0.003), loss: "binaryCrossentropy" });
+    setTfStatus("训练中...");
+    await model.fit(xs, ys, { epochs: 60, batchSize: 8, verbose: 0, shuffle: true });
+    xs.dispose();
+    ys.dispose();
+    setTfStatus("训练完成");
+    return { model, window, tf };
+  };
+
+  const predictT = async (history) => {
+    const trained = await trainTfModel(history);
+    if (!trained) {
+      setTfStatus("历史不足，无法训练 TF 模型");
+      return null;
+    }
+    const { model, window, tf } = trained;
+    const latest = history.slice(-window);
+    const flat = normalize(latest.flat().map((v) => v / 49));
+    const input = tf.tensor2d([flat], [1, window * 7]);
+    const probs = model.predict(input);
+    const data = await probs.data();
+    input.dispose();
+    probs.dispose();
+    model.dispose();
+    setTfStatus("预测完成");
+    // 与均匀分布混合，防止极端偏向历史热号
+    const mix = 0.4;
+    const scores = Array.from({ length: 49 }, (_, i) => ({
+      num: i + 1,
+      p: mix * data[i] + (1 - mix) * (1 / 49),
+    }));
+    scores.sort((a, b) => b.p - a.p);
+    return scores.slice(0, 7).map((s) => s.num);
+  };
+
+  // TF.js 复合模型：用 B/C/I 预测信号 + 频率/最近性，输出每个号码概率
+  const buildFreqStats = (history, num, windowSize = 15) => {
+    const rows = history.length;
+    const short = history.slice(-Math.min(rows, windowSize));
+    const longFreq = rows === 0 ? 0 : history.flat().filter((n) => n === num).length / (rows * 7);
+    const shortFreq =
+      short.length === 0 ? 0 : short.flat().filter((n) => n === num).length / (short.length * 7);
+    let lastSeen = rows;
+    for (let i = rows - 1; i >= 0; i--) {
+      if (history[i].includes(num)) {
+        lastSeen = rows - 1 - i;
+        break;
+      }
+    }
+    const recency = rows === 0 ? 1 : Math.min(lastSeen / rows, 1);
+    return { longFreq, shortFreq, recency };
+  };
+
+  const trainTfComposite = async (history) => {
+    const rows = history.length;
+    if (rows < 8) return null;
+    const tf = await loadTf();
+    const window = Math.min(20, rows - 1);
+    const samples = [];
+    const labels = [];
+    for (let i = window; i < rows; i++) {
+      const past = history.slice(i - window, i);
+      if (past.length < 2) continue;
+      const b = predictB(past);
+      const c = predictC(past);
+      const ii = predictI(past);
+      for (let num = 1; num <= 49; num++) {
+        const { longFreq, shortFreq, recency } = buildFreqStats(past, num);
+        samples.push([
+          b.includes(num) ? 1 : 0,
+          c.includes(num) ? 1 : 0,
+          ii.includes(num) ? 1 : 0,
+          shortFreq,
+          longFreq,
+          recency,
+        ]);
+        labels.push(history[i].includes(num) ? 1 : 0);
+      }
+    }
+    if (samples.length === 0) return null;
+    const xs = tf.tensor2d(samples, [samples.length, 6]);
+    const ys = tf.tensor2d(labels, [labels.length, 1]);
+    const model = tf.sequential();
+    model.add(tf.layers.dense({ units: 48, activation: "relu", inputShape: [6] }));
+    model.add(tf.layers.dropout({ rate: 0.2 }));
+    model.add(tf.layers.dense({ units: 32, activation: "relu" }));
+    model.add(tf.layers.dropout({ rate: 0.2 }));
+    model.add(tf.layers.dense({ units: 1, activation: "sigmoid" }));
+    model.compile({ optimizer: tf.train.adam(0.01), loss: "binaryCrossentropy" });
+    setTfStatus("训练 B/C/I 复合模型中...");
+    await model.fit(xs, ys, { epochs: 40, batchSize: 64, verbose: 0, shuffle: true });
+    xs.dispose();
+    ys.dispose();
+    setTfStatus("复合模型训练完成");
+    return { model, tf };
+  };
+
+  const predictTC = async (history) => {
+    const trained = await trainTfComposite(history);
+    if (!trained) {
+      setTfStatus("历史不足，跳过 B/C/I 复合模型");
+      return null;
+    }
+    const { model, tf } = trained;
+    if (history.length < 2) return null;
+    const b = predictB(history);
+    const c = predictC(history);
+    const ii = predictI(history);
+    const samples = [];
+    for (let num = 1; num <= 49; num++) {
+      const { longFreq, shortFreq, recency } = buildFreqStats(history, num);
+      samples.push([
+        b.includes(num) ? 1 : 0,
+        c.includes(num) ? 1 : 0,
+        ii.includes(num) ? 1 : 0,
+        shortFreq,
+        longFreq,
+        recency,
+      ]);
+    }
+    const input = tf.tensor2d(samples, [samples.length, 6]);
+    const probsTensor = model.predict(input);
+    const data = await probsTensor.data();
+    input.dispose();
+    probsTensor.dispose();
+    model.dispose();
+    setTfStatus("复合模型预测完成");
+    const scores = Array.from({ length: 49 }, (_, i) => ({ num: i + 1, p: data[i] }));
+    scores.sort((a, b) => b.p - a.p);
+    return scores.slice(0, 7).map((s) => s.num);
   };
 
   const predictI = (history) => {
@@ -145,10 +390,11 @@ export default function LotteryPredictor() {
     }
   };
 
-  const runPrediction = (flag = true) => {
+  const runPrediction = async (flag = true) => {
     const history = parseInput();
 
     if (!history.length || history[0].length !== 7) return alert("格式错误：每行必须是7个数字");
+    setLoading(true);
     if (flag) {
       // 将 history 转换为字符串并保存
       const historyString = history.map((row) => row.join(", ")).join("\n");
@@ -167,14 +413,23 @@ export default function LotteryPredictor() {
       )
     );
 
-    setResults({
-      B: predictB(history),
-      C: predictC(history),
-      I: predictI(history),
-    });
+    try {
+      const [tfRes, tfComposite] = await Promise.all([predictT(history), predictTC(history)]);
 
-    setHotCold(computeHotCold(history));
-    buildChart(history);
+      setResults({
+        B: predictB(history),
+        C: predictC(history),
+        I: predictI(history),
+        M: predictM(history),
+        T: tfRes,
+        TC: tfComposite,
+      });
+
+      setHotCold(computeHotCold(history));
+      buildChart(history);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -205,6 +460,7 @@ export default function LotteryPredictor() {
       />
       <button
         onClick={runPrediction}
+        disabled={loading}
         style={{
           marginTop: 10,
           padding: "12px 24px",
@@ -217,6 +473,7 @@ export default function LotteryPredictor() {
       </button>
       <button
         onClick={() => runPrediction(false)}
+        disabled={loading}
         style={{
           marginTop: 10,
           padding: "12px 24px",
@@ -227,6 +484,7 @@ export default function LotteryPredictor() {
       >
         开始预测不保存
       </button>
+      {loading && <p style={{ marginTop: 10 }}>预测中，请稍候...</p>}
 
       {results && (
         <div style={{ marginTop: 20 }}>
@@ -243,6 +501,30 @@ export default function LotteryPredictor() {
             <b>I平均+动量：</b>
             {results.I.join(", ")}
           </p>
+          {results.M && (
+            <p>
+              <b>M逻辑回归（特征：短期/长期频率 + 最近未出现）：</b>
+              {results.M.join(", ")}
+            </p>
+          )}
+          {tfStatus && <p>TF.js 状态：{tfStatus}</p>}
+          {results.T && (
+            <p>
+              <b>T 建模（TF.js 小型 MLP）：</b>
+              {results.T.join(", ")}
+            </p>
+          )}
+          {tfInfo && (
+            <p>
+              TF训练数据：历史 {tfInfo.rows} 期，窗口 {tfInfo.window}，样本 {tfInfo.samples} 条
+            </p>
+          )}
+          {results.TC && (
+            <p>
+              <b>TC TF.js 复合（B/C/I + 频率/最近性）：</b>
+              {results.TC.join(", ")}
+            </p>
+          )}
         </div>
       )}
 
@@ -269,7 +551,7 @@ export default function LotteryPredictor() {
         </div>
       )} */}
 
-      {metrics.length > 0 && (
+      {/* {metrics.length > 0 && (
         <div style={{ marginTop: 20, overflowX: "auto" }}>
           <h3>线性拟合统计</h3>
           <table
@@ -304,7 +586,7 @@ export default function LotteryPredictor() {
             </tbody>
           </table>
         </div>
-      )}
+      )} */}
     </div>
   );
 }

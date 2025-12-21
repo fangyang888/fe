@@ -10,12 +10,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@tensorflow/tfjs": "^4.22.0",
+    "@uiw/react-markdown-preview": "^5.1.5",
+    "clsx": "^2.1.1",
+    "diff": "^8.0.2",
+    "lodash.debounce": "^4.0.8",
+    "marked": "^17.0.1",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-diff-viewer": "^3.1.1",
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@types/lodash.debounce": "^4.0.9",
     "@types/node": "^24.6.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",

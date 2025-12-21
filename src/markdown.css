@@ -1,0 +1,125 @@
+.markdown-body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.7;
+  color: #e6edf3;
+}
+
+.markdown-body strong {
+  font-weight: 600;
+}
+
+.markdown-body code {
+  background: #161b22;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular;
+}
+
+.markdown-inline {
+  display: inline;
+}
+
+/* DiffViewer 根容器（建议包一层 class） */
+.diff-viewer {
+  --md-text: #e6edf3;
+  --md-muted: #8b949e;
+}
+
+/* 通用 markdown 行 */
+.diff-viewer .markdown-inline {
+  position: relative;
+  padding-left: 1.25em;
+  line-height: 1.7;
+}
+
+/* ===== Fake Unordered List ===== */
+.diff-viewer .markdown-fake-li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  color: var(--md-muted);
+}
+
+/* 二级列表（缩进） */
+.diff-viewer .markdown-fake-li.level-2 {
+  padding-left: 2.25em;
+}
+.diff-viewer .markdown-fake-li.level-2::before {
+  left: 1em;
+}
+
+/* ===== Fake Ordered List ===== */
+.diff-viewer .markdown-fake-ol::before {
+  content: attr(data-index) ".";
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  color: var(--md-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Table Styles ===== */
+.markdown-body table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: 100%;
+  margin: 16px 0;
+  display: table;
+  overflow-x: auto;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+  padding: 6px 13px;
+  border: 1px solid #30363d;
+  text-align: left;
+}
+
+.markdown-body table th {
+  font-weight: 600;
+  background-color: #161b22;
+}
+
+.markdown-body table tr {
+  background-color: #0d1117;
+  border-top: 1px solid #21262d;
+}
+
+.markdown-body table tr:nth-child(2n) {
+  background-color: #161b22;
+}
+
+.markdown-body table tbody tr:hover {
+  background-color: #1c2128;
+}
+
+/* Diff viewer 中的表格样式 */
+.diff-viewer .markdown-body table {
+  margin: 0;
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.diff-viewer .markdown-body table th,
+.diff-viewer .markdown-body table td {
+  padding: 4px 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid #30363d;
+}
+
+.diff-viewer .markdown-body table th {
+  font-weight: 600;
+  background-color: #161b22;
+}
+
+.diff-viewer .markdown-body table tr {
+  background-color: transparent;
+  border-top: none;
+}
+
+.diff-viewer .markdown-body table tr:nth-child(2n) {
+  background-color: transparent;
+}

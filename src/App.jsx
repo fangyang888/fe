@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 // import { Line } from "react-chartjs-2";
 // import "chart.js/auto";
+// @ts-ignore
+import NumberDigitPredictor from "./NumberDigitPredictor.jsx";
 
 export default function LotteryPredictor() {
   const [input, setInput] = useState("");
@@ -587,6 +589,16 @@ export default function LotteryPredictor() {
           </table>
         </div>
       )} */}
+
+      {/* 数字个位数预测器组件 */}
+      {(() => {
+        const parsedHistory = parseInput();
+        return input.trim() && parsedHistory.length >= 2 ? (
+          <div style={{ marginTop: "30px", borderTop: "2px solid #ddd", paddingTop: "20px" }}>
+            <NumberDigitPredictor history={parsedHistory} />
+          </div>
+        ) : null;
+      })()}
     </div>
   );
 }

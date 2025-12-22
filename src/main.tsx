@@ -5,6 +5,8 @@ import "./index.css";
 import App from "./App.jsx";
 // @ts-ignore
 import App2 from "./App2.jsx";
+// @ts-ignore
+import NumberDigitPredictor from "./NumberDigitPredictor.jsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

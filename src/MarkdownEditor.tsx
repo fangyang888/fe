@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import debounce from "lodash.debounce";
-import { getDocStat, getChangeStat } from "./stat";
 import MarkdownPreview from "./MarkdownPreview";
 import MarkdownDiffView from "./MarkdownDiffView";
 import { getMarkdownVisibleTextCount } from "./markdownVisibleCount";
@@ -104,7 +102,7 @@ export default function MarkdownEditor({ docId, value, onChange }: any) {
               value={value}
               onChange={handleChange}
               onMount={handleMount}
-              theme="vs-dark"
+              // theme="vs-dark"
               options={{
                 wordWrap: "on",
                 fontSize: 14,

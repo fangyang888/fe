@@ -2,43 +2,4 @@
   width: 100%;
 }
 
-/* 确保 diff-viewer 内的 markdown-body 样式生效 */
-.diff-viewer .markdown-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  line-height: 1.7;
-  color: #e6edf3;
-}
 
-/* 确保表格样式在 diff-viewer 中正确显示 */
-.diff-viewer .markdown-body table {
-  border-collapse: collapse;
-  border-spacing: 0;
-  width: 100%;
-  margin: 0;
-  display: table;
-}
-
-.diff-viewer .markdown-body table th,
-.diff-viewer .markdown-body table td {
-  padding: 6px 13px;
-  border: 1px solid #30363d;
-  text-align: left;
-}
-
-.diff-viewer .markdown-body table th {
-  font-weight: 600;
-  background-color: #161b22;
-}
-
-.diff-viewer .markdown-body table tr {
-  background-color: #0d1117;
-  border-top: 1px solid #21262d;
-}
-
-.diff-viewer .markdown-body table tr:nth-child(2n) {
-  background-color: #161b22;
-}
-
-.diff-viewer .markdown-body table tbody tr:hover {
-  background-color: #1c2128;
-}

@@ -3,6 +3,7 @@ import DiffViewer, { DiffMethod } from "react-diff-viewer";
 import { marked } from "marked";
 import "./markdown.css";
 import clsx from "clsx";
+import 'github-markdown-css/github-markdown.css';
 
 function parseListInfo(line: string) {
   // 无序列表
@@ -73,6 +74,8 @@ function renderPreviewLine(line: string) {
   // 表格行：使用完整解析以支持表格结构
   if (isTableRow(line)) {
     const html = marked.parse(line);
+
+    
     return (
       <div className="markdown-body">
         <div
@@ -147,33 +150,35 @@ const MarkdownPreviewDiff: React.FC<MarkdownPreviewDiffProps> = ({
   const lineIndexMap = useMemo(() => buildLineIndexMap(newMd), [newMd]);
 
   return (
-    <DiffViewer
-      oldValue={oldMd}
-      newValue={newMd}
-      splitView
-      showDiffOnly
-      compareMethod={DiffMethod.CHARS}
-      onLineNumberClick={(id) => {
-        // id: "L-12" | "R-8"
-        const line = Number(id.split("-")[1]) - 1;
-        const pos = lineIndexMap[line]?.start ?? 0;
+    <div className="diff-viewer">
+      <DiffViewer
+        oldValue={oldMd}
+        newValue={newMd}
+        splitView
+        showDiffOnly
+        compareMethod={DiffMethod.CHARS}
+        onLineNumberClick={(id) => {
+          // id: "L-12" | "R-8"
+          const line = Number(id.split("-")[1]) - 1;
+          const pos = lineIndexMap[line]?.start ?? 0;
 
-        onLocate?.(pos);
-        onPreviewScroll?.(pos / newMd.length);
-      }}
-      styles={{
-        variables: {
-          dark: {
-            // background: "#0d1117",
-            addedBackground: "rgba(46, 160, 67, 0.15)",
-            removedBackground: "rgba(248, 81, 73, 0.15)",
-            wordAddedBackground: "rgba(46, 160, 67, 0.3)",
-            wordRemovedBackground: "rgba(248, 81, 73, 0.3)",
+          onLocate?.(pos);
+          onPreviewScroll?.(pos / newMd.length);
+        }}
+        styles={{
+          variables: {
+            dark: {
+              // background: "#0d1117",
+              addedBackground: "rgba(46, 160, 67, 0.15)",
+              removedBackground: "rgba(248, 81, 73, 0.15)",
+              wordAddedBackground: "rgba(46, 160, 67, 0.3)",
+              wordRemovedBackground: "rgba(248, 81, 73, 0.3)",
+            },
           },
-        },
-      }}
-      renderContent={renderPreviewLine}
-    />
+        }}
+        renderContent={renderPreviewLine}
+      />
+    </div>
   );
 };
 

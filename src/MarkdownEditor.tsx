@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Editor, { type OnMount } from "@monaco-editor/react";
 import MarkdownPreview from "./MarkdownPreview";
 import MarkdownDiffView from "./MarkdownDiffView";
 import { getMarkdownVisibleTextCount } from "./markdownVisibleCount";
 import { getChangeStat2 } from "./markdownDiffStat";
 import MarkdownTextDiff from "./MarkdownTextDiff";
+import PureTextDiff from "./PureTextDiff";
 
-type Mode = "edit" | "preview" | "split" | "diff" | "diff2";
+type Mode = "edit" | "preview" | "split" | "diff" | "diff2" | "diffText";
 
 export default function MarkdownEditor({ docId, value, onChange }: any) {
   const editorRef = useRef<any>(null);
@@ -78,6 +79,7 @@ export default function MarkdownEditor({ docId, value, onChange }: any) {
         <button onClick={() => setMode("split")}>Split</button>
         <button onClick={() => setMode("diff")}>Diff</button>
         <button onClick={() => setMode("diff2")}>文本Diff</button>
+        <button onClick={() => setMode("diffText")}>纯文本Diff</button>
         <div style={{ marginLeft: "auto", fontSize: 13 }}>
           <div className="status">
             <span>预览字数：{previewCount}</span>
@@ -158,6 +160,9 @@ export default function MarkdownEditor({ docId, value, onChange }: any) {
             //   });
             // }}
           />
+        )}
+        {mode === "diffText" && (
+          <PureTextDiff oldMd={baseContentRef.current} newMd={value} />
         )}
       </div>
     </div>

@@ -10,19 +10,12 @@ export default function LotteryPredictor() {
   const [metrics, setMetrics] = useState([]);
   const [chartData, setChartData] = useState(null);
   const [hotCold, setHotCold] = useState(null);
-  const [tfStatus, setTfStatus] = useState("");
-  const [tfInfo, setTfInfo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [statistics, setStatistics] = useState(null);
   const sigmoid = (x) => 1 / (1 + Math.exp(-x));
   const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
 
   const clamp = (v) => Math.max(1, Math.min(49, Math.round(v)));
-  const loadTf = async () => {
-    setTfStatus("正在加载 @tensorflow/tfjs ...");
-    const tf = await import("@tensorflow/tfjs");
-    setTfStatus("tfjs 已加载");
-    return tf;
-  };
 
   const linearFit = (xs, ys) => {
     const n = xs.length;
@@ -138,172 +131,6 @@ export default function LotteryPredictor() {
     return scores.slice(0, 7).map((s) => s.num);
   };
 
-  // TF.js 小型 MLP：用最近窗口训练多标签二分类，输出 Top7 概率最高的号
-  const normalize = (arr) => {
-    const n = arr.length;
-    if (n === 0) return arr;
-    const mean = arr.reduce((s, v) => s + v, 0) / n;
-    const variance = arr.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n;
-    const std = Math.sqrt(variance) || 1;
-    return arr.map((v) => (v - mean) / std);
-  };
-
-  const trainTfModel = async (history) => {
-    const rows = history.length;
-    if (rows < 12) return null; // 数据太少不训练
-    const tf = await loadTf();
-    const window = Math.min(20, rows - 1); // 窗口缩短，减少过拟合
-    const samples = [];
-    const labels = [];
-    for (let i = window; i < rows; i++) {
-      const past = history.slice(i - window, i);
-      // 位置感知：按顺序摊平并做标准化
-      const flat = normalize(past.flat().map((v) => v / 49));
-      const label = Array(49).fill(0);
-      history[i].forEach((num) => (label[num - 1] = 1));
-      samples.push(flat);
-      labels.push(label);
-    }
-    const xs = tf.tensor2d(samples, [samples.length, window * 7]);
-    const ys = tf.tensor2d(labels, [labels.length, 49]);
-    setTfInfo({ rows, window, samples: samples.length });
-    const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 64, activation: "relu", inputShape: [window * 7] }));
-    model.add(tf.layers.dropout({ rate: 0.2 }));
-    model.add(tf.layers.dense({ units: 64, activation: "relu" }));
-    model.add(tf.layers.dropout({ rate: 0.2 }));
-    model.add(tf.layers.dense({ units: 49, activation: "sigmoid" }));
-    model.compile({ optimizer: tf.train.adam(0.003), loss: "binaryCrossentropy" });
-    setTfStatus("训练中...");
-    await model.fit(xs, ys, { epochs: 60, batchSize: 8, verbose: 0, shuffle: true });
-    xs.dispose();
-    ys.dispose();
-    setTfStatus("训练完成");
-    return { model, window, tf };
-  };
-
-  const predictT = async (history) => {
-    const trained = await trainTfModel(history);
-    if (!trained) {
-      setTfStatus("历史不足，无法训练 TF 模型");
-      return null;
-    }
-    const { model, window, tf } = trained;
-    const latest = history.slice(-window);
-    const flat = normalize(latest.flat().map((v) => v / 49));
-    const input = tf.tensor2d([flat], [1, window * 7]);
-    const probs = model.predict(input);
-    const data = await probs.data();
-    input.dispose();
-    probs.dispose();
-    model.dispose();
-    setTfStatus("预测完成");
-    // 与均匀分布混合，防止极端偏向历史热号
-    const mix = 0.4;
-    const scores = Array.from({ length: 49 }, (_, i) => ({
-      num: i + 1,
-      p: mix * data[i] + (1 - mix) * (1 / 49),
-    }));
-    scores.sort((a, b) => b.p - a.p);
-    return scores.slice(0, 7).map((s) => s.num);
-  };
-
-  // TF.js 复合模型：用 B/C/I 预测信号 + 频率/最近性，输出每个号码概率
-  const buildFreqStats = (history, num, windowSize = 15) => {
-    const rows = history.length;
-    const short = history.slice(-Math.min(rows, windowSize));
-    const longFreq = rows === 0 ? 0 : history.flat().filter((n) => n === num).length / (rows * 7);
-    const shortFreq =
-      short.length === 0 ? 0 : short.flat().filter((n) => n === num).length / (short.length * 7);
-    let lastSeen = rows;
-    for (let i = rows - 1; i >= 0; i--) {
-      if (history[i].includes(num)) {
-        lastSeen = rows - 1 - i;
-        break;
-      }
-    }
-    const recency = rows === 0 ? 1 : Math.min(lastSeen / rows, 1);
-    return { longFreq, shortFreq, recency };
-  };
-
-  const trainTfComposite = async (history) => {
-    const rows = history.length;
-    if (rows < 8) return null;
-    const tf = await loadTf();
-    const window = Math.min(20, rows - 1);
-    const samples = [];
-    const labels = [];
-    for (let i = window; i < rows; i++) {
-      const past = history.slice(i - window, i);
-      if (past.length < 2) continue;
-      const b = predictB(past);
-      const c = predictC(past);
-      const ii = predictI(past);
-      for (let num = 1; num <= 49; num++) {
-        const { longFreq, shortFreq, recency } = buildFreqStats(past, num);
-        samples.push([
-          b.includes(num) ? 1 : 0,
-          c.includes(num) ? 1 : 0,
-          ii.includes(num) ? 1 : 0,
-          shortFreq,
-          longFreq,
-          recency,
-        ]);
-        labels.push(history[i].includes(num) ? 1 : 0);
-      }
-    }
-    if (samples.length === 0) return null;
-    const xs = tf.tensor2d(samples, [samples.length, 6]);
-    const ys = tf.tensor2d(labels, [labels.length, 1]);
-    const model = tf.sequential();
-    model.add(tf.layers.dense({ units: 48, activation: "relu", inputShape: [6] }));
-    model.add(tf.layers.dropout({ rate: 0.2 }));
-    model.add(tf.layers.dense({ units: 32, activation: "relu" }));
-    model.add(tf.layers.dropout({ rate: 0.2 }));
-    model.add(tf.layers.dense({ units: 1, activation: "sigmoid" }));
-    model.compile({ optimizer: tf.train.adam(0.01), loss: "binaryCrossentropy" });
-    setTfStatus("训练 B/C/I 复合模型中...");
-    await model.fit(xs, ys, { epochs: 40, batchSize: 64, verbose: 0, shuffle: true });
-    xs.dispose();
-    ys.dispose();
-    setTfStatus("复合模型训练完成");
-    return { model, tf };
-  };
-
-  const predictTC = async (history) => {
-    const trained = await trainTfComposite(history);
-    if (!trained) {
-      setTfStatus("历史不足，跳过 B/C/I 复合模型");
-      return null;
-    }
-    const { model, tf } = trained;
-    if (history.length < 2) return null;
-    const b = predictB(history);
-    const c = predictC(history);
-    const ii = predictI(history);
-    const samples = [];
-    for (let num = 1; num <= 49; num++) {
-      const { longFreq, shortFreq, recency } = buildFreqStats(history, num);
-      samples.push([
-        b.includes(num) ? 1 : 0,
-        c.includes(num) ? 1 : 0,
-        ii.includes(num) ? 1 : 0,
-        shortFreq,
-        longFreq,
-        recency,
-      ]);
-    }
-    const input = tf.tensor2d(samples, [samples.length, 6]);
-    const probsTensor = model.predict(input);
-    const data = await probsTensor.data();
-    input.dispose();
-    probsTensor.dispose();
-    model.dispose();
-    setTfStatus("复合模型预测完成");
-    const scores = Array.from({ length: 49 }, (_, i) => ({ num: i + 1, p: data[i] }));
-    scores.sort((a, b) => b.p - a.p);
-    return scores.slice(0, 7).map((s) => s.num);
-  };
 
   const predictI = (history) => {
     const rows = history.length;
@@ -329,6 +156,63 @@ export default function LotteryPredictor() {
       data: history.map((r) => r[col]),
     }));
     setChartData({ labels, datasets });
+  };
+
+  // 统计最后11行：对每一行用之前数据预测，与下一行对比，并计算热号冷号
+  const calculateStatistics = (history) => {
+    const rows = history.length;
+    if (rows < 2) return null;
+
+    const last11Rows = Math.min(11, rows - 1); // 最后11行，但需要至少2行才能比较
+    const startIdx = rows - last11Rows - 1; // 从倒数第12行开始（因为需要预测下一行）
+
+    const details = [];
+
+    for (let i = startIdx; i < rows - 1; i++) {
+      const pastHistory = history.slice(0, i + 1);
+      const currentRow = history[i];
+      const nextRow = history[i + 1];
+      const period = i + 2;
+
+      // 计算热号冷号（基于当前行之前的所有数据）
+      const hotCold = computeHotCold(pastHistory);
+      const matchedHot = hotCold.hot.filter((num) => nextRow.includes(num));
+      const matchedCold = hotCold.cold.filter((num) => nextRow.includes(num));
+
+      // 预测方法 B
+      const predB = predictB(pastHistory);
+      const matchedB = predB.filter((num) => nextRow.includes(num));
+
+      // 预测方法 C
+      const predC = predictC(pastHistory);
+      const matchedC = predC.filter((num) => nextRow.includes(num));
+
+      // 预测方法 I
+      const predI = predictI(pastHistory);
+      const matchedI = predI.filter((num) => nextRow.includes(num));
+
+      // 预测方法 M
+      const predM = predictM(pastHistory);
+      const matchedM = predM ? predM.filter((num) => nextRow.includes(num)) : [];
+
+      details.push({
+        period,
+        currentRow,
+        nextRow,
+        hotCold: {
+          hot: hotCold.hot,
+          cold: hotCold.cold,
+          matchedHot,
+          matchedCold,
+        },
+        B: { prediction: predB, matched: matchedB },
+        C: { prediction: predC, matched: matchedC },
+        I: { prediction: predI, matched: matchedI },
+        M: { prediction: predM, matched: matchedM },
+      });
+    }
+
+    return { details };
   };
 
   // 初始化时从静态文件读取历史数据
@@ -416,19 +300,16 @@ export default function LotteryPredictor() {
     );
 
     try {
-      const [tfRes, tfComposite] = await Promise.all([predictT(history), predictTC(history)]);
-
       setResults({
         B: predictB(history),
         C: predictC(history),
         I: predictI(history),
         M: predictM(history),
-        T: tfRes,
-        TC: tfComposite,
       });
 
       setHotCold(computeHotCold(history));
       buildChart(history);
+      setStatistics(calculateStatistics(history));
     } finally {
       setLoading(false);
     }
@@ -509,24 +390,6 @@ export default function LotteryPredictor() {
               {results.M.join(", ")}
             </p>
           )}
-          {tfStatus && <p>TF.js 状态：{tfStatus}</p>}
-          {results.T && (
-            <p>
-              <b>T 建模（TF.js 小型 MLP）：</b>
-              {results.T.join(", ")}
-            </p>
-          )}
-          {tfInfo && (
-            <p>
-              TF训练数据：历史 {tfInfo.rows} 期，窗口 {tfInfo.window}，样本 {tfInfo.samples} 条
-            </p>
-          )}
-          {results.TC && (
-            <p>
-              <b>TC TF.js 复合（B/C/I + 频率/最近性）：</b>
-              {results.TC.join(", ")}
-            </p>
-          )}
         </div>
       )}
 
@@ -541,6 +404,220 @@ export default function LotteryPredictor() {
             <b>冷号 Bottom7：</b>
             {hotCold.cold.join(", ")}
           </p>
+        </div>
+      )}
+
+      {statistics && statistics.details && (
+        <div style={{ marginTop: 20 }}>
+          <h3>统计表格（最后11行数据，最后一行无对比结果不显示）</h3>
+          <div style={{ marginTop: 10, overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "12px",
+                minWidth: "1400px",
+              }}
+            >
+              <thead>
+                <tr style={{ backgroundColor: "#f5f5f5" }}>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    期数
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    当前行
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    实际下一行
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    热号Top7（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    冷号Bottom7（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    B预测（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    C预测（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    I预测（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    M预测（与下一行对比）
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {statistics.details.map((detail, idx) => (
+                  <tr key={idx}>
+                    <td
+                      style={{
+                        padding: "8px",
+                        border: "1px solid #ddd",
+                        textAlign: "center",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {detail.period}
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                      {detail.currentRow.join(", ")}
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                      {detail.nextRow.join(", ")}
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      <div style={{ textAlign: "center" }}>
+                        {detail.hotCold.hot.map((num, i) => {
+                          const isMatched = detail.hotCold.matchedHot.includes(num);
+                          return (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  color: isMatched ? "red" : "inherit",
+                                  fontWeight: isMatched ? "bold" : "normal",
+                                }}
+                              >
+                                {num}
+                              </span>
+                              {i < detail.hotCold.hot.length - 1 && ", "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                        匹配 {detail.hotCold.matchedHot.length} 个：{detail.hotCold.matchedHot.length > 0 ? detail.hotCold.matchedHot.join(", ") : "无"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      <div style={{ textAlign: "center" }}>
+                        {detail.hotCold.cold.map((num, i) => {
+                          const isMatched = detail.hotCold.matchedCold.includes(num);
+                          return (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  color: isMatched ? "red" : "inherit",
+                                  fontWeight: isMatched ? "bold" : "normal",
+                                }}
+                              >
+                                {num}
+                              </span>
+                              {i < detail.hotCold.cold.length - 1 && ", "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                        匹配 {detail.hotCold.matchedCold.length} 个：{detail.hotCold.matchedCold.length > 0 ? detail.hotCold.matchedCold.join(", ") : "无"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      <div style={{ textAlign: "center" }}>
+                        {detail.B.prediction.map((num, i) => {
+                          const isMatched = detail.B.matched.includes(num);
+                          return (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  color: isMatched ? "red" : "inherit",
+                                  fontWeight: isMatched ? "bold" : "normal",
+                                }}
+                              >
+                                {num}
+                              </span>
+                              {i < detail.B.prediction.length - 1 && ", "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                        匹配 {detail.B.matched.length} 个：{detail.B.matched.length > 0 ? detail.B.matched.join(", ") : "无"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      <div style={{ textAlign: "center" }}>
+                        {detail.C.prediction.map((num, i) => {
+                          const isMatched = detail.C.matched.includes(num);
+                          return (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  color: isMatched ? "red" : "inherit",
+                                  fontWeight: isMatched ? "bold" : "normal",
+                                }}
+                              >
+                                {num}
+                              </span>
+                              {i < detail.C.prediction.length - 1 && ", "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                        匹配 {detail.C.matched.length} 个：{detail.C.matched.length > 0 ? detail.C.matched.join(", ") : "无"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      <div style={{ textAlign: "center" }}>
+                        {detail.I.prediction.map((num, i) => {
+                          const isMatched = detail.I.matched.includes(num);
+                          return (
+                            <span key={i}>
+                              <span
+                                style={{
+                                  color: isMatched ? "red" : "inherit",
+                                  fontWeight: isMatched ? "bold" : "normal",
+                                }}
+                              >
+                                {num}
+                              </span>
+                              {i < detail.I.prediction.length - 1 && ", "}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                        匹配 {detail.I.matched.length} 个：{detail.I.matched.length > 0 ? detail.I.matched.join(", ") : "无"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      {detail.M.prediction ? (
+                        <>
+                          <div style={{ textAlign: "center" }}>
+                            {detail.M.prediction.map((num, i) => {
+                              const isMatched = detail.M.matched.includes(num);
+                              return (
+                                <span key={i}>
+                                  <span
+                                    style={{
+                                      color: isMatched ? "red" : "inherit",
+                                      fontWeight: isMatched ? "bold" : "normal",
+                                    }}
+                                  >
+                                    {num}
+                                  </span>
+                                  {i < detail.M.prediction.length - 1 && ", "}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                            匹配 {detail.M.matched.length} 个：{detail.M.matched.length > 0 ? detail.M.matched.join(", ") : "无"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "#999" }}>-</div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

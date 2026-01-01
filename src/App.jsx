@@ -12,6 +12,8 @@ export default function LotteryPredictor() {
   const [hotCold, setHotCold] = useState(null);
   const [loading, setLoading] = useState(false);
   const [statistics, setStatistics] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [selectedNumbers, setSelectedNumbers] = useState(null);
   const sigmoid = (x) => 1 / (1 + Math.exp(-x));
   const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
 
@@ -139,6 +141,67 @@ export default function LotteryPredictor() {
     return last.map((v, c) => clamp(history.reduce((s, r) => s + r[c], 0) / rows + (v - prev[c])));
   };
 
+  // 反预测算法：预测不在下一行中出现的数字
+  // 基于规律：排除其他预测方法、热号，选择频率低、长时间未出现的数字
+  const predictN = (history) => {
+    const rows = history.length;
+    if (rows < 2) return null;
+
+    // 获取其他预测方法的结果
+    const predB = predictB(history);
+    const predC = predictC(history);
+    const predI = predictI(history);
+    const predM = predictM(history);
+    const hotCold = computeHotCold(history);
+
+    // 合并所有预测结果和热号（这些数字更可能出现，需要排除）
+    const excludeSet = new Set([
+      ...predB,
+      ...predC,
+      ...predI,
+      ...(predM || []),
+      ...hotCold.hot,
+    ]);
+
+    // 计算每个数字的"不出现分数"
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      
+      // 如果已经在排除列表中，分数为0
+      if (excludeSet.has(num)) {
+        return { num, score: 0 };
+      }
+
+      // 计算频率（越低越好）
+      const freq = history.flat().filter((n) => n === num).length;
+      const freqScore = 1 - freq / (rows * 7); // 频率越低，分数越高
+
+      // 计算最近出现时间（越久越好）
+      let lastSeen = rows;
+      for (let i = rows - 1; i >= 0; i--) {
+        if (history[i].includes(num)) {
+          lastSeen = rows - 1 - i;
+          break;
+        }
+      }
+      const recencyScore = lastSeen / rows; // 越久未出现，分数越高
+
+      // 计算短期频率（最近20期，越低越好）
+      const shortWindow = history.slice(-Math.min(rows, 20));
+      const shortFreq = shortWindow.flat().filter((n) => n === num).length;
+      const shortFreqScore = 1 - shortFreq / (shortWindow.length * 7);
+
+      // 综合分数：频率低 + 长时间未出现 + 短期频率低
+      const score = freqScore * 0.3 + recencyScore * 0.4 + shortFreqScore * 0.3;
+
+      return { num, score };
+    });
+
+    // 按分数降序排序，选择分数最高的7个（最不可能出现的）
+    scores.sort((a, b) => b.score - a.score);
+    return scores.slice(0, 7).map((s) => s.num);
+  };
+
   const computeHotCold = (history) => {
     const freq = Array(50).fill(0);
     history.flat().forEach((num) => freq[num]++);
@@ -158,13 +221,13 @@ export default function LotteryPredictor() {
     setChartData({ labels, datasets });
   };
 
-  // 统计最后11行：对每一行用之前数据预测，与下一行对比，并计算热号冷号
+  // 统计最后18行：对每一行用之前数据预测，与下一行对比，并计算热号冷号
   const calculateStatistics = (history) => {
     const rows = history.length;
     if (rows < 2) return null;
 
-    const last11Rows = Math.min(11, rows - 1); // 最后11行，但需要至少2行才能比较
-    const startIdx = rows - last11Rows - 1; // 从倒数第12行开始（因为需要预测下一行）
+    const last18Rows = Math.min(18, rows - 1); // 最后18行，但需要至少2行才能比较
+    const startIdx = rows - last18Rows - 1; // 从倒数第19行开始（因为需要预测下一行）
 
     const details = [];
 
@@ -195,6 +258,10 @@ export default function LotteryPredictor() {
       const predM = predictM(pastHistory);
       const matchedM = predM ? predM.filter((num) => nextRow.includes(num)) : [];
 
+      // 反预测方法 N（预测不在下一行中出现的数字）
+      const predN = predictN(pastHistory);
+      const matchedN = predN ? predN.filter((num) => nextRow.includes(num)) : [];
+
       details.push({
         period,
         currentRow,
@@ -209,10 +276,215 @@ export default function LotteryPredictor() {
         C: { prediction: predC, matched: matchedC },
         I: { prediction: predI, matched: matchedI },
         M: { prediction: predM, matched: matchedM },
+        N: { prediction: predN, matched: matchedN },
       });
     }
 
     return { details };
+  };
+
+  // 分析每个算法每个位置的不匹配率，推荐10个最可能不在下一行中出现的数字
+  const calculateSummary = (history) => {
+    const rows = history.length;
+    if (rows < 2) return null;
+
+    const last18Rows = Math.min(18, rows - 1);
+    const startIdx = rows - last18Rows - 1;
+
+    // 统计每个算法每个位置的不匹配次数
+    const positionStats = {
+      B: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      C: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      I: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      M: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      N: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+    };
+
+    for (let i = startIdx; i < rows - 1; i++) {
+      const pastHistory = history.slice(0, i + 1);
+      const nextRow = history[i + 1];
+
+      // B方法
+      const predB = predictB(pastHistory);
+      predB.forEach((num, pos) => {
+        positionStats.B[pos].total++;
+        if (!nextRow.includes(num)) {
+          positionStats.B[pos].unmatched++;
+          positionStats.B[pos].numbers[num] = (positionStats.B[pos].numbers[num] || 0) + 1;
+        }
+      });
+
+      // C方法
+      const predC = predictC(pastHistory);
+      predC.forEach((num, pos) => {
+        positionStats.C[pos].total++;
+        if (!nextRow.includes(num)) {
+          positionStats.C[pos].unmatched++;
+          positionStats.C[pos].numbers[num] = (positionStats.C[pos].numbers[num] || 0) + 1;
+        }
+      });
+
+      // I方法
+      const predI = predictI(pastHistory);
+      predI.forEach((num, pos) => {
+        positionStats.I[pos].total++;
+        if (!nextRow.includes(num)) {
+          positionStats.I[pos].unmatched++;
+          positionStats.I[pos].numbers[num] = (positionStats.I[pos].numbers[num] || 0) + 1;
+        }
+      });
+
+      // M方法
+      const predM = predictM(pastHistory);
+      if (predM) {
+        predM.forEach((num, pos) => {
+          positionStats.M[pos].total++;
+          if (!nextRow.includes(num)) {
+            positionStats.M[pos].unmatched++;
+            positionStats.M[pos].numbers[num] = (positionStats.M[pos].numbers[num] || 0) + 1;
+          }
+        });
+      }
+
+      // N方法
+      const predN = predictN(pastHistory);
+      if (predN) {
+        predN.forEach((num, pos) => {
+          positionStats.N[pos].total++;
+          if (!nextRow.includes(num)) {
+            positionStats.N[pos].unmatched++;
+            positionStats.N[pos].numbers[num] = (positionStats.N[pos].numbers[num] || 0) + 1;
+          }
+        });
+      }
+    }
+
+    // 找出每个算法每个位置的不匹配率
+    const positionRates = [];
+    Object.keys(positionStats).forEach((method) => {
+      positionStats[method].forEach((stat, pos) => {
+        if (stat.total > 0) {
+          const rate = stat.unmatched / stat.total;
+          positionRates.push({
+            method,
+            position: pos + 1,
+            rate,
+            total: stat.total,
+            unmatched: stat.unmatched,
+            numbers: stat.numbers,
+          });
+        }
+      });
+    });
+
+    // 按不匹配率降序排序
+    positionRates.sort((a, b) => b.rate - a.rate);
+
+    // 收集所有不匹配的数字及其权重
+    const numberScores = {};
+    positionRates.forEach((item) => {
+      Object.keys(item.numbers).forEach((num) => {
+        const numVal = parseInt(num);
+        if (!numberScores[numVal]) {
+          numberScores[numVal] = { count: 0, totalWeight: 0, sources: [] };
+        }
+        // 权重 = 不匹配率 * 出现次数
+        const weight = item.rate * item.numbers[num];
+        numberScores[numVal].count += item.numbers[num];
+        numberScores[numVal].totalWeight += weight;
+        numberScores[numVal].sources.push({
+          method: item.method,
+          position: item.position,
+          rate: item.rate,
+          count: item.numbers[num],
+        });
+      });
+    });
+
+    // 转换为数组并按权重排序
+    const recommendations = Object.keys(numberScores)
+      .map((num) => ({
+        num: parseInt(num),
+        count: numberScores[num].count,
+        weight: numberScores[num].totalWeight,
+        sources: numberScores[num].sources,
+      }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 10);
+
+    // 计算每个算法每个位置的平均不匹配率（用于当前预测）
+    const methodPositionRates = {};
+    positionRates.forEach((item) => {
+      const key = `${item.method}_${item.position}`;
+      if (!methodPositionRates[key]) {
+        methodPositionRates[key] = item.rate;
+      }
+    });
+
+    return {
+      positionRates: positionRates.slice(0, 20), // 前20个最高不匹配率的位置
+      recommendations,
+      methodPositionRates, // 用于从当前预测中挑选
+    };
+  };
+
+  // 根据当前预测结果和统计的不匹配率，挑选10个最可能不在下一行中出现的数字
+  const selectFromCurrentPredictions = (currentResults, summary) => {
+    if (!summary || !summary.methodPositionRates) return null;
+
+    const candidates = [];
+
+    // 从每个算法的预测结果中，根据位置不匹配率挑选
+    Object.keys(currentResults).forEach((method) => {
+      const prediction = currentResults[method];
+      if (!prediction || !Array.isArray(prediction)) return;
+
+      prediction.forEach((num, pos) => {
+        const key = `${method}_${pos + 1}`;
+        const unmatchedRate = summary.methodPositionRates[key] || 0;
+        
+        // 如果这个位置的不匹配率 > 0，则加入候选
+        if (unmatchedRate > 0) {
+          candidates.push({
+            num,
+            method,
+            position: pos + 1,
+            unmatchedRate,
+            weight: unmatchedRate, // 权重就是不匹配率
+          });
+        }
+      });
+    });
+
+    // 去重：同一个数字只保留权重最高的
+    const uniqueCandidates = {};
+    candidates.forEach((item) => {
+      if (!uniqueCandidates[item.num] || uniqueCandidates[item.num].weight < item.weight) {
+        uniqueCandidates[item.num] = item;
+      } else if (uniqueCandidates[item.num].weight === item.weight) {
+        // 如果权重相同，合并来源
+        if (!uniqueCandidates[item.num].sources) {
+          uniqueCandidates[item.num].sources = [
+            { method: uniqueCandidates[item.num].method, position: uniqueCandidates[item.num].position },
+          ];
+        }
+        uniqueCandidates[item.num].sources.push({ method: item.method, position: item.position });
+      }
+    });
+
+    // 按权重降序排序，取前10个
+    const selected = Object.values(uniqueCandidates)
+      .map((item) => ({
+        num: item.num,
+        weight: item.weight,
+        method: item.method,
+        position: item.position,
+        sources: item.sources || [{ method: item.method, position: item.position }],
+      }))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 10);
+
+    return selected;
   };
 
   // 初始化时从静态文件读取历史数据
@@ -300,16 +572,27 @@ export default function LotteryPredictor() {
     );
 
     try {
-      setResults({
+      const currentResults = {
         B: predictB(history),
         C: predictC(history),
         I: predictI(history),
         M: predictM(history),
-      });
+        N: predictN(history),
+      };
+
+      setResults(currentResults);
 
       setHotCold(computeHotCold(history));
       buildChart(history);
       setStatistics(calculateStatistics(history));
+      const summaryData = calculateSummary(history);
+      setSummary(summaryData);
+      
+      // 根据统计概率从当前预测中挑选10个数字
+      if (summaryData) {
+        const selected = selectFromCurrentPredictions(currentResults, summaryData);
+        setSelectedNumbers(selected);
+      }
     } finally {
       setLoading(false);
     }
@@ -390,6 +673,12 @@ export default function LotteryPredictor() {
               {results.M.join(", ")}
             </p>
           )}
+          {results.N && (
+            <p>
+              <b>N反预测（预测不在下一行中出现的数字）：</b>
+              {results.N.join(", ")}
+            </p>
+          )}
         </div>
       )}
 
@@ -409,14 +698,14 @@ export default function LotteryPredictor() {
 
       {statistics && statistics.details && (
         <div style={{ marginTop: 20 }}>
-          <h3>统计表格（最后11行数据，最后一行无对比结果不显示）</h3>
+          <h3>统计表格（最后18行数据，最后一行无对比结果不显示）</h3>
           <div style={{ marginTop: 10, overflowX: "auto" }}>
             <table
               style={{
                 width: "100%",
                 borderCollapse: "collapse",
                 fontSize: "12px",
-                minWidth: "1400px",
+                minWidth: "1600px",
               }}
             >
               <thead>
@@ -447,6 +736,9 @@ export default function LotteryPredictor() {
                   </th>
                   <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
                     M预测（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    N反预测（与下一行对比）
                   </th>
                 </tr>
               </thead>
@@ -613,10 +905,191 @@ export default function LotteryPredictor() {
                         <div style={{ textAlign: "center", color: "#999" }}>-</div>
                       )}
                     </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      {detail.N.prediction ? (
+                        <>
+                          <div style={{ textAlign: "center" }}>
+                            {detail.N.prediction.map((num, i) => {
+                              const isMatched = detail.N.matched.includes(num);
+                              return (
+                                <span key={i}>
+                                  <span
+                                    style={{
+                                      color: isMatched ? "red" : "inherit",
+                                      fontWeight: isMatched ? "bold" : "normal",
+                                    }}
+                                  >
+                                    {num}
+                                  </span>
+                                  {i < detail.N.prediction.length - 1 && ", "}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                            匹配 {detail.N.matched.length} 个：{detail.N.matched.length > 0 ? detail.N.matched.join(", ") : "无"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "#999" }}>-</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {selectedNumbers && selectedNumbers.length > 0 && (
+        <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "8px", border: "2px solid #007bff" }}>
+          <h3 style={{ marginTop: 0, color: "#007bff" }}>
+            🎯 根据统计概率从当前算法中挑选的10个数字
+          </h3>
+          <div style={{ marginTop: 15 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+              {selectedNumbers.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 15px",
+                    backgroundColor: idx < 3 ? "#fff3cd" : idx < 6 ? "#d1ecf1" : "#e7f3ff",
+                    border: `2px solid ${idx < 3 ? "#ffc107" : idx < 6 ? "#17a2b8" : "#2196F3"}`,
+                    borderRadius: "8px",
+                    fontSize: "15px",
+                    fontWeight: idx < 3 ? "bold" : "normal",
+                    minWidth: "120px",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "6px" }}>
+                    {item.num}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#666", marginBottom: "4px" }}>
+                    不匹配率: {(item.weight * 100).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#888" }}>
+                    {item.sources.map((s, i) => (
+                      <span key={i}>
+                        {s.method}第{s.position}位
+                        {i < item.sources.length - 1 && " / "}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#e7f3ff", borderRadius: "6px", fontSize: "13px" }}>
+            <strong>说明：</strong>这10个数字是从当前算法的预测结果中，根据历史统计的不匹配率挑选出来的。
+            数字越大（不匹配率越高），表示该数字在历史数据中越不容易出现在下一行中。
+          </div>
+        </div>
+      )}
+
+      {summary && (
+        <div style={{ marginTop: 20 }}>
+          <h3>算法分析总结（历史统计推荐）</h3>
+          
+          <div style={{ marginTop: 15 }}>
+            <h4 style={{ marginBottom: 10 }}>推荐列表（按概率排序）：</h4>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: 15 }}>
+              {summary.recommendations.map((rec, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "8px 12px",
+                    backgroundColor: idx < 3 ? "#fff3cd" : "#e7f3ff",
+                    border: `2px solid ${idx < 3 ? "#ffc107" : "#2196F3"}`,
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    fontWeight: idx < 3 ? "bold" : "normal",
+                  }}
+                >
+                  <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "4px" }}>
+                    {rec.num} (权重: {rec.weight.toFixed(3)})
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#666" }}>
+                    出现 {rec.count} 次 | 来源: {rec.sources.map((s) => `${s.method}第${s.position}位`).join(", ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 15 }}>
+            <h4 style={{ marginBottom: 10 }}>各算法位置不匹配率分析（前20个）：</h4>
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: "12px",
+                  minWidth: "600px",
+                }}
+              >
+                <thead>
+                  <tr style={{ backgroundColor: "#f5f5f5" }}>
+                    <th style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                      算法
+                    </th>
+                    <th style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                      位置
+                    </th>
+                    <th style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                      不匹配率
+                    </th>
+                    <th style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                      不匹配/总数
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.positionRates.map((item, idx) => (
+                    <tr key={idx}>
+                      <td style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                        {item.method}
+                      </td>
+                      <td style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                        第{item.position}位
+                      </td>
+                      <td style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                        <span
+                          style={{
+                            color: item.rate > 0.7 ? "red" : item.rate > 0.5 ? "orange" : "green",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {(item.rate * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                      <td style={{ padding: "6px", border: "1px solid #ddd", textAlign: "center" }}>
+                        {item.unmatched} / {item.total}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 15, padding: "12px", backgroundColor: "#f0f8ff", borderRadius: "6px" }}>
+            <h4 style={{ marginBottom: 8 }}>分析说明：</h4>
+            <ul style={{ margin: 0, paddingLeft: "20px", fontSize: "13px", lineHeight: "1.8" }}>
+              <li>
+                <strong>推荐数字</strong>：基于历史数据统计，这些数字在各算法预测中不匹配下一行的概率最高
+              </li>
+              <li>
+                <strong>权重计算</strong>：权重 = 不匹配率 × 出现次数，权重越高表示越可靠
+              </li>
+              <li>
+                <strong>位置分析</strong>：显示每个算法每个位置的不匹配率，帮助了解哪个位置最不容易匹配
+              </li>
+              <li>
+                <strong>建议</strong>：优先选择权重最高的前3个数字（黄色高亮），这些是最可能不在下一行中出现的
+              </li>
+            </ul>
           </div>
         </div>
       )}

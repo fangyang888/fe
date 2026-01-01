@@ -202,6 +202,140 @@ export default function LotteryPredictor() {
     return scores.slice(0, 7).map((s) => s.num);
   };
 
+  // 学习算法：基于历史模式学习，结合多个特征进行预测
+  const predictL = (history) => {
+    const rows = history.length;
+    if (rows < 5) return null; // 需要足够的历史数据
+
+    // 1. 学习序列模式：分析连续出现的数字模式
+    const sequencePatterns = {};
+    for (let i = 1; i < rows; i++) {
+      const prevRow = history[i - 1];
+      const currRow = history[i];
+      prevRow.forEach((prevNum) => {
+        currRow.forEach((currNum) => {
+          const key = `${prevNum}-${currNum}`;
+          sequencePatterns[key] = (sequencePatterns[key] || 0) + 1;
+        });
+      });
+    }
+
+    // 2. 学习位置模式：分析每个位置数字的转移规律
+    const positionPatterns = Array(7).fill(null).map(() => ({}));
+    for (let i = 1; i < rows; i++) {
+      for (let pos = 0; pos < 7; pos++) {
+        const prevNum = history[i - 1][pos];
+        const currNum = history[i][pos];
+        const key = `${prevNum}-${currNum}`;
+        if (!positionPatterns[pos][key]) {
+          positionPatterns[pos][key] = 0;
+        }
+        positionPatterns[pos][key]++;
+      }
+    }
+
+    // 3. 学习数字组合：分析哪些数字经常一起出现
+    const cooccurrence = {};
+    history.forEach((row) => {
+      for (let i = 0; i < row.length; i++) {
+        for (let j = i + 1; j < row.length; j++) {
+          const num1 = Math.min(row[i], row[j]);
+          const num2 = Math.max(row[i], row[j]);
+          const key = `${num1}-${num2}`;
+          cooccurrence[key] = (cooccurrence[key] || 0) + 1;
+        }
+      }
+    });
+
+    // 4. 计算每个数字的得分
+    const lastRow = history[rows - 1];
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      let score = 0;
+
+      // 特征1：基于序列模式（上一行数字到当前数字的转移概率）
+      let seqScore = 0;
+      let seqCount = 0;
+      lastRow.forEach((prevNum) => {
+        const key = `${prevNum}-${num}`;
+        if (sequencePatterns[key]) {
+          seqScore += sequencePatterns[key];
+          seqCount++;
+        }
+      });
+      if (seqCount > 0) {
+        score += (seqScore / seqCount) * 0.3; // 权重30%
+      }
+
+      // 特征2：基于位置模式（每个位置的转移概率）
+      let posScore = 0;
+      let posCount = 0;
+      for (let pos = 0; pos < 7; pos++) {
+        const prevNum = lastRow[pos];
+        const key = `${prevNum}-${num}`;
+        if (positionPatterns[pos][key]) {
+          posScore += positionPatterns[pos][key];
+          posCount++;
+        }
+      }
+      if (posCount > 0) {
+        score += (posScore / posCount) * 0.25; // 权重25%
+      }
+
+      // 特征3：基于数字组合（与上一行数字的共现频率）
+      let coScore = 0;
+      let coCount = 0;
+      lastRow.forEach((prevNum) => {
+        const num1 = Math.min(prevNum, num);
+        const num2 = Math.max(prevNum, num);
+        const key = `${num1}-${num2}`;
+        if (cooccurrence[key]) {
+          coScore += cooccurrence[key];
+          coCount++;
+        }
+      });
+      if (coCount > 0) {
+        score += (coScore / coCount) * 0.15; // 权重15%
+      }
+
+      // 特征4：基于频率（最近出现频率）
+      const recentWindow = history.slice(-Math.min(rows, 15));
+      const recentFreq = recentWindow.flat().filter((n) => n === num).length;
+      score += (recentFreq / (recentWindow.length * 7)) * 0.15; // 权重15%
+
+      // 特征5：基于间隔（距离上次出现的时间）
+      let lastSeen = rows;
+      for (let i = rows - 1; i >= 0; i--) {
+        if (history[i].includes(num)) {
+          lastSeen = rows - 1 - i;
+          break;
+        }
+      }
+      // 间隔越短，分数越高（最近出现的更可能再次出现）
+      score += (1 / (lastSeen + 1)) * 0.15; // 权重15%
+
+      return { num, score };
+    });
+
+    // 5. 结合其他算法的预测结果（集成学习）
+    const predB = predictB(history);
+    const predC = predictC(history);
+    const predI = predictI(history);
+    const predM = predictM(history);
+
+    // 如果数字在其他算法中也出现，增加分数
+    scores.forEach((item) => {
+      if (predB.includes(item.num)) item.score += 0.5;
+      if (predC.includes(item.num)) item.score += 0.5;
+      if (predI.includes(item.num)) item.score += 0.5;
+      if (predM && predM.includes(item.num)) item.score += 0.5;
+    });
+
+    // 按分数降序排序，选择前7个
+    scores.sort((a, b) => b.score - a.score);
+    return scores.slice(0, 7).map((s) => s.num);
+  };
+
   const computeHotCold = (history) => {
     const freq = Array(50).fill(0);
     history.flat().forEach((num) => freq[num]++);
@@ -262,6 +396,10 @@ export default function LotteryPredictor() {
       const predN = predictN(pastHistory);
       const matchedN = predN ? predN.filter((num) => nextRow.includes(num)) : [];
 
+      // 学习算法 L
+      const predL = predictL(pastHistory);
+      const matchedL = predL ? predL.filter((num) => nextRow.includes(num)) : [];
+
       details.push({
         period,
         currentRow,
@@ -277,6 +415,7 @@ export default function LotteryPredictor() {
         I: { prediction: predI, matched: matchedI },
         M: { prediction: predM, matched: matchedM },
         N: { prediction: predN, matched: matchedN },
+        L: { prediction: predL, matched: matchedL },
       });
     }
 
@@ -298,6 +437,7 @@ export default function LotteryPredictor() {
       I: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
       M: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
       N: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      L: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
     };
 
     for (let i = startIdx; i < rows - 1; i++) {
@@ -354,6 +494,18 @@ export default function LotteryPredictor() {
           if (!nextRow.includes(num)) {
             positionStats.N[pos].unmatched++;
             positionStats.N[pos].numbers[num] = (positionStats.N[pos].numbers[num] || 0) + 1;
+          }
+        });
+      }
+
+      // L方法（学习算法）
+      const predL = predictL(pastHistory);
+      if (predL) {
+        predL.forEach((num, pos) => {
+          positionStats.L[pos].total++;
+          if (!nextRow.includes(num)) {
+            positionStats.L[pos].unmatched++;
+            positionStats.L[pos].numbers[num] = (positionStats.L[pos].numbers[num] || 0) + 1;
           }
         });
       }
@@ -436,6 +588,7 @@ export default function LotteryPredictor() {
 
     // 从每个算法的预测结果中，根据位置不匹配率挑选
     Object.keys(currentResults).forEach((method) => {
+      if (method === 'L' && !currentResults[method]) return; // L算法可能返回null
       const prediction = currentResults[method];
       if (!prediction || !Array.isArray(prediction)) return;
 
@@ -578,6 +731,7 @@ export default function LotteryPredictor() {
         I: predictI(history),
         M: predictM(history),
         N: predictN(history),
+        L: predictL(history),
       };
 
       setResults(currentResults);
@@ -679,6 +833,12 @@ export default function LotteryPredictor() {
               {results.N.join(", ")}
             </p>
           )}
+          {results.L && (
+            <p>
+              <b>L学习算法（基于历史模式学习：序列模式+位置模式+数字组合+频率+间隔）：</b>
+              {results.L.join(", ")}
+            </p>
+          )}
         </div>
       )}
 
@@ -705,7 +865,7 @@ export default function LotteryPredictor() {
                 width: "100%",
                 borderCollapse: "collapse",
                 fontSize: "12px",
-                minWidth: "1600px",
+                minWidth: "1800px",
               }}
             >
               <thead>
@@ -739,6 +899,9 @@ export default function LotteryPredictor() {
                   </th>
                   <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
                     N反预测（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    L学习算法（与下一行对比）
                   </th>
                 </tr>
               </thead>
@@ -928,6 +1091,35 @@ export default function LotteryPredictor() {
                           </div>
                           <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
                             匹配 {detail.N.matched.length} 个：{detail.N.matched.length > 0 ? detail.N.matched.join(", ") : "无"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "#999" }}>-</div>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      {detail.L.prediction ? (
+                        <>
+                          <div style={{ textAlign: "center" }}>
+                            {detail.L.prediction.map((num, i) => {
+                              const isMatched = detail.L.matched.includes(num);
+                              return (
+                                <span key={i}>
+                                  <span
+                                    style={{
+                                      color: isMatched ? "red" : "inherit",
+                                      fontWeight: isMatched ? "bold" : "normal",
+                                    }}
+                                  >
+                                    {num}
+                                  </span>
+                                  {i < detail.L.prediction.length - 1 && ", "}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                            匹配 {detail.L.matched.length} 个：{detail.L.matched.length > 0 ? detail.L.matched.join(", ") : "无"}
                           </div>
                         </>
                       ) : (

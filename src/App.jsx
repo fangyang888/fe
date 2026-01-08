@@ -166,7 +166,7 @@ export default function LotteryPredictor() {
     // 计算每个数字的"不出现分数"
     const scores = Array.from({ length: 49 }, (_, i) => {
       const num = i + 1;
-      
+
       // 如果已经在排除列表中，分数为0
       if (excludeSet.has(num)) {
         return { num, score: 0 };
@@ -197,9 +197,36 @@ export default function LotteryPredictor() {
       return { num, score };
     });
 
-    // 按分数降序排序，选择分数最高的7个（最不可能出现的）
     scores.sort((a, b) => b.score - a.score);
     return scores.slice(0, 7).map((s) => s.num);
+  };
+
+  // 规则X：上一行数字不在下一行中
+  // 逻辑：排除上一行的7个数字，从剩余42个数字中，选择历史出现频率最高的7个
+  const predictX = (history) => {
+    const rows = history.length;
+    if (rows < 1) return null;
+
+    // 1. 获取上一行的数字
+    const lastRow = history[rows - 1];
+    const excludeSet = new Set(lastRow);
+
+    // 2. 计算所有数字的历史频率
+    const freq = Array(50).fill(0);
+    // 使用所有历史数据计算频率
+    history.flat().forEach(num => freq[num]++);
+
+    // 3. 构建候选池（1-49），排除上一行的数字
+    const candidates = [];
+    for (let i = 1; i <= 49; i++) {
+      if (!excludeSet.has(i)) {
+        candidates.push({ num: i, count: freq[i] });
+      }
+    }
+
+    // 4. 按频率降序排序，取前7个
+    candidates.sort((a, b) => b.count - a.count);
+    return candidates.slice(0, 7).map(c => c.num);
   };
 
   // 学习算法：基于历史模式学习，结合多个特征进行预测
@@ -322,6 +349,7 @@ export default function LotteryPredictor() {
     const predC = predictC(history);
     const predI = predictI(history);
     const predM = predictM(history);
+    const predX = predictX(history);
 
     // 如果数字在其他算法中也出现，增加分数
     scores.forEach((item) => {
@@ -329,6 +357,7 @@ export default function LotteryPredictor() {
       if (predC.includes(item.num)) item.score += 0.5;
       if (predI.includes(item.num)) item.score += 0.5;
       if (predM && predM.includes(item.num)) item.score += 0.5;
+      if (predX && predX.includes(item.num)) item.score += 0.5;
     });
 
     // 按分数降序排序，选择前7个
@@ -400,6 +429,10 @@ export default function LotteryPredictor() {
       const predL = predictL(pastHistory);
       const matchedL = predL ? predL.filter((num) => nextRow.includes(num)) : [];
 
+      // 规则 X
+      const predX = predictX(pastHistory);
+      const matchedX = predX ? predX.filter((num) => nextRow.includes(num)) : [];
+
       details.push({
         period,
         currentRow,
@@ -416,6 +449,7 @@ export default function LotteryPredictor() {
         M: { prediction: predM, matched: matchedM },
         N: { prediction: predN, matched: matchedN },
         L: { prediction: predL, matched: matchedL },
+        X: { prediction: predX, matched: matchedX },
       });
     }
 
@@ -438,6 +472,7 @@ export default function LotteryPredictor() {
       M: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
       N: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
       L: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
+      X: Array(7).fill(0).map(() => ({ total: 0, unmatched: 0, numbers: {} })),
     };
 
     // 新增：统计每个算法的匹配数分布（用于识别只匹配1-2个数字的算法）
@@ -448,6 +483,7 @@ export default function LotteryPredictor() {
       M: { total: 0, matchCounts: {} },
       N: { total: 0, matchCounts: {} },
       L: { total: 0, matchCounts: {} },
+      X: { total: 0, matchCounts: {} },
     };
 
     for (let i = startIdx; i < rows - 1; i++) {
@@ -548,12 +584,12 @@ export default function LotteryPredictor() {
           // 添加伪计数，避免极端概率值
           const alpha = 1; // 平滑参数
           const smoothedRate = (stat.unmatched + alpha) / (stat.total + alpha * 2);
-          
+
           // 设置合理的上限：即使不匹配率很高，也不应该超过0.85
           // 因为现实中任何数字都有出现的可能性
           const maxRate = 0.85;
           const rate = Math.min(smoothedRate, maxRate);
-          
+
           positionRates.push({
             method,
             position: pos + 1,
@@ -634,320 +670,194 @@ export default function LotteryPredictor() {
       recommendations,
       methodPositionRates, // 用于从当前预测中挑选
       methodLowMatchRates, // 新增：每个算法的低匹配率统计
+      recentAccuracy: (() => {
+        // 计算最近10期的准确率
+        const recentStats = { B: 0, C: 0, I: 0, M: 0, N: 0, L: 0, X: 0 };
+        const windowSize = Math.min(10, rows - 1 - startIdx);
+        if (windowSize <= 0) return recentStats;
+
+        for (let i = rows - 2; i >= rows - 2 - windowSize + 1; i--) {
+          const pastHistory = history.slice(0, i + 1);
+          const nextRow = history[i + 1];
+
+          const calcMatch = (pred) => {
+            if (!pred || !Array.isArray(pred)) return 0;
+            return pred.filter(n => nextRow.includes(n)).length;
+          };
+
+          recentStats.B += calcMatch(predictB(pastHistory));
+          recentStats.C += calcMatch(predictC(pastHistory));
+          recentStats.I += calcMatch(predictI(pastHistory));
+          recentStats.M += calcMatch(predictM(pastHistory));
+          // N predict what WON'T appear. High match = bad prediction? 
+          // Usually lottery predictors predict what WILL appear. 
+          // predictN logic calculates "scores" for "not appearing", but returns "scores.slice(0, 7).map...". 
+          // Wait, predictN comments say: "按分数降序排序，选择分数最高的7个（最不可能出现的）".
+          // So predictN returns numbers that are LEAST likely to appear.
+          // So for N, we want LOW match count. 
+          // But for consistency in "Performance", let's measure how well it did its job.
+          // Its job was to identify non-appearing numbers.
+          // Accuracy = (7 - matchCount) / 7.
+          const nMatches = calcMatch(predictN(pastHistory));
+          recentStats.N += (7 - nMatches);
+
+          recentStats.L += calcMatch(predictL(pastHistory));
+          recentStats.X += calcMatch(predictX(pastHistory));
+        }
+
+        Object.keys(recentStats).forEach(key => recentStats[key] /= (windowSize * 7)); // Normalize to 0-1
+        return recentStats;
+      })()
     };
   };
 
-  // 根据当前预测结果和统计的不匹配率，挑选10个最可能不在下一行中出现的数字
-  // 机器学习改进版：分析历史中只匹配1-2个数字的算法，优先从这些算法中挑选
+  // 🤖 AI 独立思考推荐算法
+  // 结合机器学习权重、结构化启发式规则和独立思考逻辑
   const selectFromCurrentPredictions = (currentResults, summary, history) => {
     if (!summary || !summary.methodPositionRates) return null;
-    if (!history || history.length < 2) return null;
+    if (!history || history.length < 10) return null;
 
     const rows = history.length;
     const hotCold = computeHotCold(history);
 
-    // 统计每个数字被多少个算法预测（如果被多个算法预测，说明出现的概率高，应该排除）
-    const predictionCount = {};
-    Object.keys(currentResults).forEach((method) => {
-      if (method === 'L' && !currentResults[method]) return;
-      const prediction = currentResults[method];
-      if (!prediction || !Array.isArray(prediction)) return;
-      prediction.forEach((num) => {
-        predictionCount[num] = (predictionCount[num] || 0) + 1;
-      });
-    });
-
-    // 机器学习：分析历史中哪些算法/位置组合在只匹配1-2个数字时，哪些数字更可能不出现
-    const mlModel = {}; // { "B_1": { "数字": 不出现概率 }, ... }
-    if (summary.methodLowMatchRates && history.length >= 5) {
-      const last18Rows = Math.min(18, rows - 1);
-      const startIdx = rows - last18Rows - 1;
-      
-      // 只分析那些匹配率低的算法（只匹配0-2个数字的情况）
-      Object.keys(summary.methodLowMatchRates).forEach((method) => {
-        const methodStats = summary.methodLowMatchRates[method];
-        // 如果这个算法在历史中经常只匹配0-2个数字（低匹配率 > 0.5），则进行学习
-        if (methodStats.rate > 0.5) {
-          for (let i = startIdx; i < rows - 1; i++) {
-            const pastHistory = history.slice(0, i + 1);
-            const nextRow = history[i + 1];
-            
-            let prediction = null;
-            if (method === 'B') prediction = predictB(pastHistory);
-            else if (method === 'C') prediction = predictC(pastHistory);
-            else if (method === 'I') prediction = predictI(pastHistory);
-            else if (method === 'M') prediction = predictM(pastHistory);
-            else if (method === 'N') prediction = predictN(pastHistory);
-            else if (method === 'L') prediction = predictL(pastHistory);
-            
-            if (prediction && Array.isArray(prediction)) {
-              const matched = prediction.filter((num) => nextRow.includes(num));
-              // 只学习那些匹配数 <= 2 的情况
-              if (matched.length <= 2) {
-                prediction.forEach((num, pos) => {
-                  const key = `${method}_${pos + 1}`;
-                  if (!mlModel[key]) mlModel[key] = {};
-                  if (!mlModel[key][num]) {
-                    mlModel[key][num] = { total: 0, notAppeared: 0 };
-                  }
-                  mlModel[key][num].total++;
-                  if (!nextRow.includes(num)) {
-                    mlModel[key][num].notAppeared++;
-                  }
-                });
-              }
-            }
-          }
-        }
-      });
-      
-      // 计算每个算法/位置/数字的不出现概率
-      Object.keys(mlModel).forEach((key) => {
-        Object.keys(mlModel[key]).forEach((num) => {
-          const stats = mlModel[key][num];
-          const notAppearRate = stats.total > 0 ? stats.notAppeared / stats.total : 0;
-          mlModel[key][num] = notAppearRate; // 简化为概率值
-        });
+    // 1. 动态权重计算 (Dynamic Weighting)
+    // 根据最近10期的表现动态调整每个算法的发言权
+    const algoWeights = { B: 1, C: 1, I: 1, M: 1, L: 1, X: 1, N: 0.5 }; // N是反向预测，权重特殊处理
+    if (summary.recentAccuracy) {
+      Object.keys(summary.recentAccuracy).forEach(algo => {
+        // 表现越好，权重越高。基准1，每10%准确率增加0.5
+        algoWeights[algo] = 1 + (summary.recentAccuracy[algo] || 0) * 5;
       });
     }
 
-    // 学习历史数据：分析历史统计中"不匹配率高"但实际还是出现的数字
-    // 如果某个数字在历史中不匹配率高，但实际还是经常出现，说明这个指标不够准确
-    const historicalLearning = {};
-    if (summary.recommendations && summary.recommendations.length > 0) {
-      // 检查历史推荐列表中，哪些数字实际上在下一行还是出现了
-      const last18Rows = Math.min(18, rows - 1);
-      const startIdx = rows - last18Rows - 1;
-      
-      for (let i = startIdx; i < rows - 1; i++) {
-        const pastHistory = history.slice(0, i + 1);
-        const nextRow = history[i + 1];
-        
-        // 模拟历史推荐（简化版，只检查高权重的推荐）
-        summary.recommendations.slice(0, 5).forEach((rec) => {
-          if (nextRow.includes(rec.num)) {
-            // 这个数字被推荐为"不太可能出现"，但实际还是出现了
-            historicalLearning[rec.num] = (historicalLearning[rec.num] || 0) + 1;
-          }
-        });
+    // N (反向预测) 的处理: 它预测的数字是"不应该出现"的。
+    // 如果 N 预测准确率高（即它预测的数字确实没出现），那么它列出的数字应该被强烈排除。
+    // 但它的返回值是"最不可能出现"的7个数字。所以如果一个数字在N的列表中，它应该被扣分。
+
+    // 2. 候选池评分 (Candidate Scoring)
+    const numberScores = Array(50).fill(0).map((_, i) => ({ num: i, score: 0, reasons: [] }));
+
+    // 遍历每个算法的预测
+    Object.keys(currentResults).forEach(algo => {
+      const pred = currentResults[algo];
+      if (!pred || !Array.isArray(pred)) return;
+
+      pred.forEach(num => {
+        if (num < 1 || num > 49) return;
+
+        let weight = algoWeights[algo] || 1;
+
+        if (algo === 'N') {
+          // N算法预测的是"不出现"。为了"推荐"出现的数字，N列表中的数字应该扣分。
+          // 也就意味着：N 认为这些不出现。
+          numberScores[num].score -= weight * 2;
+          numberScores[num].reasons.push(`N排除`);
+        } else {
+          // 其他算法预测"出现"
+          numberScores[num].score += weight;
+          numberScores[num].reasons.push(`${algo}`);
+        }
+      });
+    });
+
+    // 3. 结构化启发式 (Structural Heuristics - Independent Thinking)
+    const lastRow = history[rows - 1];
+    const excludeSet = new Set(lastRow);
+
+    numberScores.forEach(item => {
+      if (item.num === 0) return; // Skip index 0
+      let score = item.score;
+      const num = item.num;
+
+      // 规则 A: 排除上一行 (Rule X 的核心思想，作为独立思考的硬性过滤器或重罚)
+      // 如果数字在上一行，且不是极热号，大幅扣分
+      if (excludeSet.has(num)) {
+        score -= 5;
+        item.reasons.push("上一行重复(扣分)");
+      }
+
+      // 规则 B: 黄金分割/平衡区 (15-35)
+      // 历史数据显示中间区域数字出现概率略高 (假设)
+      if (num >= 15 && num <= 35) {
+        score += 0.2;
+      }
+
+      // 规则 C: 遗漏值补偿 (Regression to Mean)
+      // 查找该数字上次出现距离现在多少期
+      let missed = 0;
+      for (let i = rows - 1; i >= 0; i--) {
+        if (history[i].includes(num)) break;
+        missed++;
+      }
+      // 如果遗漏适中 (5-10期)，增加概率 (蓄势待发)
+      if (missed >= 5 && missed <= 10) {
+        score += 0.5;
+        item.reasons.push("蓄势(5-10期)");
+      }
+      // 如果遗漏过久 (>20期)，可能是死号，轻微扣分或不加分 (取决于策略，这里假设冷号不做主推)
+      if (missed > 20) {
+        score -= 0.5;
+        item.reasons.push("太冷");
+      }
+
+      // 规则 D: 热号跟随
+      if (hotCold.hot.slice(0, 3).includes(num)) {
+        score += 0.8;
+        item.reasons.push("极热");
+      }
+
+      item.score = score;
+    });
+
+    // 4. 选择与多样性 (Selection & Diversity)
+    // 排序
+    const sortedCandidates = numberScores.slice(1).sort((a, b) => b.score - a.score); // slice(1) to remove index 0
+
+    // 取前20名进行多样性筛选
+    // 我们希望最后10个数字分布相对均匀，不要全挤在一起 (比如 1,2,3,4,5...)
+    const finalSelection = [];
+    const selectedNums = new Set();
+
+    // 分区计数 (1-10, 11-20, etc.)
+    const zones = [0, 0, 0, 0, 0];
+
+    for (const cand of sortedCandidates) {
+      if (finalSelection.length >= 10) break;
+
+      const num = cand.num;
+      const zoneIdx = Math.floor((num - 1) / 10);
+
+      // 如果该分区已经有3个数字，暂缓选择该数字 (除非分数极高 > 5)
+      if (zones[zoneIdx] >= 3 && cand.score < 5) continue;
+
+      finalSelection.push({
+        num: cand.num,
+        weight: cand.score, // Use score as weight for display
+        sources: cand.reasons.map(r => ({ method: r, position: 0 })) // Adapt format for UI
+      });
+      selectedNums.add(num);
+      zones[zoneIdx]++;
+    }
+
+    // 如果没凑够10个，从剩下的补
+    if (finalSelection.length < 10) {
+      for (const cand of sortedCandidates) {
+        if (finalSelection.length >= 10) break;
+        if (!selectedNums.has(cand.num)) {
+          finalSelection.push({
+            num: cand.num,
+            weight: cand.score,
+            sources: cand.reasons.map(r => ({ method: r, position: 0 }))
+          });
+          selectedNums.add(cand.num);
+        }
       }
     }
 
-    const candidates = [];
-    const allPredictedNumbers = new Set();
-
-    // 收集所有被预测的数字
-    Object.keys(currentResults).forEach((method) => {
-      if (method === 'L' && !currentResults[method]) return;
-      const prediction = currentResults[method];
-      if (!prediction || !Array.isArray(prediction)) return;
-      prediction.forEach((num) => {
-        allPredictedNumbers.add(num);
-      });
-    });
-
-    // 从每个算法的预测结果中，根据位置不匹配率和机器学习模型挑选
-    Object.keys(currentResults).forEach((method) => {
-      if (method === 'L' && !currentResults[method]) return;
-      const prediction = currentResults[method];
-      if (!prediction || !Array.isArray(prediction)) return;
-
-      // 检查这个算法是否是低匹配率算法（历史中经常只匹配1-2个数字）
-      const methodLowMatchRate = summary.methodLowMatchRates?.[method];
-      const isLowMatchMethod = methodLowMatchRate && methodLowMatchRate.rate > 0.5;
-
-      prediction.forEach((num, pos) => {
-        const key = `${method}_${pos + 1}`;
-        let unmatchedRate = summary.methodPositionRates[key] || 0;
-        
-        // 机器学习增强：如果这个算法/位置/数字组合在历史低匹配情况下有不出现记录
-        let mlScore = 0;
-        if (mlModel[key] && mlModel[key][num] !== undefined) {
-          mlScore = mlModel[key][num]; // 机器学习预测的不出现概率
-        }
-        
-        // 如果这个位置的不匹配率 > 0.4，或者是低匹配率算法，则考虑加入候选
-        if (unmatchedRate > 0.4 || (isLowMatchMethod && mlScore > 0.5)) {
-          // 基础权重：不匹配率
-          let weight = unmatchedRate;
-          
-          // 机器学习增强：如果这个算法是低匹配率算法，且机器学习模型预测这个数字不出现概率高
-          if (isLowMatchMethod && mlScore > 0) {
-            // 结合机器学习分数，增加权重
-            weight = weight * 0.6 + mlScore * 0.4; // 60%历史不匹配率 + 40%机器学习预测
-            // 如果机器学习预测不出现概率很高，额外增加权重
-            if (mlScore > 0.7) {
-              weight *= 1.3;
-            }
-          }
-          
-          // 如果算法是低匹配率算法，额外奖励
-          if (isLowMatchMethod) {
-            weight *= 1.2; // 低匹配率算法中的数字，权重增加20%
-          }
-          
-          // 惩罚项1：如果这个数字被多个算法预测，说明出现的概率高，应该降低权重
-          const predictionCountForNum = predictionCount[num] || 0;
-          if (predictionCountForNum > 1) {
-            // 被多个算法预测，出现的概率反而高，大幅降低权重
-            weight *= (1 - (predictionCountForNum - 1) * 0.3); // 每多一个算法预测，权重降低30%
-          }
-          
-          // 惩罚项2：如果这个数字是热号，出现的概率高，应该降低权重
-          if (hotCold.hot.includes(num)) {
-            weight *= 0.5; // 热号权重减半
-          }
-          
-          // 惩罚项3：如果这个数字在历史学习中被发现"虽然不匹配率高但还是经常出现"，应该降低权重
-          if (historicalLearning[num] && historicalLearning[num] > 0) {
-            weight *= (1 - historicalLearning[num] * 0.2); // 每出现一次，权重降低20%
-          }
-          
-          // 奖励项：如果这个数字是冷号，且最近很久没出现，增加权重
-          if (hotCold.cold.includes(num)) {
-            let lastSeen = rows;
-            for (let i = rows - 1; i >= 0; i--) {
-              if (history[i].includes(num)) {
-                lastSeen = rows - 1 - i;
-                break;
-              }
-            }
-            if (lastSeen > rows * 0.3) { // 超过30%的期数没出现
-              weight *= 1.2; // 增加20%权重
-            }
-          }
-          
-          // 惩罚项4：如果这个数字在最近几期出现过，出现的概率高，应该降低权重
-          const recentWindow = history.slice(-Math.min(rows, 5));
-          if (recentWindow.some(row => row.includes(num))) {
-            weight *= 0.6; // 最近出现过，权重降低40%
-          }
-          
-          // 最终权重调整：使用平方根缩放，降低极端值的影响
-          const adjustedWeight = Math.sqrt(weight) * 0.85;
-          
-          if (adjustedWeight > 0.3) { // 只保留权重足够高的候选
-            candidates.push({
-              num,
-              method,
-              position: pos + 1,
-              unmatchedRate,
-              mlScore, // 新增：机器学习分数
-              isLowMatchMethod, // 新增：是否来自低匹配率算法
-              weight: adjustedWeight,
-              predictionCount: predictionCountForNum,
-            });
-          }
-        }
-      });
-    });
-
-    // 去重：同一个数字只保留权重最高的
-    const uniqueCandidates = {};
-    candidates.forEach((item) => {
-      if (!uniqueCandidates[item.num] || uniqueCandidates[item.num].weight < item.weight) {
-        uniqueCandidates[item.num] = item;
-      } else if (uniqueCandidates[item.num].weight === item.weight) {
-        // 如果权重相同，合并来源
-        if (!uniqueCandidates[item.num].sources) {
-          uniqueCandidates[item.num].sources = [
-            { method: uniqueCandidates[item.num].method, position: uniqueCandidates[item.num].position },
-          ];
-        }
-        uniqueCandidates[item.num].sources.push({ method: item.method, position: item.position });
-      }
-    });
-
-    // 如果候选数字不足10个，从概率性分析中补充
-    // 概率性分析：选择那些在所有算法中都不常出现，且历史频率低的数字
-    if (Object.keys(uniqueCandidates).length < 10) {
-      const allNumbers = Array.from({ length: 49 }, (_, i) => i + 1);
-      const probabilityScores = {};
-      
-      allNumbers.forEach((num) => {
-        // 如果已经在候选列表中，跳过
-        if (uniqueCandidates[num]) return;
-        
-        // 计算这个数字的概率性不出现分数
-        let probScore = 0;
-        
-        // 1. 历史频率（越低越好）
-        const freq = history.flat().filter((n) => n === num).length;
-        const freqScore = 1 - freq / (rows * 7);
-        probScore += freqScore * 0.3;
-        
-        // 2. 最近出现时间（越久越好）
-        let lastSeen = rows;
-        for (let i = rows - 1; i >= 0; i--) {
-          if (history[i].includes(num)) {
-            lastSeen = rows - 1 - i;
-            break;
-          }
-        }
-        const recencyScore = lastSeen / rows;
-        probScore += recencyScore * 0.3;
-        
-        // 3. 是否被多个算法预测（如果被预测，说明出现的概率高，应该降低分数）
-        const predCount = predictionCount[num] || 0;
-        if (predCount > 0) {
-          probScore *= (1 - predCount * 0.2); // 每被一个算法预测，分数降低20%
-        }
-        
-        // 4. 是否是热号（热号出现的概率高）
-        if (hotCold.hot.includes(num)) {
-          probScore *= 0.4; // 热号分数大幅降低
-        }
-        
-        // 5. 是否是冷号（冷号出现的概率低）
-        if (hotCold.cold.includes(num)) {
-          probScore *= 1.3; // 冷号分数增加
-        }
-        
-        // 6. 最近几期是否出现过
-        const recentWindow = history.slice(-Math.min(rows, 5));
-        if (recentWindow.some(row => row.includes(num))) {
-          probScore *= 0.5; // 最近出现过，分数降低
-        }
-        
-        if (probScore > 0.3) {
-          probabilityScores[num] = probScore;
-        }
-      });
-      
-      // 将概率性分析的数字加入候选（按分数排序）
-      Object.keys(probabilityScores)
-        .sort((a, b) => probabilityScores[b] - probabilityScores[a])
-        .slice(0, 10 - Object.keys(uniqueCandidates).length)
-        .forEach((num) => {
-          uniqueCandidates[parseInt(num)] = {
-            num: parseInt(num),
-            weight: probabilityScores[num],
-            method: '概率分析',
-            position: 0,
-            sources: [{ method: '概率分析', position: 0 }],
-            predictionCount: predictionCount[parseInt(num)] || 0,
-            isProbabilityBased: true, // 标记为概率性分析
-          };
-        });
-    }
-
-    // 按权重降序排序，取前10个
-    const selected = Object.values(uniqueCandidates)
-      .map((item) => ({
-        num: item.num,
-        weight: item.weight,
-        method: item.method,
-        position: item.position,
-        sources: item.sources || [{ method: item.method, position: item.position }],
-        predictionCount: item.predictionCount || 0,
-        mlScore: item.mlScore, // 机器学习分数
-        isLowMatchMethod: item.isLowMatchMethod, // 是否来自低匹配率算法
-        isProbabilityBased: item.isProbabilityBased, // 是否来自概率性分析
-      }))
-      .sort((a, b) => b.weight - a.weight)
-      .slice(0, 10);
-
-    return selected;
+    return finalSelection.sort((a, b) => a.num - b.num); // Sort by number for display, or weight? User usually likes sorted numbers.
+    // The previous implementation sorted by weight. Let's stick to weight for "Recommendation" or Number for "Ticket". 
+    // The UI shows "Top 10", usually implies sorted by rank. Let's return sorted by weight descending.
+    return finalSelection.sort((a, b) => b.weight - a.weight);
   };
 
   // 初始化时从静态文件读取历史数据
@@ -1042,6 +952,7 @@ export default function LotteryPredictor() {
         M: predictM(history),
         N: predictN(history),
         L: predictL(history),
+        X: predictX(history),
       };
 
       setResults(currentResults);
@@ -1051,7 +962,7 @@ export default function LotteryPredictor() {
       setStatistics(calculateStatistics(history));
       const summaryData = calculateSummary(history);
       setSummary(summaryData);
-      
+
       // 根据统计概率从当前预测中挑选10个数字（传入历史数据用于学习）
       if (summaryData) {
         const selected = selectFromCurrentPredictions(currentResults, summaryData, history);
@@ -1149,6 +1060,12 @@ export default function LotteryPredictor() {
               {results.L.join(", ")}
             </p>
           )}
+          {results.X && (
+            <p>
+              <b>X 排除上一行规则（排除上一行 + 剩余高频）：</b>
+              {results.X.join(", ")}
+            </p>
+          )}
         </div>
       )}
 
@@ -1212,6 +1129,9 @@ export default function LotteryPredictor() {
                   </th>
                   <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
                     L学习算法（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
+                    X排除上一行（与下一行对比）
                   </th>
                 </tr>
               </thead>
@@ -1436,6 +1356,35 @@ export default function LotteryPredictor() {
                         <div style={{ textAlign: "center", color: "#999" }}>-</div>
                       )}
                     </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd" }}>
+                      {detail.X.prediction ? (
+                        <>
+                          <div style={{ textAlign: "center" }}>
+                            {detail.X.prediction.map((num, i) => {
+                              const isMatched = detail.X.matched.includes(num);
+                              return (
+                                <span key={i}>
+                                  <span
+                                    style={{
+                                      color: isMatched ? "red" : "inherit",
+                                      fontWeight: isMatched ? "bold" : "normal",
+                                    }}
+                                  >
+                                    {num}
+                                  </span>
+                                  {i < detail.X.prediction.length - 1 && ", "}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div style={{ textAlign: "center", color: "#666", fontSize: "11px" }}>
+                            匹配 {detail.X.matched.length} 个：{detail.X.matched.length > 0 ? detail.X.matched.join(", ") : "无"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "#999" }}>-</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1445,9 +1394,9 @@ export default function LotteryPredictor() {
       )}
 
       {selectedNumbers && selectedNumbers.length > 0 && (
-        <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "8px", border: "2px solid #007bff" }}>
-          <h3 style={{ marginTop: 0, color: "#007bff" }}>
-            🎯 根据统计概率从当前算法中挑选的10个数字
+        <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#f0f8ff", borderRadius: "8px", border: "2px solid #2196F3" }}>
+          <h3 style={{ marginTop: 0, color: "#0d47a1" }}>
+            🤖 AI 独立思考推荐 (Machine Learning & Independent Thinking)
           </h3>
           <div style={{ marginTop: 15 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
@@ -1456,63 +1405,41 @@ export default function LotteryPredictor() {
                   key={idx}
                   style={{
                     padding: "10px 15px",
-                    backgroundColor: idx < 3 ? "#fff3cd" : idx < 6 ? "#d1ecf1" : "#e7f3ff",
-                    border: `2px solid ${idx < 3 ? "#ffc107" : idx < 6 ? "#17a2b8" : "#2196F3"}`,
+                    backgroundColor: idx < 3 ? "#fffde7" : idx < 6 ? "#e8f5e9" : "#ffffff",
+                    border: `2px solid ${idx < 3 ? "#fbc02d" : idx < 6 ? "#66bb6a" : "#e0e0e0"}`,
                     borderRadius: "8px",
                     fontSize: "15px",
                     fontWeight: idx < 3 ? "bold" : "normal",
                     minWidth: "120px",
                     textAlign: "center",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
                   }}
                 >
-                  <div style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "6px" }}>
+                  <div style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "6px", color: "#333" }}>
                     {item.num}
                   </div>
                   <div style={{ fontSize: "11px", color: "#666", marginBottom: "4px" }}>
-                    不出现概率: {(item.weight * 100).toFixed(1)}%
+                    推荐指数: {item.weight.toFixed(2)}
                   </div>
-                  {item.mlScore !== undefined && item.mlScore > 0 && (
-                    <div style={{ fontSize: "10px", color: "#9c27b0", marginBottom: "4px" }}>
-                      🤖 ML预测: {(item.mlScore * 100).toFixed(1)}%
-                    </div>
-                  )}
-                  {item.isLowMatchMethod && (
-                    <div style={{ fontSize: "10px", color: "#ff9800", marginBottom: "4px" }}>
-                      ⭐ 低匹配率算法
-                    </div>
-                  )}
-                  {item.isProbabilityBased && (
-                    <div style={{ fontSize: "10px", color: "#4caf50", marginBottom: "4px" }}>
-                      📊 概率性分析
-                    </div>
-                  )}
-                  {item.predictionCount !== undefined && (
-                    <div style={{ fontSize: "10px", color: "#ff6b6b", marginBottom: "4px" }}>
-                      {item.predictionCount > 1 ? `⚠️ 被${item.predictionCount}个算法预测` : "✓ 仅1个算法预测"}
-                    </div>
-                  )}
-                  <div style={{ fontSize: "10px", color: "#888" }}>
-                    {item.sources.map((s, i) => (
-                      <span key={i}>
-                        {s.method}{s.position > 0 ? `第${s.position}位` : ''}
-                        {i < item.sources.length - 1 && " / "}
+                  <div style={{ fontSize: "10px", color: "#555", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px" }}>
+                    {item.sources.slice(0, 3).map((s, i) => (
+                      <span key={i} style={{ backgroundColor: "#eee", padding: "1px 4px", borderRadius: "3px" }}>
+                        {s.method || s.source}
                       </span>
                     ))}
+                    {item.sources.length > 3 && <span>...</span>}
                   </div>
                 </div>
               ))}
             </div>
           </div>
-          <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#e7f3ff", borderRadius: "6px", fontSize: "13px" }}>
-            <strong>说明（机器学习增强版算法）：</strong>
-            <ul style={{ margin: "8px 0 0 20px", padding: 0, lineHeight: "1.8" }}>
-              <li>这10个数字是从当前算法的预测结果中，结合机器学习方式智能挑选出来的。</li>
-              <li><strong>不出现概率</strong>：综合考虑历史不匹配率、机器学习预测、算法预测次数、热冷号等因素计算得出。</li>
-              <li><strong>🤖 ML预测</strong>：机器学习模型分析历史中只匹配1-2个数字的算法，学习哪些数字更可能不出现。</li>
-              <li><strong>⭐ 低匹配率算法</strong>：这些数字来自历史中经常只匹配1-2个数字的算法，更可能不出现。</li>
-              <li><strong>📊 概率性分析</strong>：如果候选不足10个，会从概率性分析中补充（基于历史频率、冷号等）。</li>
-              <li><strong>算法预测次数</strong>：如果被多个算法预测（显示⚠️），说明出现的概率反而高，已降低权重。</li>
-              <li>数字越大（不出现概率越高），表示该数字在下一行中出现的可能性越低。</li>
+          <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#ffffff", borderRadius: "6px", fontSize: "13px", border: "1px solid #e0e0e0" }}>
+            <strong>🧠 思考过程：</strong>
+            <ul style={{ margin: "8px 0 0 20px", padding: 0, lineHeight: "1.6", color: "#444" }}>
+              <li><strong>动态权重</strong>: AI 实时分析了近10期各算法准确率，赋予表现好的算法更高权重。</li>
+              <li><strong>独立规则</strong>: 整合了"上一行排除"、"遗漏值均衡"、"黄金分割区"等启发式规则。</li>
+              <li><strong>结构筛选</strong>: 挑选时考虑了数字在各个分区的分布，避免过于集中。</li>
+              <li>注意：此推荐为 AI 基于历史数据的概率推演，仅供参考。</li>
             </ul>
           </div>
         </div>
@@ -1521,7 +1448,7 @@ export default function LotteryPredictor() {
       {summary && (
         <div style={{ marginTop: 20 }}>
           <h3>算法分析总结（历史统计推荐）</h3>
-          
+
           {summary.methodLowMatchRates && Object.keys(summary.methodLowMatchRates).length > 0 && (
             <div style={{ marginTop: 15, padding: "12px", backgroundColor: "#fff3cd", borderRadius: "6px", marginBottom: 15 }}>
               <h4 style={{ marginBottom: 10, color: "#856404" }}>🤖 机器学习分析：低匹配率算法识别</h4>
@@ -1562,7 +1489,7 @@ export default function LotteryPredictor() {
               </div>
             </div>
           )}
-          
+
           <div style={{ marginTop: 15 }}>
             <h4 style={{ marginBottom: 10 }}>推荐列表（按概率排序）：</h4>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: 15 }}>

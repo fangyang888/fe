@@ -14,6 +14,7 @@ export default function LotteryPredictor() {
   const [statistics, setStatistics] = useState(null);
   const [summary, setSummary] = useState(null);
   const [selectedNumbers, setSelectedNumbers] = useState(null);
+  const [killNumbers, setKillNumbers] = useState(null);
   const sigmoid = (x) => 1 / (1 + Math.exp(-x));
   const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
 
@@ -199,6 +200,277 @@ export default function LotteryPredictor() {
 
     scores.sort((a, b) => b.score - a.score);
     return scores.slice(0, 7).map((s) => s.num);
+  };
+
+  // ========== 新增杀码算法（预测不会出现的数字）==========
+
+  // 杀码算法 K1：马尔可夫链反向预测
+  // 基于转移概率矩阵，找出从上一行数字转移概率最低的数字
+  const predictK1 = (history) => {
+    const rows = history.length;
+    if (rows < 5) return null;
+
+    // 构建转移概率矩阵：transition[from][to] = 次数
+    const transition = Array(50).fill(null).map(() => Array(50).fill(0));
+    for (let i = 0; i < rows - 1; i++) {
+      const currRow = history[i];
+      const nextRow = history[i + 1];
+      currRow.forEach(from => {
+        nextRow.forEach(to => {
+          transition[from][to]++;
+        });
+      });
+    }
+
+    // 计算每个数字从上一行转移过来的概率
+    const lastRow = history[rows - 1];
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      let totalTransitions = 0;
+      lastRow.forEach(from => {
+        totalTransitions += transition[from][num];
+      });
+      return { num, score: totalTransitions };
+    });
+
+    // 按转移次数升序（越少越不可能出现）
+    scores.sort((a, b) => a.score - b.score);
+    return scores.slice(0, 10).map(s => s.num);
+  };
+
+  // 杀码算法 K2：周期性排除
+  // 分析数字出现的周期性，如果某数字刚出现，下一期大概率不会再出
+  const predictK2 = (history) => {
+    const rows = history.length;
+    if (rows < 3) return null;
+
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      
+      // 计算该数字的平均出现周期
+      const appearances = [];
+      for (let j = 0; j < rows; j++) {
+        if (history[j].includes(num)) {
+          appearances.push(j);
+        }
+      }
+      
+      if (appearances.length < 2) {
+        // 很少出现，可能继续不出现
+        return { num, score: 10 };
+      }
+
+      // 计算平均周期
+      let totalGap = 0;
+      for (let j = 1; j < appearances.length; j++) {
+        totalGap += appearances[j] - appearances[j - 1];
+      }
+      const avgCycle = totalGap / (appearances.length - 1);
+
+      // 计算距离上次出现的期数
+      const lastAppearance = appearances[appearances.length - 1];
+      const gapSinceLastAppear = rows - 1 - lastAppearance;
+
+      // 如果刚出现（gap < avgCycle * 0.3），则很可能不会再出现
+      if (gapSinceLastAppear < avgCycle * 0.3) {
+        return { num, score: 15 - gapSinceLastAppear };
+      }
+      
+      // 如果距离上次出现接近平均周期，可能快要出现了
+      if (gapSinceLastAppear >= avgCycle * 0.8 && gapSinceLastAppear <= avgCycle * 1.2) {
+        return { num, score: 0 };
+      }
+
+      return { num, score: 5 };
+    });
+
+    scores.sort((a, b) => b.score - a.score);
+    return scores.slice(0, 10).map(s => s.num);
+  };
+
+  // 杀码算法 K3：连续排除法
+  // 如果一个数字连续多期出现，下一期不出现的概率增加
+  const predictK3 = (history) => {
+    const rows = history.length;
+    if (rows < 3) return null;
+
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      
+      // 计算连续出现次数（从最近往前数）
+      let consecutiveCount = 0;
+      for (let j = rows - 1; j >= 0; j--) {
+        if (history[j].includes(num)) {
+          consecutiveCount++;
+        } else {
+          break;
+        }
+      }
+
+      // 连续出现越多次，下期不出现的分数越高
+      if (consecutiveCount >= 3) {
+        return { num, score: 20 + consecutiveCount * 2 };
+      } else if (consecutiveCount === 2) {
+        return { num, score: 15 };
+      } else if (consecutiveCount === 1) {
+        return { num, score: 10 };
+      }
+      
+      return { num, score: 0 };
+    });
+
+    scores.sort((a, b) => b.score - a.score);
+    return scores.slice(0, 10).map(s => s.num);
+  };
+
+  // 杀码算法 K4：差值反推
+  // 基于相邻两期的差值模式，预测不会出现的数字
+  const predictK4 = (history) => {
+    const rows = history.length;
+    if (rows < 5) return null;
+
+    // 统计每个位置的差值分布
+    const diffPatterns = Array(7).fill(null).map(() => ({}));
+    for (let i = 1; i < rows; i++) {
+      for (let pos = 0; pos < 7; pos++) {
+        const diff = history[i][pos] - history[i - 1][pos];
+        diffPatterns[pos][diff] = (diffPatterns[pos][diff] || 0) + 1;
+      }
+    }
+
+    // 找出最不常见的差值
+    const lastRow = history[rows - 1];
+    const unlikelyNumbers = new Set();
+
+    for (let pos = 0; pos < 7; pos++) {
+      // 按频率排序差值
+      const sortedDiffs = Object.entries(diffPatterns[pos])
+        .sort((a, b) => b[1] - a[1]);
+      
+      // 取最常见的差值
+      if (sortedDiffs.length > 0) {
+        const mostCommonDiff = parseInt(sortedDiffs[0][0]);
+        // 预测的数字最可能是 lastRow[pos] + mostCommonDiff
+        const likelyNum = lastRow[pos] + mostCommonDiff;
+        // 不太可能的是差值不常见的
+        for (let d = -20; d <= 20; d++) {
+          const freq = diffPatterns[pos][d] || 0;
+          if (freq === 0) {
+            const num = lastRow[pos] + d;
+            if (num >= 1 && num <= 49) {
+              unlikelyNumbers.add(num);
+            }
+          }
+        }
+      }
+    }
+
+    return Array.from(unlikelyNumbers).slice(0, 10);
+  };
+
+  // 杀码算法 K5：反共现分析
+  // 找出与上一行数字很少一起出现的数字
+  const predictK5 = (history) => {
+    const rows = history.length;
+    if (rows < 10) return null;
+
+    // 计算共现矩阵
+    const cooccur = Array(50).fill(null).map(() => Array(50).fill(0));
+    for (const row of history) {
+      for (let i = 0; i < row.length; i++) {
+        for (let j = i + 1; j < row.length; j++) {
+          cooccur[row[i]][row[j]]++;
+          cooccur[row[j]][row[i]]++;
+        }
+      }
+    }
+
+    // 找与上一行数字共现次数最少的数字
+    const lastRow = history[rows - 1];
+    const scores = Array.from({ length: 49 }, (_, i) => {
+      const num = i + 1;
+      if (lastRow.includes(num)) {
+        return { num, score: 100 }; // 上一行已有的数字评分高（很可能不出现）
+      }
+      
+      // 计算与上一行数字的共现总次数
+      let totalCooccur = 0;
+      lastRow.forEach(prev => {
+        totalCooccur += cooccur[prev][num];
+      });
+      
+      // 共现次数越少，越不可能出现
+      return { num, score: totalCooccur === 0 ? 50 : 1 / (totalCooccur + 1) * 10 };
+    });
+
+    // 选择上一行的数字 + 共现最少的数字
+    const fromLastRow = lastRow.slice(); // 上一行的7个
+    const lowCooccur = scores
+      .filter(s => !lastRow.includes(s.num))
+      .sort((a, b) => a.score - b.score) // 共现最少的
+      .slice(0, 3)
+      .map(s => s.num);
+
+    return [...fromLastRow, ...lowCooccur].slice(0, 10);
+  };
+
+  // 综合杀码推荐算法：结合所有杀码算法的结果
+  const predictKillNumbers = (history) => {
+    const rows = history.length;
+    if (rows < 5) return null;
+
+    const k1 = predictK1(history) || [];
+    const k2 = predictK2(history) || [];
+    const k3 = predictK3(history) || [];
+    const k4 = predictK4(history) || [];
+    const k5 = predictK5(history) || [];
+    const predN = predictN(history) || [];
+
+    // 投票计分
+    const voteCount = {};
+    const addVotes = (nums, weight, source) => {
+      nums.forEach((num, idx) => {
+        if (num < 1 || num > 49) return;
+        if (!voteCount[num]) {
+          voteCount[num] = { votes: 0, weight: 0, sources: [] };
+        }
+        // 排名越靠前权重越高
+        const positionWeight = (10 - Math.min(idx, 9)) / 10;
+        voteCount[num].votes++;
+        voteCount[num].weight += weight * positionWeight;
+        voteCount[num].sources.push(source);
+      });
+    };
+
+    addVotes(k1, 1.5, 'K1-马尔可夫');
+    addVotes(k2, 1.2, 'K2-周期排除');
+    addVotes(k3, 1.8, 'K3-连续排除');
+    addVotes(k4, 1.0, 'K4-差值反推');
+    addVotes(k5, 2.0, 'K5-反共现');
+    addVotes(predN, 1.0, 'N-反预测');
+
+    // 上一行数字强制高分
+    const lastRow = history[rows - 1];
+    lastRow.forEach(num => {
+      if (!voteCount[num]) {
+        voteCount[num] = { votes: 0, weight: 0, sources: [] };
+      }
+      voteCount[num].votes += 3;
+      voteCount[num].weight += 5;
+      voteCount[num].sources.push('上一行');
+    });
+
+    // 按权重排序
+    const sorted = Object.entries(voteCount)
+      .map(([num, data]) => ({
+        num: parseInt(num),
+        votes: data.votes,
+        weight: data.weight,
+        sources: data.sources
+      }))
+      .sort((a, b) => b.weight - a.weight);
+
+    return sorted.slice(0, 10);
   };
 
   // 规则X：上一行数字不在下一行中
@@ -433,6 +705,12 @@ export default function LotteryPredictor() {
       const predX = predictX(pastHistory);
       const matchedX = predX ? predX.filter((num) => nextRow.includes(num)) : [];
 
+      // 综合杀码推荐
+      const killNums = predictKillNumbers(pastHistory);
+      const killNumsArray = killNums ? killNums.map(k => k.num) : [];
+      // 对于杀码，"成功"意味着预测的数字确实没有出现在下一行
+      const killSuccess = killNums ? killNums.filter(k => !nextRow.includes(k.num)) : [];
+
       details.push({
         period,
         currentRow,
@@ -450,6 +728,12 @@ export default function LotteryPredictor() {
         N: { prediction: predN, matched: matchedN },
         L: { prediction: predL, matched: matchedL },
         X: { prediction: predX, matched: matchedX },
+        Kill: { 
+          prediction: killNumsArray, 
+          successCount: killSuccess.length,
+          failCount: killNums ? killNums.length - killSuccess.length : 0,
+          failed: killNums ? killNums.filter(k => nextRow.includes(k.num)).map(k => k.num) : []
+        },
       });
     }
 
@@ -968,6 +1252,10 @@ export default function LotteryPredictor() {
         const selected = selectFromCurrentPredictions(currentResults, summaryData, history);
         setSelectedNumbers(selected);
       }
+
+      // 调用综合杀码推荐算法
+      const killNums = predictKillNumbers(history);
+      setKillNumbers(killNums);
     } finally {
       setLoading(false);
     }
@@ -1132,6 +1420,9 @@ export default function LotteryPredictor() {
                   </th>
                   <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center" }}>
                     X排除上一行（与下一行对比）
+                  </th>
+                  <th style={{ padding: "8px", border: "1px solid #ddd", textAlign: "center", backgroundColor: "#ffebee" }}>
+                    🎯 综合杀码验证
                   </th>
                 </tr>
               </thead>
@@ -1385,6 +1676,41 @@ export default function LotteryPredictor() {
                         <div style={{ textAlign: "center", color: "#999" }}>-</div>
                       )}
                     </td>
+                    <td style={{ padding: "8px", border: "1px solid #ddd", backgroundColor: "#fff5f5" }}>
+                      {detail.Kill && detail.Kill.prediction ? (
+                        <>
+                          <div style={{ textAlign: "center" }}>
+                            {detail.Kill.prediction.map((num, i) => {
+                              const isFailed = detail.Kill.failed.includes(num);
+                              return (
+                                <span key={i}>
+                                  <span
+                                    style={{
+                                      color: isFailed ? "red" : "green",
+                                      fontWeight: isFailed ? "bold" : "normal",
+                                      textDecoration: isFailed ? "line-through" : "none",
+                                    }}
+                                  >
+                                    {num}
+                                  </span>
+                                  {i < detail.Kill.prediction.length - 1 && ", "}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <div style={{ textAlign: "center", fontSize: "11px", marginTop: "4px" }}>
+                            <span style={{ color: "green" }}>✓成功 {detail.Kill.successCount} 个</span>
+                            {detail.Kill.failCount > 0 && (
+                              <span style={{ color: "red", marginLeft: "6px" }}>
+                                ✗失败 {detail.Kill.failCount} 个: {detail.Kill.failed.join(", ")}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ textAlign: "center", color: "#999" }}>-</div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1440,6 +1766,61 @@ export default function LotteryPredictor() {
               <li><strong>独立规则</strong>: 整合了"上一行排除"、"遗漏值均衡"、"黄金分割区"等启发式规则。</li>
               <li><strong>结构筛选</strong>: 挑选时考虑了数字在各个分区的分布，避免过于集中。</li>
               <li>注意：此推荐为 AI 基于历史数据的概率推演，仅供参考。</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {killNumbers && killNumbers.length > 0 && (
+        <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#fff5f5", borderRadius: "8px", border: "2px solid #f44336" }}>
+          <h3 style={{ marginTop: 0, color: "#c62828" }}>
+            🎯 综合杀码推荐（预测不会出现的10个数字）
+          </h3>
+          <div style={{ marginTop: 15 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+              {killNumbers.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "10px 15px",
+                    backgroundColor: idx < 3 ? "#ffebee" : idx < 6 ? "#fce4ec" : "#ffffff",
+                    border: `2px solid ${idx < 3 ? "#f44336" : idx < 6 ? "#e91e63" : "#e0e0e0"}`,
+                    borderRadius: "8px",
+                    fontSize: "15px",
+                    fontWeight: idx < 3 ? "bold" : "normal",
+                    minWidth: "140px",
+                    textAlign: "center",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                  }}
+                >
+                  <div style={{ fontSize: "22px", fontWeight: "bold", marginBottom: "6px", color: idx < 3 ? "#c62828" : "#333" }}>
+                    {item.num}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#666", marginBottom: "4px" }}>
+                    杀码指数: {item.weight.toFixed(2)} | 票数: {item.votes}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#888", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px" }}>
+                    {item.sources.slice(0, 4).map((s, i) => (
+                      <span key={i} style={{ backgroundColor: "#ffcdd2", padding: "1px 4px", borderRadius: "3px" }}>
+                        {s}
+                      </span>
+                    ))}
+                    {item.sources.length > 4 && <span>+{item.sources.length - 4}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#ffffff", borderRadius: "6px", fontSize: "13px", border: "1px solid #ffcdd2" }}>
+            <strong>🧮 杀码算法说明：</strong>
+            <ul style={{ margin: "8px 0 0 20px", padding: 0, lineHeight: "1.8", color: "#555" }}>
+              <li><strong>K1-马尔可夫链</strong>: 基于转移概率矩阵，找出从上一行转移概率最低的数字</li>
+              <li><strong>K2-周期分析</strong>: 分析数字出现周期，刚出现的数字大概率不会连续出现</li>
+              <li><strong>K3-连续排除</strong>: 如果数字连续多期出现，下期不出现的概率增加</li>
+              <li><strong>K4-差值反推</strong>: 基于位置差值模式，排除不符合历史规律的数字</li>
+              <li><strong>K5-反共现</strong>: 与上一行数字很少一起出现的数字，也包括上一行本身</li>
+              <li><strong>上一行</strong>: 上一行的7个数字在下一行中重复的概率较低</li>
+              <li style={{ color: "#c62828" }}>⚠️ 以上推荐基于历史统计规律，仅供参考！</li>
             </ul>
           </div>
         </div>

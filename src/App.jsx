@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 // import "chart.js/auto";
 // @ts-ignore
 import NumberDigitPredictor from "./NumberDigitPredictor.jsx";
+// @ts-ignore
+import { result as zodiacHistory } from "./result.ts";
 
 export default function LotteryPredictor() {
   const [input, setInput] = useState("");
@@ -15,6 +17,8 @@ export default function LotteryPredictor() {
   const [summary, setSummary] = useState(null);
   const [selectedNumbers, setSelectedNumbers] = useState(null);
   const [killNumbers, setKillNumbers] = useState(null);
+  const [tailPredictions, setTailPredictions] = useState(null);
+  const [zodiacPredictions, setZodiacPredictions] = useState(null);
   const sigmoid = (x) => 1 / (1 + Math.exp(-x));
   const dot = (w, x) => w.reduce((s, wi, i) => s + wi * x[i], 0);
 
@@ -637,6 +641,330 @@ export default function LotteryPredictor() {
     return scores.slice(0, 7).map((s) => s.num);
   };
 
+  /**
+   * 预测下一行最后一个数字的尾数 (0-9)
+   * 策略：历史回测 + 和值尾数 + 跨度分析 + 多维度综合
+   */
+  const predictTail = (history) => {
+    const rows = history.length;
+    if (rows < 5) return null;
+
+    const tails = history.map(row => row[row.length - 1] % 10);
+    
+    // 最近5期尾数
+    const recent = tails.slice(-5);
+    const last1 = recent[4]; // 6
+    const last2 = recent[3]; // 1
+    const last3 = recent[2]; // 1
+    const last4 = recent[1]; // 1
+    const last5 = recent[0]; // 7
+
+    // ========== 策略1: 一阶转移统计 (从6转移到?) ==========
+    const transition = Array(10).fill(null).map(() => Array(10).fill(0));
+    for (let i = 0; i < rows - 1; i++) {
+      transition[tails[i]][tails[i + 1]]++;
+    }
+    
+    // 6之后各尾数出现次数
+    const from6 = transition[last1];
+    const from6Total = from6.reduce((a, b) => a + b, 0);
+    
+    // ========== 策略2: 和值尾数分析 ==========
+    // 计算每行7个数字的和值尾数
+    const sumTails = history.map(row => row.reduce((a, b) => a + b, 0) % 10);
+    const lastSumTail = sumTails[rows - 1];
+    
+    // 统计和值尾数与下期尾数的关系
+    const sumToNextTail = Array(10).fill(null).map(() => Array(10).fill(0));
+    for (let i = 0; i < rows - 1; i++) {
+      sumToNextTail[sumTails[i]][tails[i + 1]]++;
+    }
+    const sumProbs = sumToNextTail[lastSumTail];
+    const sumTotal = sumProbs.reduce((a, b) => a + b, 0);
+
+    // ========== 策略3: 012路分析 ==========
+    // 0路: 0,3,6,9  1路: 1,4,7  2路: 2,5,8
+    const getPath = (d) => d % 3;
+    const recentPaths = recent.map(getPath);
+    const pathCount = [0, 0, 0];
+    recentPaths.forEach(p => pathCount[p]++);
+    
+    // 选择最近5期出现最少的路
+    const minPathIdx = pathCount.indexOf(Math.min(...pathCount));
+    const pathDigits = {
+      0: [0, 3, 6, 9],
+      1: [1, 4, 7],
+      2: [2, 5, 8]
+    };
+    const targetPath = pathDigits[minPathIdx];
+
+    // ========== 策略4: 大小分析 ==========
+    // 小: 0-4, 大: 5-9
+    const recentSmallCount = recent.filter(t => t <= 4).length;
+    const predictSmall = recentSmallCount <= 2; // 如果最近小号少，预测出小号
+
+    // ========== 策略5: 奇偶分析 ==========
+    const recentOddCount = recent.filter(t => t % 2 === 1).length;
+    const predictOdd = recentOddCount <= 2; // 如果最近奇数少，预测出奇数
+
+    // ========== 策略6: 杀码 - 排除不可能的 ==========
+    const killSet = new Set();
+    
+    // 杀1: 上期尾数大概率不连出
+    killSet.add(last1);
+    
+    // 杀2: 如果连续3期有相同尾数，杀该尾数
+    if (last1 === last2 || last2 === last3 || last1 === last3) {
+      const repeated = last1 === last2 ? last1 : (last2 === last3 ? last2 : last1);
+      killSet.add(repeated);
+    }
+    
+    // 杀3: 历史上从未出现过的尾数
+    const freq = Array(10).fill(0);
+    tails.forEach(t => freq[t]++);
+    freq.forEach((f, d) => {
+      if (f === 0) killSet.add(d);
+    });
+
+    // ========== 策略7: 跨度分析 ==========
+    // 相邻两期尾数差值的模式
+    const spans = [];
+    for (let i = 1; i < rows; i++) {
+      spans.push(Math.abs(tails[i] - tails[i - 1]));
+    }
+    const spanFreq = Array(10).fill(0);
+    spans.forEach(s => spanFreq[s]++);
+    // 找最常见跨度
+    const commonSpan = spanFreq.indexOf(Math.max(...spanFreq));
+    const spanPredicts = [
+      (last1 + commonSpan) % 10,
+      (last1 - commonSpan + 10) % 10
+    ];
+
+    // ========== 策略8: 冷热分析 ==========
+    // 最近20期的频率
+    const recent20 = tails.slice(-Math.min(20, rows));
+    const hotFreq = Array(10).fill(0);
+    recent20.forEach(t => hotFreq[t]++);
+
+    // ========== 综合评分 ==========
+    const scores = Array.from({ length: 10 }, (_, digit) => {
+      let score = 0;
+      let reasons = [];
+
+      // 杀码直接排除
+      if (killSet.has(digit)) {
+        return { digit, score: -100, reasons: ['杀码'] };
+      }
+
+      // 1. 一阶转移概率 (权重 35%)
+      if (from6Total > 0) {
+        const prob = from6[digit] / from6Total;
+        score += prob * 3.5;
+        if (prob >= 0.15) reasons.push('转移');
+      }
+
+      // 2. 和值尾数关联 (权重 20%)
+      if (sumTotal > 0) {
+        const prob = sumProbs[digit] / sumTotal;
+        score += prob * 2;
+        if (prob >= 0.15) reasons.push('和值');
+      }
+
+      // 3. 012路补偿 (权重 15%)
+      if (targetPath.includes(digit)) {
+        score += 1.5;
+        reasons.push('路数');
+      }
+
+      // 4. 大小平衡 (权重 10%)
+      const isSmall = digit <= 4;
+      if ((predictSmall && isSmall) || (!predictSmall && !isSmall)) {
+        score += 1;
+      }
+
+      // 5. 奇偶平衡 (权重 10%)
+      const isOdd = digit % 2 === 1;
+      if ((predictOdd && isOdd) || (!predictOdd && !isOdd)) {
+        score += 1;
+      }
+
+      // 6. 跨度预测 (权重 5%)
+      if (spanPredicts.includes(digit)) {
+        score += 0.5;
+        reasons.push('跨度');
+      }
+
+      // 7. 冷热微调 (权重 5%)
+      score += (hotFreq[digit] / recent20.length) * 0.5;
+
+      return { digit, score, reasons };
+    });
+
+    // 过滤杀码，排序取前6
+    const validScores = scores.filter(s => s.score > -50);
+    validScores.sort((a, b) => b.score - a.score);
+
+    // 计算置信度
+    const maxScore = validScores[0]?.score || 0;
+    const minScore = validScores[validScores.length - 1]?.score || 0;
+    const scoreRange = maxScore - minScore || 1;
+
+    return validScores.slice(0, 6).map((s, idx) => {
+      const normalizedScore = (s.score - minScore) / scoreRange;
+      const probability = Math.min(0.90, Math.max(0.20, normalizedScore * 0.65 + 0.25));
+
+      let reason = s.reasons.length > 0 ? s.reasons.slice(0, 2).join('+') : '综合';
+      if (idx === 0) reason = '🥇 ' + reason;
+      else if (idx === 1) reason = '🥈 ' + reason;
+      else if (idx === 2) reason = '🥉 ' + reason;
+
+      return {
+        digit: s.digit,
+        probability,
+        reason
+      };
+    });
+  };
+
+  /**
+   * 预测下一个生肖
+   * 优化算法：二阶马尔可夫 + 遗漏回补 + 频率 + 邻近偏好
+   */
+  const predictZodiac = () => {
+    if (!zodiacHistory || zodiacHistory.length < 3) return null;
+
+    const zodiacs = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪'];
+    const history = zodiacHistory.map(item => item.value);
+    const rows = history.length;
+    const last1 = history[rows - 1]; // 最后一期
+    const last2 = history[rows - 2]; // 倒数第二期
+    const last3 = rows >= 3 ? history[rows - 3] : null;
+
+    // 1. 频率统计
+    const freq = {};
+    zodiacs.forEach(z => freq[z] = 0);
+    history.forEach(z => freq[z]++);
+
+    // 2. 一阶转移概率
+    const transition = {};
+    zodiacs.forEach(z => {
+      transition[z] = {};
+      zodiacs.forEach(z2 => transition[z][z2] = 0);
+    });
+    for (let i = 0; i < rows - 1; i++) {
+      transition[history[i]][history[i + 1]]++;
+    }
+    const fromLast = transition[last1];
+    const fromLastTotal = Object.values(fromLast).reduce((a, b) => a + b, 0);
+
+    // 3. 二阶马尔可夫 (A,B) -> C
+    const secondOrder = {};
+    for (let i = 0; i < rows - 2; i++) {
+      const key = `${history[i]}_${history[i + 1]}`;
+      const next = history[i + 2];
+      if (!secondOrder[key]) secondOrder[key] = {};
+      secondOrder[key][next] = (secondOrder[key][next] || 0) + 1;
+    }
+    const currentKey = `${last2}_${last1}`;
+    const secondOrderProbs = secondOrder[currentKey] || {};
+    const secondOrderTotal = Object.values(secondOrderProbs).reduce((a, b) => a + b, 0);
+
+    // 4. 遗漏值
+    const missed = {};
+    zodiacs.forEach(z => missed[z] = rows);
+    for (let i = rows - 1; i >= 0; i--) {
+      if (missed[history[i]] === rows) {
+        missed[history[i]] = rows - 1 - i;
+      }
+    }
+
+    // 5. 综合评分
+    const scores = zodiacs.map(zodiac => {
+      let score = 0;
+      let reasons = [];
+
+      // 注意：数据量少时不使用杀码，因为可能会错杀
+
+      // 二阶马尔可夫 (最重要，权重 35%)
+      if (secondOrderTotal > 0) {
+        const prob = (secondOrderProbs[zodiac] || 0) / secondOrderTotal;
+        score += prob * 3.5;
+        if (prob >= 0.2) reasons.push('二阶');
+      }
+
+      // 一阶转移概率 (权重 25%)
+      if (fromLastTotal > 0) {
+        const prob = fromLast[zodiac] / fromLastTotal;
+        score += prob * 2.5;
+        if (prob >= 0.15) reasons.push('转移');
+      }
+
+      // 遗漏回补 (权重 25%) - 对小数据集很重要
+      const avgCycle = rows / (freq[zodiac] || 1);
+      const ratio = missed[zodiac] / avgCycle;
+      if (ratio >= 0.9 && ratio <= 1.8) {
+        score += 2.5;
+        reasons.push('回补');
+      } else if (ratio > 1.8 && ratio <= 3) {
+        score += 2;
+        reasons.push('待补');
+      } else if (ratio > 3) {
+        score += 1; // 很久没出，可能快了
+      }
+
+      // 历史频率 (权重 10%)
+      score += (freq[zodiac] / rows) * 1;
+      if (freq[zodiac] >= 2) reasons.push('高频');
+
+      // 最近未出惩罚 - 如果最近5期已经出过，轻微降低
+      const recent5 = history.slice(-5);
+      const recentCount = recent5.filter(z => z === zodiac).length;
+      if (recentCount >= 2) {
+        score -= 0.5; // 最近出太多次
+      } else if (recentCount === 0 && freq[zodiac] > 0) {
+        score += 0.5; // 最近没出但历史有出
+        reasons.push('蓄势');
+      }
+
+      // 邻近生肖偏好 (基于12生肖循环)
+      const lastIdx = zodiacs.indexOf(last1);
+      const curIdx = zodiacs.indexOf(zodiac);
+      const distance = Math.min(
+        Math.abs(curIdx - lastIdx),
+        12 - Math.abs(curIdx - lastIdx)
+      );
+      if (distance <= 2 && distance > 0) {
+        score += 0.3;
+      }
+
+      return { zodiac, score, reasons };
+    });
+
+    // 排序
+    scores.sort((a, b) => b.score - a.score);
+
+    const maxScore = scores[0]?.score || 0;
+    const minScore = scores[scores.length - 1]?.score || 0;
+    const scoreRange = maxScore - minScore || 1;
+
+    return scores.slice(0, 6).map((s, idx) => {
+      const normalizedScore = (s.score - minScore) / scoreRange;
+      const probability = Math.min(0.88, Math.max(0.20, normalizedScore * 0.6 + 0.25));
+
+      let reason = s.reasons.length > 0 ? s.reasons.slice(0, 2).join('+') : '综合';
+      if (idx === 0) reason = '🥇 ' + reason;
+      else if (idx === 1) reason = '🥈 ' + reason;
+      else if (idx === 2) reason = '🥉 ' + reason;
+
+      return {
+        zodiac: s.zodiac,
+        probability,
+        reason
+      };
+    });
+  };
+
   const computeHotCold = (history) => {
     const freq = Array(50).fill(0);
     history.flat().forEach((num) => freq[num]++);
@@ -1256,6 +1584,14 @@ export default function LotteryPredictor() {
       // 调用综合杀码推荐算法
       const killNums = predictKillNumbers(history);
       setKillNumbers(killNums);
+
+      // 调用尾数预测
+      const tails = predictTail(history);
+      setTailPredictions(tails);
+
+      // 调用生肖预测
+      const zodiacPreds = predictZodiac();
+      setZodiacPredictions(zodiacPreds);
     } finally {
       setLoading(false);
     }
@@ -1715,6 +2051,255 @@ export default function LotteryPredictor() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {tailPredictions && tailPredictions.length > 0 && (
+        <div style={{
+          marginTop: 25,
+          padding: "20px",
+          background: "linear-gradient(135deg, #1a237e 0%, #283593 100%)",
+          borderRadius: "16px",
+          color: "white",
+          boxShadow: "0 10px 20px rgba(0,0,0,0.2)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          overflow: "hidden",
+          position: "relative"
+        }}>
+          {/* 背景装饰 */}
+          <div style={{
+            position: "absolute",
+            top: "-20px",
+            right: "-20px",
+            width: "100px",
+            height: "100px",
+            background: "rgba(255,255,255,0.05)",
+            borderRadius: "50%",
+            zIndex: 0
+          }} />
+          
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: "20px", gap: "10px" }}>
+              <span style={{ fontSize: "24px" }}>🎯</span>
+              <h3 style={{ margin: 0, fontSize: "20px", fontWeight: "bold", letterSpacing: "1px" }}>
+                下期尾数预测 (Next Last Digit)
+              </h3>
+              <span style={{ 
+                fontSize: "12px", 
+                background: "rgba(255,255,255,0.2)", 
+                padding: "2px 8px", 
+                borderRadius: "10px",
+                marginLeft: "auto"
+              }}>
+                基于转移概率 & 周期性分析
+              </span>
+            </div>
+
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", 
+              gap: "15px" 
+            }}>
+              {tailPredictions.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "15px",
+                    background: idx === 0 ? "rgba(255, 255, 255, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                    borderRadius: "12px",
+                    textAlign: "center",
+                    border: idx === 0 ? "2px solid #ffd700" : "1px solid rgba(255,255,255,0.2)",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                    cursor: "pointer",
+                    backdropFilter: "blur(5px)"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-5px)";
+                    e.currentTarget.style.boxShadow = "0 5px 15px rgba(0,0,0,0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: "32px", 
+                    fontWeight: "900", 
+                    marginBottom: "8px",
+                    color: idx === 0 ? "#ffd700" : "white",
+                    textShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                  }}>
+                    {item.digit}
+                  </div>
+                  <div style={{ fontSize: "12px", opacity: 0.9, marginBottom: "4px" }}>
+                    {item.reason}
+                  </div>
+                  <div style={{ 
+                    height: "4px", 
+                    background: "rgba(255,255,255,0.1)", 
+                    borderRadius: "2px", 
+                    marginTop: "8px",
+                    overflow: "hidden"
+                  }}>
+                    <div style={{ 
+                      width: `${item.probability * 100}%`, 
+                      height: "100%", 
+                      background: idx === 0 ? "#ffd700" : "#4caf50" 
+                    }} />
+                  </div>
+                  <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
+                     置信度: {(item.probability * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ 
+              marginTop: "20px", 
+              fontSize: "12px", 
+              color: "rgba(255,255,255,0.6)",
+              fontStyle: "italic",
+              textAlign: "right"
+            }}>
+              * 预测结果根据历史行尾数的转移规律计算，共选出 6 个高概率候选数字。
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 生肖预测展示 */}
+      {zodiacPredictions && zodiacPredictions.length > 0 && (
+        <div style={{
+          marginTop: 25,
+          padding: "20px",
+          background: "linear-gradient(135deg, #b71c1c 0%, #c62828 50%, #d32f2f 100%)",
+          borderRadius: "16px",
+          color: "white",
+          boxShadow: "0 10px 20px rgba(0,0,0,0.2)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          overflow: "hidden",
+          position: "relative"
+        }}>
+          {/* 背景装饰 */}
+          <div style={{
+            position: "absolute",
+            top: "-30px",
+            right: "-30px",
+            width: "120px",
+            height: "120px",
+            background: "rgba(255,255,255,0.05)",
+            borderRadius: "50%",
+            zIndex: 0
+          }} />
+          
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: "20px", gap: "10px" }}>
+              <span style={{ fontSize: "28px" }}>🐲</span>
+              <h3 style={{ margin: 0, fontSize: "20px", fontWeight: "bold", letterSpacing: "1px" }}>
+                生肖预测 (12 Zodiac Prediction)
+              </h3>
+              <span style={{ 
+                fontSize: "12px", 
+                background: "rgba(255,255,255,0.2)", 
+                padding: "2px 8px", 
+                borderRadius: "10px",
+                marginLeft: "auto"
+              }}>
+                基于历史 {zodiacHistory?.length || 0} 期数据
+              </span>
+            </div>
+
+            {/* 历史生肖展示 */}
+            <div style={{ 
+              marginBottom: "15px", 
+              padding: "10px", 
+              background: "rgba(255,255,255,0.1)", 
+              borderRadius: "8px",
+              fontSize: "13px"
+            }}>
+              <span style={{ fontWeight: "bold" }}>最近5期: </span>
+              {zodiacHistory?.slice(-5).map((item, idx) => (
+                <span key={idx} style={{ 
+                  display: "inline-block",
+                  margin: "2px 4px",
+                  padding: "2px 8px",
+                  background: idx === zodiacHistory.slice(-5).length - 1 ? "rgba(255,215,0,0.3)" : "rgba(255,255,255,0.1)",
+                  borderRadius: "4px",
+                  border: idx === zodiacHistory.slice(-5).length - 1 ? "1px solid #ffd700" : "none"
+                }}>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", 
+              gap: "12px" 
+            }}>
+              {zodiacPredictions.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: "15px",
+                    background: idx === 0 ? "rgba(255, 215, 0, 0.25)" : idx === 1 ? "rgba(192, 192, 192, 0.2)" : idx === 2 ? "rgba(205, 127, 50, 0.2)" : "rgba(255, 255, 255, 0.1)",
+                    borderRadius: "12px",
+                    textAlign: "center",
+                    border: idx === 0 ? "2px solid #ffd700" : idx === 1 ? "2px solid #c0c0c0" : idx === 2 ? "2px solid #cd7f32" : "1px solid rgba(255,255,255,0.2)",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                    cursor: "pointer"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "translateY(-5px)";
+                    e.currentTarget.style.boxShadow = "0 5px 15px rgba(0,0,0,0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: "36px", 
+                    fontWeight: "900", 
+                    marginBottom: "6px",
+                    color: idx === 0 ? "#ffd700" : idx === 1 ? "#e8e8e8" : idx === 2 ? "#cd7f32" : "white",
+                    textShadow: "0 2px 4px rgba(0,0,0,0.5)"
+                  }}>
+                    {item.zodiac}
+                  </div>
+                  <div style={{ fontSize: "12px", opacity: 0.9, marginBottom: "4px" }}>
+                    {item.reason}
+                  </div>
+                  <div style={{ 
+                    height: "4px", 
+                    background: "rgba(255,255,255,0.1)", 
+                    borderRadius: "2px", 
+                    marginTop: "8px",
+                    overflow: "hidden"
+                  }}>
+                    <div style={{ 
+                      width: `${item.probability * 100}%`, 
+                      height: "100%", 
+                      background: idx === 0 ? "#ffd700" : idx === 1 ? "#c0c0c0" : idx === 2 ? "#cd7f32" : "#4caf50" 
+                    }} />
+                  </div>
+                  <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.7 }}>
+                     置信度: {(item.probability * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ 
+              marginTop: "15px", 
+              fontSize: "12px", 
+              color: "rgba(255,255,255,0.6)",
+              fontStyle: "italic",
+              textAlign: "right"
+            }}>
+              * 基于历史转移概率、频率、遗漏回补综合分析，选出6个高概率生肖。
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+// import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 // @ts-ignore
 import App from "./App.jsx";

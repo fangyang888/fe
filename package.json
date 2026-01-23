@@ -11,8 +11,11 @@
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.12.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

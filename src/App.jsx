@@ -10,6 +10,7 @@ export default function LotteryPredictor() {
   const [input, setInput] = useState("");
   const [results, setResults] = useState(null);
   const [metrics, setMetrics] = useState([]);
+  
   const [chartData, setChartData] = useState(null);
   const [hotCold, setHotCold] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -418,10 +419,105 @@ export default function LotteryPredictor() {
     return [...fromLastRow, ...lowCooccur].slice(0, 10);
   };
 
-  // 综合杀码推荐算法：结合所有杀码算法的结果
+  // ========== 长期学习杀码权重 ==========
+  // 基于历史数据回测，自动学习每个算法的权重
+  const learnKillWeights = (history) => {
+    const rows = history.length;
+    // 至少需要15期数据才能学习
+    if (rows < 15) {
+      return {
+        weights: { K1: 1.5, K2: 1.2, K3: 1.8, K4: 1.0, K5: 2.0, N: 1.0, lastRow: 5.0 },
+        stats: null,
+        learned: false
+      };
+    }
+
+    // 回测统计：用前N-1期预测第N期，统计每个算法的成功率
+    const algorithmStats = {
+      K1: { success: 0, total: 0 },
+      K2: { success: 0, total: 0 },
+      K3: { success: 0, total: 0 },
+      K4: { success: 0, total: 0 },
+      K5: { success: 0, total: 0 },
+      N: { success: 0, total: 0 },
+      lastRow: { success: 0, total: 0 }
+    };
+
+    // 从第10期开始回测，最多回测30期
+    const startIdx = Math.max(10, rows - 30);
+    for (let i = startIdx; i < rows - 1; i++) {
+      const pastHistory = history.slice(0, i + 1);
+      const nextRow = history[i + 1];
+      const nextRowSet = new Set(nextRow);
+
+      // 各算法预测
+      const k1 = predictK1(pastHistory) || [];
+      const k2 = predictK2(pastHistory) || [];
+      const k3 = predictK3(pastHistory) || [];
+      const k4 = predictK4(pastHistory) || [];
+      const k5 = predictK5(pastHistory) || [];
+      const predN = predictN(pastHistory) || [];
+      const lastRowNums = pastHistory[pastHistory.length - 1] || [];
+
+      // 统计成功次数（杀码成功 = 预测不会出现的数字确实没有出现）
+      const checkSuccess = (predictions, name) => {
+        predictions.forEach((num) => {
+          if (num >= 1 && num <= 49) {
+            algorithmStats[name].total++;
+            if (!nextRowSet.has(num)) {
+              algorithmStats[name].success++;
+            }
+          }
+        });
+      };
+
+      checkSuccess(k1, 'K1');
+      checkSuccess(k2, 'K2');
+      checkSuccess(k3, 'K3');
+      checkSuccess(k4, 'K4');
+      checkSuccess(k5, 'K5');
+      checkSuccess(predN, 'N');
+      checkSuccess(lastRowNums, 'lastRow');
+    }
+
+    // 计算成功率并生成权重
+    const successRates = {};
+    const weights = {};
+    
+    Object.keys(algorithmStats).forEach(name => {
+      const stat = algorithmStats[name];
+      const rate = stat.total > 0 ? stat.success / stat.total : 0;
+      successRates[name] = rate;
+      
+      // 权重 = 成功率 * 调整因子，使用指数函数放大差异
+      if (name === 'lastRow') {
+        weights[name] = Math.max(3.0, rate * 7.0);
+      } else {
+        weights[name] = Math.max(0.5, rate * 3.0);
+      }
+    });
+
+    // 归一化权重
+    const avgWeight = Object.values(weights).reduce((a, b) => a + b, 0) / Object.keys(weights).length;
+    const normalizedWeights = {};
+    Object.keys(weights).forEach(name => {
+      normalizedWeights[name] = weights[name] / avgWeight * 1.5;
+    });
+
+    return {
+      weights: normalizedWeights,
+      stats: { successRates, totalPeriods: rows - startIdx - 1 },
+      learned: true
+    };
+  };
+
+  // 综合杀码推荐算法：结合所有杀码算法的结果（使用学习权重）
   const predictKillNumbers = (history) => {
     const rows = history.length;
     if (rows < 5) return null;
+
+    // 🎓 获取学习后的权重
+    const { weights: learnedWeights, stats: learnStats, learned } = learnKillWeights(history);
 
     const k1 = predictK1(history) || [];
     const k2 = predictK2(history) || [];
@@ -446,22 +542,23 @@ export default function LotteryPredictor() {
       });
     };
 
-    addVotes(k1, 1.5, 'K1-马尔可夫');
-    addVotes(k2, 1.2, 'K2-周期排除');
-    addVotes(k3, 1.8, 'K3-连续排除');
-    addVotes(k4, 1.0, 'K4-差值反推');
-    addVotes(k5, 2.0, 'K5-反共现');
-    addVotes(predN, 1.0, 'N-反预测');
+    // 使用学习后的权重
+    addVotes(k1, learnedWeights.K1, `K1(${(learnStats?.successRates?.K1 * 100 || 0).toFixed(0)}%)`);
+    addVotes(k2, learnedWeights.K2, `K2(${(learnStats?.successRates?.K2 * 100 || 0).toFixed(0)}%)`);
+    addVotes(k3, learnedWeights.K3, `K3(${(learnStats?.successRates?.K3 * 100 || 0).toFixed(0)}%)`);
+    addVotes(k4, learnedWeights.K4, `K4(${(learnStats?.successRates?.K4 * 100 || 0).toFixed(0)}%)`);
+    addVotes(k5, learnedWeights.K5, `K5(${(learnStats?.successRates?.K5 * 100 || 0).toFixed(0)}%)`);
+    addVotes(predN, learnedWeights.N, `N(${(learnStats?.successRates?.N * 100 || 0).toFixed(0)}%)`);
 
-    // 上一行数字强制高分
+    // 上一行数字
     const lastRow = history[rows - 1];
     lastRow.forEach(num => {
       if (!voteCount[num]) {
         voteCount[num] = { votes: 0, weight: 0, sources: [] };
       }
       voteCount[num].votes += 3;
-      voteCount[num].weight += 5;
-      voteCount[num].sources.push('上一行');
+      voteCount[num].weight += learnedWeights.lastRow;
+      voteCount[num].sources.push(`上行(${(learnStats?.successRates?.lastRow * 100 || 0).toFixed(0)}%)`);
     });
 
     // 按权重排序
@@ -474,8 +571,18 @@ export default function LotteryPredictor() {
       }))
       .sort((a, b) => b.weight - a.weight);
 
-    return sorted.slice(0, 10);
+    // 附加学习信息
+    const result = sorted.slice(0, 10);
+    result.learnInfo = {
+      learned,
+      weights: learnedWeights,
+      successRates: learnStats?.successRates || {},
+      totalPeriods: learnStats?.totalPeriods || 0
+    };
+
+    return result;
   };
+
 
   // 规则X：上一行数字不在下一行中
   // 逻辑：排除上一行的7个数字，从剩余42个数字中，选择历史出现频率最高的7个
@@ -2358,9 +2465,34 @@ export default function LotteryPredictor() {
 
       {killNumbers && killNumbers.length > 0 && (
         <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#fff5f5", borderRadius: "8px", border: "2px solid #f44336" }}>
-          <h3 style={{ marginTop: 0, color: "#c62828" }}>
+          <h3 style={{ marginTop: 0, color: "#c62828", display: "flex", alignItems: "center", gap: "10px" }}>
             🎯 综合杀码推荐（预测不会出现的10个数字）
+            {killNumbers.learnInfo?.learned && (
+              <span style={{ fontSize: "12px", backgroundColor: "#4caf50", color: "white", padding: "2px 8px", borderRadius: "10px" }}>
+                🎓 已学习 {killNumbers.learnInfo.totalPeriods} 期
+              </span>
+            )}
           </h3>
+          
+          {/* 学习权重显示 */}
+          {killNumbers.learnInfo?.learned && (
+            <div style={{ marginBottom: 15, padding: "10px", backgroundColor: "#e8f5e9", borderRadius: "6px", fontSize: "12px" }}>
+              <strong>📊 算法成功率（基于历史回测自动学习）：</strong>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
+                {Object.entries(killNumbers.learnInfo.successRates).map(([name, rate]) => (
+                  <span key={name} style={{ 
+                    backgroundColor: rate > 0.85 ? "#c8e6c9" : rate > 0.8 ? "#fff9c4" : "#ffcdd2",
+                    padding: "3px 8px", 
+                    borderRadius: "4px",
+                    border: `1px solid ${rate > 0.85 ? "#4caf50" : rate > 0.8 ? "#ffc107" : "#f44336"}`
+                  }}>
+                    {name}: <strong>{(rate * 100).toFixed(1)}%</strong>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ marginTop: 15 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
               {killNumbers.map((item, idx) => (
@@ -2399,6 +2531,7 @@ export default function LotteryPredictor() {
           <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#ffffff", borderRadius: "6px", fontSize: "13px", border: "1px solid #ffcdd2" }}>
             <strong>🧮 杀码算法说明：</strong>
             <ul style={{ margin: "8px 0 0 20px", padding: 0, lineHeight: "1.8", color: "#555" }}>
+              <li><strong>🎓 长期学习</strong>: 系统会自动回测最近30期数据，根据每个算法的历史成功率动态调整权重</li>
               <li><strong>K1-马尔可夫链</strong>: 基于转移概率矩阵，找出从上一行转移概率最低的数字</li>
               <li><strong>K2-周期分析</strong>: 分析数字出现周期，刚出现的数字大概率不会连续出现</li>
               <li><strong>K3-连续排除</strong>: 如果数字连续多期出现，下期不出现的概率增加</li>

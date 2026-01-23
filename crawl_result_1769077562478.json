@@ -1,0 +1,21 @@
+{
+  "url": "https://example.com",
+  "crawledAt": "2026-01-22T10:26:02.473Z",
+  "info": {
+    "title": "Example Domain",
+    "description": "",
+    "h1List": [
+      "Example Domain"
+    ],
+    "linksCount": 1,
+    "links": [
+      {
+        "href": "https://iana.org/domains/example",
+        "text": "Learn more"
+      }
+    ],
+    "imagesCount": 0,
+    "images": []
+  },
+  "htmlLength": 513
+}

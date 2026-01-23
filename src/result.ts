@@ -20,6 +20,10 @@ export const result = [
    {id:16,value:'鼠'},
    {id:17,value:'狗'},
    {id:18,value:'兔'},
+   {id:19,value:'猴'},
+   {id:20,value:'马'},
+   {id:21,value:'鼠'},
+   {id:22,value:'鼠'}
 
 
 ];

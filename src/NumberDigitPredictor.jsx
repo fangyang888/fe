@@ -5,6 +5,20 @@ export default function NumberDigitPredictor({ history: externalHistory }) {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [random7, setRandom7] = useState([]); // 10选7随机数字
+
+  // 10选7: 从1-10中随机选择7个数字
+  const pick7Random = () => {
+    const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    // Fisher-Yates 洗牌算法
+    for (let i = numbers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+    }
+    // 取前7个并排序
+    const selected = numbers.slice(0, 7).sort((a, b) => a - b);
+    setRandom7(selected);
+  };
 
   // 如果外部传入历史数据，使用外部数据；否则使用内部输入
   const history = externalHistory || [];
@@ -258,6 +272,64 @@ export default function NumberDigitPredictor({ history: externalHistory }) {
           {loading ? "预测中..." : "预测个位数"}
         </button>
       )}
+
+      {/* 10选7按钮 */}
+      <div style={{ marginTop: "15px", marginBottom: "15px" }}>
+        <button
+          onClick={pick7Random}
+          style={{
+            padding: "10px 20px",
+            fontSize: "14px",
+            backgroundColor: "#9c27b0",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            minHeight: "36px",
+          }}
+        >
+          🎲 10选7 (随机)
+        </button>
+        
+        {random7.length > 0 && (
+          <div style={{ 
+            marginTop: "10px", 
+            padding: "15px", 
+            backgroundColor: "#f3e5f5", 
+            borderRadius: "6px",
+            border: "2px solid #9c27b0"
+          }}>
+            <h4 style={{ fontSize: "14px", marginBottom: "10px", color: "#7b1fa2" }}>
+              🎯 随机7个数字 (1-10)
+            </h4>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {random7.map((num, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "18px",
+                    fontWeight: "bold",
+                    backgroundColor: "#9c27b0",
+                    color: "white",
+                    borderRadius: "50%",
+                    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                  }}
+                >
+                  {num}
+                </div>
+              ))}
+            </div>
+            <p style={{ marginTop: "8px", fontSize: "11px", color: "#666" }}>
+              从1-10中随机选择了7个数字，点击按钮重新随机
+            </p>
+          </div>
+        )}
+      </div>
 
       {status && (
         <p

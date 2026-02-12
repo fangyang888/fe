@@ -1,6 +1,6 @@
 
 import { createRoot } from "react-dom/client";
-// import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 // @ts-ignore
 import App from "./App.jsx";
@@ -10,13 +10,15 @@ import App2 from "./App2.jsx";
 import NumberDigitPredictor from "./NumberDigitPredictor.jsx";
 // @ts-ignore
 import Crawler from "./Crawler.jsx";
+// @ts-ignore
+import KillPredictor from "./KillPredictor.jsx";
 
 createRoot(document.getElementById("root")!).render(
-  <App />
-    // <BrowserRouter>
-    //   <Routes>
-    //     <Route path="/" element={<App />} />
-    //     <Route path="/crawler" element={<Crawler />} />
-    //   </Routes>
-    // </BrowserRouter>,
+  <BrowserRouter>
+    <Routes>
+      <Route path="/fe" element={<App />} />
+      <Route path="/fe/kill" element={<KillPredictor />} />
+      <Route path="/fe/crawler" element={<Crawler />} />
+    </Routes>
+  </BrowserRouter>,
 );

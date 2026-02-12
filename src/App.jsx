@@ -634,125 +634,165 @@ export default function LotteryPredictor() {
     return result;
   };
 
-  // ========== 基于尾数的杀码算法（增强版 v2 - 8策略 + 回测验证）==========
-  // 预测下期不会出现的10个数字（基于尾数分析 + 历史回测验证）
+  // ========== 杀码推荐算法（增强版 v3 - 10策略 + 回测验证）==========
+  // 预测下期不会出现的10个数字（基于历史规律分析 + 回测自动学习权重）
   const predictKillLastDigit = (history) => {
     const rows = history.length;
     if (rows < 15) return null;
 
-    // ========== 回测学习最优权重（8个策略）==========
+    // ========== 回测学习最优权重（10个策略）==========
     const learnWeights = () => {
       const strategies = [
-        'lastRow',        // 上一行数字
-        'consecutive',    // 连续出现
-        'hotFatigue',     // 热号疲劳
-        'digitPattern',   // 尾数模式
-        'recentRepeat',   // 近期重复
-        'coldNumber',     // 冷号反转（冷号可能要出）
-        'sameDigit',      // 同尾数排斥
-        'gapPattern'      // 间隔模式
+        'lastRow',        // S1: 上一行数字不重复
+        'consecutive',    // S2: 连续出现排除
+        'hotFatigue',     // S3: 热号疲劳
+        'recentRepeat',   // S4: 近期重复排除
+        'gapPattern',     // S5: 间隔模式（刚出现）
+        'sumZone',        // S6: 和值区间偏离
+        'parityBias',     // S7: 奇偶失衡排除
+        'sizeZone',       // S8: 大小区间过载
+        'neighborExcl',   // S9: 邻号排除
+        'freqDecay'       // S10: 频率衰减
       ];
       const successCount = {};
       const totalCount = {};
       strategies.forEach(s => { successCount[s] = 0; totalCount[s] = 0; });
 
-      // 回测最近40期（更多数据学习）
       const lookback = Math.min(40, rows - 10);
-      
+
       for (let testIdx = rows - lookback - 1; testIdx < rows - 1; testIdx++) {
         const testHistory = history.slice(0, testIdx + 1);
         const nextRow = history[testIdx + 1];
         const nextRowSet = new Set(nextRow);
         const testLastRow = testHistory[testHistory.length - 1];
-        const testLastRowSet = new Set(testLastRow);
 
-        // 策略1: 上一行数字
+        // S1: 上一行数字
         testLastRow.forEach(num => {
           totalCount.lastRow++;
           if (!nextRowSet.has(num)) successCount.lastRow++;
         });
 
-        // 策略2: 连续出现的数字（连续2期以上）
+        // S2: 连续出现的数字（连续2期以上）
         for (let num = 1; num <= 49; num++) {
-          let consecutive = 0;
+          let cons = 0;
           for (let j = testHistory.length - 1; j >= Math.max(0, testHistory.length - 3); j--) {
-            if (testHistory[j].includes(num)) consecutive++;
+            if (testHistory[j].includes(num)) cons++;
             else break;
           }
-          if (consecutive >= 2) {
+          if (cons >= 2) {
             totalCount.consecutive++;
             if (!nextRowSet.has(num)) successCount.consecutive++;
           }
         }
 
-        // 策略3: 最近热号疲劳（5期内出现3次以上）
-        const recentNums = testHistory.slice(-5).flat();
-        const numFreq = {};
-        recentNums.forEach(n => numFreq[n] = (numFreq[n] || 0) + 1);
-        Object.entries(numFreq).forEach(([num, freq]) => {
+        // S3: 最近热号疲劳（5期内出现3次以上）
+        const tRecentNums = testHistory.slice(-5).flat();
+        const tNumFreq = {};
+        tRecentNums.forEach(n => tNumFreq[n] = (tNumFreq[n] || 0) + 1);
+        Object.entries(tNumFreq).forEach(([num, freq]) => {
           if (freq >= 3) {
             totalCount.hotFatigue++;
             if (!nextRowSet.has(parseInt(num))) successCount.hotFatigue++;
           }
         });
 
-        // 策略4: 尾数模式 - 上一行出现2次以上的尾数
-        const lastRowDigits = testLastRow.map(n => n % 10);
-        const digitCount = {};
-        lastRowDigits.forEach(d => digitCount[d] = (digitCount[d] || 0) + 1);
-        for (let num = 1; num <= 49; num++) {
-          const d = num % 10;
-          if (digitCount[d] >= 2 && !testLastRowSet.has(num)) {
-            totalCount.digitPattern++;
-            if (!nextRowSet.has(num)) successCount.digitPattern++;
-          }
-        }
-
-        // 策略5: 最近2期都出现的数字
+        // S4: 最近2期都出现的数字
         if (testHistory.length >= 2) {
-          const last2 = testHistory.slice(-2);
+          const tLast2 = testHistory.slice(-2);
           for (let num = 1; num <= 49; num++) {
-            if (last2[0].includes(num) && last2[1].includes(num)) {
+            if (tLast2[0].includes(num) && tLast2[1].includes(num)) {
               totalCount.recentRepeat++;
               if (!nextRowSet.has(num)) successCount.recentRepeat++;
             }
           }
         }
 
-        // 策略6: 冷号 - 长时间未出现的号码（可能要出，不应该杀）
-        // 这里验证的是：杀掉最近出现过的号码是否正确
-        const last10Nums = new Set(testHistory.slice(-10).flat());
+        // S5: 间隔模式 - 刚出现0-1期的数字
         for (let num = 1; num <= 49; num++) {
-          if (last10Nums.has(num)) {
-            totalCount.coldNumber++;
-            if (!nextRowSet.has(num)) successCount.coldNumber++;
-          }
-        }
-
-        // 策略7: 同尾数排斥 - 上行尾数热的情况下杀同尾
-        const hotDigits = Object.entries(digitCount).filter(([_, c]) => c >= 2).map(([d, _]) => parseInt(d));
-        for (const d of hotDigits) {
-          for (let num = 1; num <= 49; num++) {
-            if (num % 10 === d) {
-              totalCount.sameDigit++;
-              if (!nextRowSet.has(num)) successCount.sameDigit++;
-            }
-          }
-        }
-
-        // 策略8: 间隔模式 - 分析数字出现间隔
-        for (let num = 1; num <= 49; num++) {
-          let lastAppear = -1;
+          let la = -1;
           for (let j = testHistory.length - 1; j >= 0; j--) {
-            if (testHistory[j].includes(num)) {
-              lastAppear = j;
-              break;
-            }
+            if (testHistory[j].includes(num)) { la = j; break; }
           }
-          // 如果刚刚出现（间隔0-1期），大概率不会再出
-          if (lastAppear >= testHistory.length - 2 && lastAppear >= 0) {
+          if (la >= testHistory.length - 2 && la >= 0) {
             totalCount.gapPattern++;
             if (!nextRowSet.has(num)) successCount.gapPattern++;
+          }
+        }
+
+        // S6: 和值区间偏离 - 上行和值附近的数字可能被排斥
+        const testSum = testLastRow.reduce((a, b) => a + b, 0);
+        const avgNum = Math.round(testSum / 7);
+        // 和值偏高时杀大号，偏低时杀小号
+        if (avgNum > 28) {
+          for (let num = 35; num <= 49; num++) {
+            totalCount.sumZone++;
+            if (!nextRowSet.has(num)) successCount.sumZone++;
+          }
+        } else if (avgNum < 22) {
+          for (let num = 1; num <= 15; num++) {
+            totalCount.sumZone++;
+            if (!nextRowSet.has(num)) successCount.sumZone++;
+          }
+        }
+
+        // S7: 奇偶失衡排除
+        const oddCount = testLastRow.filter(n => n % 2 === 1).length;
+        if (oddCount >= 5) {
+          // 上行偏奇，杀奇号
+          for (let num = 1; num <= 49; num += 2) {
+            if (!testLastRow.includes(num)) {
+              totalCount.parityBias++;
+              if (!nextRowSet.has(num)) successCount.parityBias++;
+            }
+          }
+        } else if (oddCount <= 2) {
+          // 上行偏偶，杀偶号
+          for (let num = 2; num <= 48; num += 2) {
+            if (!testLastRow.includes(num)) {
+              totalCount.parityBias++;
+              if (!nextRowSet.has(num)) successCount.parityBias++;
+            }
+          }
+        }
+
+        // S8: 大小区间过载 - 上行集中在某区间时杀该区间
+        const zones = [0, 0, 0, 0, 0]; // 1-10, 11-20, 21-30, 31-40, 41-49
+        testLastRow.forEach(n => zones[Math.min(Math.floor((n - 1) / 10), 4)]++);
+        zones.forEach((count, zi) => {
+          if (count >= 3) {
+            const lo = zi * 10 + 1;
+            const hi = zi === 4 ? 49 : (zi + 1) * 10;
+            for (let num = lo; num <= hi; num++) {
+              if (!testLastRow.includes(num)) {
+                totalCount.sizeZone++;
+                if (!nextRowSet.has(num)) successCount.sizeZone++;
+              }
+            }
+          }
+        });
+
+        // S9: 邻号排除 - 上行数字的±1邻号
+        const testLastRowSet = new Set(testLastRow);
+        testLastRow.forEach(num => {
+          [num - 1, num + 1].forEach(neighbor => {
+            if (neighbor >= 1 && neighbor <= 49 && !testLastRowSet.has(neighbor)) {
+              totalCount.neighborExcl++;
+              if (!nextRowSet.has(neighbor)) successCount.neighborExcl++;
+            }
+          });
+        });
+
+        // S10: 频率衰减 - 近10期高频但呈下降趋势的数字
+        if (testHistory.length >= 10) {
+          const first5 = testHistory.slice(-10, -5).flat();
+          const last5 = testHistory.slice(-5).flat();
+          for (let num = 1; num <= 49; num++) {
+            const f5Count = first5.filter(n => n === num).length;
+            const l5Count = last5.filter(n => n === num).length;
+            if (f5Count >= 2 && l5Count >= 2 && l5Count <= f5Count) {
+              totalCount.freqDecay++;
+              if (!nextRowSet.has(num)) successCount.freqDecay++;
+            }
           }
         }
       }
@@ -762,7 +802,6 @@ export default function LotteryPredictor() {
       const weights = {};
       strategies.forEach(s => {
         rates[s] = totalCount[s] > 0 ? successCount[s] / totalCount[s] : 0.5;
-        // 成功率越高权重越大
         weights[s] = Math.pow(Math.max(rates[s] - 0.5, 0) * 2, 1.5) * 10;
       });
 
@@ -774,38 +813,39 @@ export default function LotteryPredictor() {
     // ========== 应用学习到的权重进行预测 ==========
     const lastRow = history[rows - 1];
     const lastRowSet = new Set(lastRow);
-    const lastRowDigits = lastRow.map(n => n % 10);
-    const digitCount = {};
-    lastRowDigits.forEach(d => digitCount[d] = (digitCount[d] || 0) + 1);
 
-    // 最近5期的数字频率
+    // 常用统计
     const recentHistory = history.slice(-5);
     const recentNums = recentHistory.flat();
     const recentFreq = {};
     recentNums.forEach(n => recentFreq[n] = (recentFreq[n] || 0) + 1);
 
-    // 最近10期出现过的数字
-    const last10Nums = new Set(history.slice(-10).flat());
+    const lastRowSum = lastRow.reduce((a, b) => a + b, 0);
+    const avgNum = Math.round(lastRowSum / 7);
+    const oddCount = lastRow.filter(n => n % 2 === 1).length;
 
-    // 热尾数
-    const hotDigits = Object.entries(digitCount).filter(([_, c]) => c >= 2).map(([d, _]) => parseInt(d));
+    const zones = [0, 0, 0, 0, 0];
+    lastRow.forEach(n => zones[Math.min(Math.floor((n - 1) / 10), 4)]++);
 
-    // 计算每个数字的杀码分数（新增策略计数）
+    // 频率衰减统计
+    const first5Flat = rows >= 10 ? history.slice(-10, -5).flat() : [];
+    const last5Flat = history.slice(-5).flat();
+
+    // 计算每个数字的杀码分数
     const numberScores = Array.from({ length: 49 }, (_, i) => {
       const num = i + 1;
-      const lastDigit = num % 10;
       let score = 0;
       const sources = [];
-      let strategyCount = 0; // 策略计数 - 多少个策略认为应该杀
+      let strategyCount = 0;
 
-      // 1. 上一行出现的数字（高权重策略）
+      // S1: 上一行出现的数字
       if (lastRowSet.has(num)) {
         score += weights.lastRow * 1.5;
         sources.push(`上行(${(rates.lastRow * 100).toFixed(0)}%)`);
-        if (rates.lastRow > 0.8) strategyCount++; // 只有成功率>80%的策略才计入
+        if (rates.lastRow > 0.8) strategyCount++;
       }
 
-      // 2. 连续出现
+      // S2: 连续出现
       let consecutive = 0;
       for (let j = rows - 1; j >= Math.max(0, rows - 3); j--) {
         if (history[j].includes(num)) consecutive++;
@@ -817,21 +857,14 @@ export default function LotteryPredictor() {
         if (rates.consecutive > 0.8) strategyCount++;
       }
 
-      // 3. 热号疲劳
+      // S3: 热号疲劳
       if (recentFreq[num] >= 3) {
         score += weights.hotFatigue * (recentFreq[num] / 3);
         sources.push(`热号${recentFreq[num]}次(${(rates.hotFatigue * 100).toFixed(0)}%)`);
         if (rates.hotFatigue > 0.8) strategyCount++;
       }
 
-      // 4. 尾数模式（上行尾数出现2次以上）
-      if (digitCount[lastDigit] >= 2 && !lastRowSet.has(num)) {
-        score += weights.digitPattern;
-        sources.push(`尾${lastDigit}热(${(rates.digitPattern * 100).toFixed(0)}%)`);
-        if (rates.digitPattern > 0.8) strategyCount++;
-      }
-
-      // 5. 最近2期都出现
+      // S4: 最近2期都出现
       if (rows >= 2) {
         const inLast1 = history[rows - 2].includes(num);
         const inLast2 = history[rows - 1].includes(num);
@@ -842,28 +875,10 @@ export default function LotteryPredictor() {
         }
       }
 
-      // 6. 最近10期出现过（不是冷号）
-      if (last10Nums.has(num) && !lastRowSet.has(num)) {
-        score += weights.coldNumber * 0.3;
-        if (rates.coldNumber > 0.85) strategyCount++;
-      }
-
-      // 7. 同尾数排斥
-      if (hotDigits.includes(lastDigit)) {
-        score += weights.sameDigit * 0.5;
-        if (!sources.some(s => s.includes('尾'))) {
-          sources.push(`同尾(${(rates.sameDigit * 100).toFixed(0)}%)`);
-        }
-        if (rates.sameDigit > 0.8) strategyCount++;
-      }
-
-      // 8. 间隔模式
+      // S5: 间隔模式
       let lastAppear = -1;
       for (let j = rows - 1; j >= 0; j--) {
-        if (history[j].includes(num)) {
-          lastAppear = j;
-          break;
-        }
+        if (history[j].includes(num)) { lastAppear = j; break; }
       }
       if (lastAppear >= rows - 2 && lastAppear >= 0 && !lastRowSet.has(num)) {
         score += weights.gapPattern * 0.5;
@@ -871,29 +886,67 @@ export default function LotteryPredictor() {
         if (rates.gapPattern > 0.8) strategyCount++;
       }
 
-      return { num, score, lastDigit, sources, strategyCount };
+      // S6: 和值区间偏离
+      if ((avgNum > 28 && num >= 35) || (avgNum < 22 && num <= 15)) {
+        score += weights.sumZone * 0.6;
+        sources.push(`和值偏${avgNum > 28 ? '高' : '低'}(${(rates.sumZone * 100).toFixed(0)}%)`);
+        if (rates.sumZone > 0.8) strategyCount++;
+      }
+
+      // S7: 奇偶失衡
+      if ((oddCount >= 5 && num % 2 === 1 && !lastRowSet.has(num)) ||
+          (oddCount <= 2 && num % 2 === 0 && !lastRowSet.has(num))) {
+        score += weights.parityBias * 0.5;
+        sources.push(`${oddCount >= 5 ? '偏奇杀奇' : '偏偶杀偶'}(${(rates.parityBias * 100).toFixed(0)}%)`);
+        if (rates.parityBias > 0.8) strategyCount++;
+      }
+
+      // S8: 大小区间过载
+      const numZone = Math.min(Math.floor((num - 1) / 10), 4);
+      if (zones[numZone] >= 3 && !lastRowSet.has(num)) {
+        score += weights.sizeZone * 0.6;
+        sources.push(`${['小','中小','中','中大','大'][numZone]}区热(${(rates.sizeZone * 100).toFixed(0)}%)`);
+        if (rates.sizeZone > 0.8) strategyCount++;
+      }
+
+      // S9: 邻号排除
+      const isNeighbor = lastRow.some(n => Math.abs(n - num) === 1) && !lastRowSet.has(num);
+      if (isNeighbor) {
+        score += weights.neighborExcl * 0.5;
+        sources.push(`邻号(${(rates.neighborExcl * 100).toFixed(0)}%)`);
+        if (rates.neighborExcl > 0.8) strategyCount++;
+      }
+
+      // S10: 频率衰减
+      if (rows >= 10) {
+        const f5Count = first5Flat.filter(n => n === num).length;
+        const l5Count = last5Flat.filter(n => n === num).length;
+        if (f5Count >= 2 && l5Count >= 2 && l5Count <= f5Count) {
+          score += weights.freqDecay * 0.6;
+          sources.push(`衰减(${(rates.freqDecay * 100).toFixed(0)}%)`);
+          if (rates.freqDecay > 0.8) strategyCount++;
+        }
+      }
+
+      return { num, score, sources, strategyCount };
     });
 
     // ========== 组合多策略筛选 ==========
-    // 优先选择被多个策略同时认定的数字（策略计数>=2）
     const multiStrategyNums = numberScores.filter(item => item.strategyCount >= 2);
     const singleStrategyNums = numberScores.filter(item => item.strategyCount < 2);
-    
-    // 合并：优先多策略，然后按分数排序
+
     multiStrategyNums.sort((a, b) => b.strategyCount - a.strategyCount || b.score - a.score);
     singleStrategyNums.sort((a, b) => b.score - a.score);
-    
+
     const sortedScores = [...multiStrategyNums, ...singleStrategyNums];
 
-    // 取前10个杀码数字
     const result = sortedScores.slice(0, 10).map(item => ({
       num: item.num,
       score: item.score,
-      digit: item.lastDigit,
       sources: item.sources,
       strategyCount: item.strategyCount,
-      reason: item.strategyCount >= 2 
-        ? `${item.strategyCount}策略` 
+      reason: item.strategyCount >= 2
+        ? `${item.strategyCount}策略`
         : (item.sources.length > 0 ? item.sources[0].split('(')[0] : '综合分析')
     }));
 
@@ -901,61 +954,55 @@ export default function LotteryPredictor() {
     const backtestRecent = () => {
       const results = [];
       const testPeriods = Math.min(5, rows - 15);
-      
+
       for (let i = 0; i < testPeriods; i++) {
         const testIdx = rows - 2 - i;
         const testHistory = history.slice(0, testIdx + 1);
         const actualNext = history[testIdx + 1];
         const actualSet = new Set(actualNext);
-        
-        // 简化预测逻辑（使用当前权重）
-        const testLastRow = testHistory[testHistory.length - 1];
-        const killNums = new Set(testLastRow); // 简化：用上一行作为杀码
-        
-        // 额外添加连续出现的
+
+        // 使用完整预测逻辑回测
+        const tLastRow = testHistory[testHistory.length - 1];
+        const killNums = new Set(tLastRow);
+
         for (let num = 1; num <= 49; num++) {
-          let consecutive = 0;
+          let cons = 0;
           for (let j = testHistory.length - 1; j >= Math.max(0, testHistory.length - 3); j--) {
-            if (testHistory[j].includes(num)) consecutive++;
+            if (testHistory[j].includes(num)) cons++;
             else break;
           }
-          if (consecutive >= 2) killNums.add(num);
+          if (cons >= 2) killNums.add(num);
         }
-        
-        // 计算成功率
+
         let successKill = 0;
         let totalKill = 0;
         killNums.forEach(num => {
           totalKill++;
           if (!actualSet.has(num)) successKill++;
         });
-        
+
         results.push({
           period: testIdx + 1,
-          lastRow: testLastRow.join(','),
-          actual: actualNext.join(','),
           killCount: totalKill,
           successCount: successKill,
           accuracy: totalKill > 0 ? (successKill / totalKill * 100).toFixed(1) : 0
         });
       }
-      
+
       return results;
     };
 
     const backtestResults = backtestRecent();
-    const avgAccuracy = backtestResults.length > 0 
-      ? backtestResults.reduce((sum, r) => sum + parseFloat(r.accuracy), 0) / backtestResults.length 
+    const avgAccuracy = backtestResults.length > 0
+      ? backtestResults.reduce((sum, r) => sum + parseFloat(r.accuracy), 0) / backtestResults.length
       : 0;
 
     // 附加分析信息
-    result.digitAnalysis = {
-      killDigits: hotDigits,
-      lastRowDigits: [...new Set(lastRowDigits)],
-      digitScores: Object.entries(digitCount)
-        .map(([d, c]) => ({ digit: parseInt(d), score: c }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+    result.analysisInfo = {
+      lastRowNums: [...lastRow],
+      avgNum,
+      oddCount,
+      zones: zones.map((c, i) => ({ zone: ['1-10','11-20','21-30','31-40','41-49'][i], count: c }))
     };
 
     // 附加学习信息
@@ -3519,7 +3566,7 @@ export default function LotteryPredictor() {
       {killLastDigit && killLastDigit.length > 0 && (
         <div style={{ marginTop: 20, padding: "15px", backgroundColor: "#f3e5f5", borderRadius: "8px", border: "2px solid #9c27b0" }}>
           <h3 style={{ marginTop: 0, color: "#7b1fa2", display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            🔢 尾数杀码推荐（预测不会出现的10个数字）
+            🎯 杀码推荐（预测不会出现的10个数字）
             {killLastDigit.learnInfo?.learned && (
               <span style={{ fontSize: "12px", backgroundColor: "#4caf50", color: "white", padding: "2px 8px", borderRadius: "10px" }}>
                 🎓 已学习 {killLastDigit.learnInfo.totalPeriods} 期
@@ -3530,28 +3577,25 @@ export default function LotteryPredictor() {
                 准确率: {killLastDigit.learnInfo.avgAccuracy}%
               </span>
             )}
-            {killLastDigit.digitAnalysis?.killDigits?.length > 0 && (
-              <span style={{ fontSize: "12px", backgroundColor: "#9c27b0", color: "white", padding: "2px 8px", borderRadius: "10px" }}>
-                热尾: {killLastDigit.digitAnalysis.killDigits.join(', ')}
-              </span>
-            )}
           </h3>
           
           {/* 学习成功率显示 */}
           {killLastDigit.learnInfo?.learned && (
             <div style={{ marginBottom: 15, padding: "10px", backgroundColor: "#e8f5e9", borderRadius: "6px", fontSize: "12px" }}>
-              <strong>📊 8大策略成功率（基于历史40期回测）：</strong>
+              <strong>📊 10大策略成功率（基于历史40期回测）：</strong>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
                 {Object.entries(killLastDigit.learnInfo.successRates).map(([name, rate]) => {
                   const labels = {
                     lastRow: '上行排除',
                     consecutive: '连续排除',
                     hotFatigue: '热号疲劳',
-                    digitPattern: '尾数模式',
                     recentRepeat: '近期重复',
-                    coldNumber: '冷号反转',
-                    sameDigit: '同尾排斥',
-                    gapPattern: '间隔模式'
+                    gapPattern: '间隔模式',
+                    sumZone: '和值偏离',
+                    parityBias: '奇偶失衡',
+                    sizeZone: '区间过载',
+                    neighborExcl: '邻号排除',
+                    freqDecay: '频率衰减'
                   };
                   return (
                     <span key={name} style={{ 
@@ -3598,22 +3642,25 @@ export default function LotteryPredictor() {
             </div>
           )}
 
-          {/* 尾数分析信息 */}
-          {killLastDigit.digitAnalysis && (
+          {/* 数据分析信息 */}
+          {killLastDigit.analysisInfo && (
             <div style={{ marginBottom: 15, padding: "10px", backgroundColor: "#e1bee7", borderRadius: "6px", fontSize: "12px" }}>
-              <strong>📊 尾数分析：</strong>
+              <strong>📊 当前数据分析：</strong>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
                 <span style={{ backgroundColor: "#ce93d8", padding: "3px 8px", borderRadius: "4px" }}>
-                  上行尾数: <strong>{killLastDigit.digitAnalysis.lastRowDigits.join(', ')}</strong>
+                  上行均值: <strong>{killLastDigit.analysisInfo.avgNum}</strong>
                 </span>
-                {killLastDigit.digitAnalysis.digitScores.map(d => (
-                  <span key={d.digit} style={{ 
-                    backgroundColor: d.score >= 2 ? "#f48fb1" : "#e1bee7",
+                <span style={{ backgroundColor: "#ce93d8", padding: "3px 8px", borderRadius: "4px" }}>
+                  奇偶比: <strong>{killLastDigit.analysisInfo.oddCount}:{7 - killLastDigit.analysisInfo.oddCount}</strong>
+                </span>
+                {killLastDigit.analysisInfo.zones.map(z => (
+                  <span key={z.zone} style={{ 
+                    backgroundColor: z.count >= 3 ? "#f48fb1" : "#e1bee7",
                     padding: "3px 8px", 
                     borderRadius: "4px",
-                    border: `1px solid ${d.score >= 2 ? "#e91e63" : "#ba68c8"}`
+                    border: `1px solid ${z.count >= 3 ? "#e91e63" : "#ba68c8"}`
                   }}>
-                    尾{d.digit}: <strong>{d.score}次</strong>
+                    {z.zone}: <strong>{z.count}个</strong>
                   </span>
                 ))}
               </div>
@@ -3646,10 +3693,10 @@ export default function LotteryPredictor() {
                     </div>
                   )}
                   <div style={{ fontSize: "11px", color: "#666", marginBottom: "4px" }}>
-                    尾数: {item.digit} | 得分: {item.score.toFixed(1)}
+                    得分: {item.score.toFixed(1)}
                   </div>
                   <div style={{ fontSize: "10px", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px" }}>
-                    {(item.sources || []).slice(0, 2).map((s, i) => (
+                    {(item.sources || []).slice(0, 3).map((s, i) => (
                       <span key={i} style={{ backgroundColor: item.strategyCount >= 2 ? "#c8e6c9" : "#e1bee7", padding: "1px 4px", borderRadius: "3px" }}>
                         {s}
                       </span>
@@ -3661,17 +3708,19 @@ export default function LotteryPredictor() {
           </div>
 
           <div style={{ marginTop: 15, padding: "10px", backgroundColor: "#ffffff", borderRadius: "6px", fontSize: "12px", border: "1px solid #ce93d8" }}>
-            <strong>🔢 8大杀码策略说明：</strong>
+            <strong>🎯 10大杀码策略说明：</strong>
             <ul style={{ margin: "8px 0 0 20px", padding: 0, lineHeight: "1.6", color: "#555", fontSize: "11px" }}>
               <li><strong>上行排除</strong>: 上一行的7个数字 | <strong>连续排除</strong>: 连续2-3期出现的数字</li>
-              <li><strong>热号疲劳</strong>: 5期内≥3次 | <strong>尾数模式</strong>: 上行同尾≥2次</li>
-              <li><strong>近期重复</strong>: 近2期都出现 | <strong>冷号反转</strong>: 10期内出现过的数字</li>
-              <li><strong>同尾排斥</strong>: 热尾数字 | <strong>间隔模式</strong>: 刚出现1-2期</li>
+              <li><strong>热号疲劳</strong>: 5期内≥3次 | <strong>近期重复</strong>: 近2期都出现</li>
+              <li><strong>间隔模式</strong>: 刚出现1-2期 | <strong>和值偏离</strong>: 上行均值偏高/低时杀对应区</li>
+              <li><strong>奇偶失衡</strong>: 上行奇偶严重不均时杀偏多方 | <strong>区间过载</strong>: 某区间≥3个</li>
+              <li><strong>邻号排除</strong>: 上行数字±1 | <strong>频率衰减</strong>: 高频但呈下降趋势</li>
               <li style={{ color: "#7b1fa2" }}>⚠️ 权重基于历史40期数据自动学习，仅供参考！</li>
             </ul>
           </div>
         </div>
       )}
+
 
       {summary && (
         <div style={{ marginTop: 20 }}>

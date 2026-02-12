@@ -1,0 +1,1016 @@
+import React, { useState, useEffect } from "react";
+
+/**
+ * 杀码预测页面 - 独立路由 /kill
+ * v2: 修复了重复号保护和遗漏周期反转的问题
+ *
+ * 改进要点：
+ * 1. 新增「重复号保护」：上一行出现的数字有一定重复概率，不应轻易杀掉
+ * 2. 修正「遗漏周期」：极长遗漏反而可能即将出现（回归效应），用 U 曲线
+ * 3. 新增「转移概率」策略：基于马尔可夫链分析数字间的转移关系
+ * 4. 新增「回归预警」策略：太长时间没出的数字可能即将回归，要保护
+ * 5. 改进综合投票：加入"保护机制"，被保护的数字得分削减
+ */
+export default function KillPredictor() {
+  const [history, setHistory] = useState([]);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // ========== 加载历史数据 ==========
+  useEffect(() => {
+    const load = async () => {
+      const paths = ["/fe/history.txt", "/history.txt", "./history.txt", "history.txt"];
+      for (const path of paths) {
+        try {
+          const res = await fetch(path);
+          if (res.ok) {
+            const text = await res.text();
+            if (text.trim()) {
+              const rows = text
+                .trim()
+                .split("\n")
+                .filter((line) => line.trim())
+                .map((line) =>
+                  line.split(",").map((n) => parseInt(n.trim(), 10))
+                )
+                .filter((row) => row.length === 7 && row.every((n) => !isNaN(n)));
+              if (rows.length > 0) {
+                setHistory(rows);
+                return;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+      setError("无法加载 history.txt");
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  // ========== 数据加载后自动运行预测 ==========
+  useEffect(() => {
+    if (history.length < 10) return;
+    setLoading(true);
+    setTimeout(() => {
+      try {
+        const res = runKillPrediction(history);
+        setResult(res);
+      } catch (e) {
+        setError("预测算法出错: " + e.message);
+      }
+      setLoading(false);
+    }, 50);
+  }, [history]);
+
+  // ================================================================
+  //                  改进后的 9 种杀码策略
+  // ================================================================
+
+  /**
+   * S1：频率反转法（改进版）
+   * 使用最近30期的频率而非全局频率，更能反映近期趋势
+   */
+  function strategyFrequencyInverse(hist) {
+    const recentN = Math.min(30, hist.length);
+    const recent = hist.slice(-recentN);
+    const freq = {};
+    for (let i = 1; i <= 49; i++) freq[i] = 0;
+    recent.forEach((row) => row.forEach((n) => freq[n]++));
+
+    // 同时计算全局频率做对比
+    const globalFreq = {};
+    for (let i = 1; i <= 49; i++) globalFreq[i] = 0;
+    hist.forEach((row) => row.forEach((n) => globalFreq[n]++));
+
+    return Object.entries(freq)
+      .map(([num, f]) => {
+        const n = +num;
+        const recentRate = f / recentN;
+        const globalRate = globalFreq[n] / hist.length;
+        // 近期频率低 + 全局频率也低 = 更适合杀
+        // 但近期频率低 + 全局频率高 = 可能在回归，要降低杀码信心
+        const score = globalRate <= recentRate
+          ? 1 - recentRate
+          : (1 - recentRate) * 0.5; // 全局高近期低=可能要回归，减半
+        return { num: n, score: Math.max(0, score) };
+      })
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S2：遗漏周期法（改进版 - U曲线）
+   * 修正：极长遗漏不再加分，而是减分（因为可能即将回归）
+   * U曲线：中等遗漏最适合杀，极短和极长遗漏都不适合杀
+   */
+  function strategyMissCycle(hist) {
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      let currentMiss = 0;
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i].includes(num)) break;
+        currentMiss++;
+      }
+      // 计算平均间隔
+      const appearances = [];
+      hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
+      let avgGap = hist.length;
+      if (appearances.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
+        avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      }
+
+      const ratio = avgGap > 0 ? currentMiss / avgGap : 0;
+
+      // U 曲线：
+      // ratio < 0.5  → 刚出现不久，有可能再来，不适合杀（低分）
+      // 0.5 < ratio < 1.5 → 中等遗漏，最适合杀（高分）
+      // ratio > 2.0  → 遗漏太久，可能要回归了（降低分数）
+      let score;
+      if (ratio < 0.3) {
+        score = ratio * 0.3; // 刚出现，不杀
+      } else if (ratio <= 1.5) {
+        score = 0.5 + (ratio - 0.3) * 0.4; // 中等遗漏，高分
+      } else if (ratio <= 2.5) {
+        score = 1.0 - (ratio - 1.5) * 0.3; // 开始回落
+      } else {
+        score = 0.7 - (ratio - 2.5) * 0.2; // 太久没出，可能要来了
+        score = Math.max(0.1, score);
+      }
+      results.push({ num, score: Math.max(0, score) });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S3：尾数排除法
+   */
+  function strategyTailExclusion(hist) {
+    const recent = hist.slice(-15);
+    const tailCount = Array(10).fill(0);
+    recent.forEach((row) => row.forEach((n) => tailCount[n % 10]++));
+    const avgTail = tailCount.reduce((a, b) => a + b, 0) / 10;
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      const tail = num % 10;
+      const coldRatio = avgTail > 0 ? 1 - tailCount[tail] / (avgTail * 2) : 0;
+      results.push({ num, score: Math.max(0, coldRatio) });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S4：区间冷区法
+   */
+  function strategyZoneCold(hist) {
+    const recent = hist.slice(-10);
+    const zones = [0, 0, 0, 0, 0];
+    const zoneSizes = [10, 10, 10, 10, 9];
+    recent.forEach((row) =>
+      row.forEach((n) => {
+        const z = Math.min(Math.floor((n - 1) / 10), 4);
+        zones[z]++;
+      })
+    );
+    const maxZone = Math.max(...zones.map((z, i) => z / zoneSizes[i]));
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      const z = Math.min(Math.floor((num - 1) / 10), 4);
+      const density = zones[z] / zoneSizes[z];
+      results.push({ num, score: maxZone > 0 ? 1 - density / maxZone : 0 });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S5：邻号排除法（改进版）
+   * 改进：计算每个具体邻号的跟随率，而不是整体平均
+   */
+  function strategyNeighborExclude(hist) {
+    if (hist.length < 10) return Array.from({ length: 49 }, (_, i) => ({ num: i + 1, score: 0 }));
+
+    // 统计每个数字出现后，其邻号在下期出现的概率
+    const neighborFollowCount = {};
+    const neighborTotalCount = {};
+    for (let n = 1; n <= 49; n++) { neighborFollowCount[n] = 0; neighborTotalCount[n] = 0; }
+
+    for (let i = 0; i < hist.length - 1; i++) {
+      const nextSet = new Set(hist[i + 1]);
+      hist[i].forEach((n) => {
+        [n - 1, n + 1].forEach((nb) => {
+          if (nb >= 1 && nb <= 49) {
+            neighborTotalCount[nb]++;
+            if (nextSet.has(nb)) neighborFollowCount[nb]++;
+          }
+        });
+      });
+    }
+
+    const lastRow = hist[hist.length - 1];
+    const neighbors = new Set();
+    lastRow.forEach((n) => {
+      if (n - 1 >= 1) neighbors.add(n - 1);
+      if (n + 1 <= 49) neighbors.add(n + 1);
+    });
+
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      if (neighbors.has(num)) {
+        const total = neighborTotalCount[num];
+        const followRate = total > 5 ? neighborFollowCount[num] / total : 0.15;
+        // 只有跟随率真的低才杀
+        results.push({ num, score: followRate < 0.15 ? (0.15 - followRate) * 5 : 0 });
+      } else {
+        results.push({ num, score: 0 });
+      }
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S6：奇偶平衡排除法
+   */
+  function strategyOddEvenBalance(hist) {
+    const recent = hist.slice(-10);
+    let oddCount = 0, evenCount = 0;
+    recent.forEach((row) =>
+      row.forEach((n) => { if (n % 2 === 1) oddCount++; else evenCount++; })
+    );
+    const total = oddCount + evenCount;
+    const oddRatio = total > 0 ? oddCount / total : 0.5;
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      const isOdd = num % 2 === 1;
+      if (isOdd && oddRatio > 0.55) {
+        results.push({ num, score: (oddRatio - 0.5) * 2 });
+      } else if (!isOdd && oddRatio < 0.45) {
+        results.push({ num, score: (0.5 - oddRatio) * 2 });
+      } else {
+        results.push({ num, score: 0 });
+      }
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S7：和值偏移排除法
+   */
+  function strategySumDeviation(hist) {
+    const recent = hist.slice(-15);
+    const sums = recent.map((row) => row.reduce((a, b) => a + b, 0));
+    const avgSum = sums.reduce((a, b) => a + b, 0) / sums.length;
+    const theoreticalAvg = 7 * 25;
+    const bias = avgSum - theoreticalAvg;
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      if (bias > 10 && num > 30) {
+        results.push({ num, score: ((num - 30) / 19) * Math.min(bias / 30, 1) });
+      } else if (bias < -10 && num < 20) {
+        results.push({ num, score: ((20 - num) / 19) * Math.min(-bias / 30, 1) });
+      } else {
+        results.push({ num, score: 0 });
+      }
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S8：转移概率法（新增）
+   * 基于马尔可夫转移矩阵，找出从上一行数字转移概率最低的数字
+   */
+  function strategyTransition(hist) {
+    if (hist.length < 15) return Array.from({ length: 49 }, (_, i) => ({ num: i + 1, score: 0 }));
+
+    // 构建转移矩阵：数字A出现后，下期数字B出现的概率
+    const transCount = {};
+    const transTotal = {};
+    for (let a = 1; a <= 49; a++) {
+      transCount[a] = {};
+      transTotal[a] = 0;
+      for (let b = 1; b <= 49; b++) transCount[a][b] = 0;
+    }
+
+    for (let i = 0; i < hist.length - 1; i++) {
+      const nextSet = new Set(hist[i + 1]);
+      hist[i].forEach((a) => {
+        transTotal[a]++;
+        for (let b = 1; b <= 49; b++) {
+          if (nextSet.has(b)) transCount[a][b]++;
+        }
+      });
+    }
+
+    const lastRow = hist[hist.length - 1];
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      // 计算从上一行所有数字到该数字的平均转移概率
+      let totalProb = 0;
+      let count = 0;
+      lastRow.forEach((a) => {
+        if (transTotal[a] > 3) {
+          totalProb += transCount[a][num] / transTotal[a];
+          count++;
+        }
+      });
+      const avgProb = count > 0 ? totalProb / count : 7 / 49;
+      // 转移概率越低，越适合杀
+      results.push({ num, score: Math.max(0, 1 - avgProb * 49 / 7) });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * S9：连号衰减法（新增）
+   * 如果一个数字连续多期出现，下期不出现的概率增大
+   */
+  function strategyConsecutiveDecay(hist) {
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      // 计算连续出现的期数
+      let consecutive = 0;
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i].includes(num)) consecutive++;
+        else break;
+      }
+
+      // 统计历史上连续N期后还出现的概率
+      let continueCount = 0, totalOccur = 0;
+      if (consecutive >= 1) {
+        for (let i = 0; i < hist.length - consecutive; i++) {
+          let match = true;
+          for (let j = 0; j < consecutive; j++) {
+            if (!hist[i + j].includes(num)) { match = false; break; }
+          }
+          if (match) {
+            totalOccur++;
+            if (i + consecutive < hist.length && hist[i + consecutive].includes(num)) {
+              continueCount++;
+            }
+          }
+        }
+      }
+
+      if (consecutive >= 2 && totalOccur > 0) {
+        const continueRate = continueCount / totalOccur;
+        results.push({ num, score: 1 - continueRate }); // 继续率低=适合杀
+      } else if (consecutive === 1) {
+        // 出现1次，查看重复率
+        let repeatCount = 0, repeatTotal = 0;
+        for (let i = 0; i < hist.length - 1; i++) {
+          if (hist[i].includes(num)) {
+            repeatTotal++;
+            if (hist[i + 1].includes(num)) repeatCount++;
+          }
+        }
+        const repeatRate = repeatTotal > 5 ? repeatCount / repeatTotal : 0.15;
+        results.push({ num, score: (1 - repeatRate) * 0.5 }); // 有一定重复可能，降低杀码分
+      } else {
+        results.push({ num, score: 0 });
+      }
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
+  // ================================================================
+  //               保护机制（关键改进）
+  // ================================================================
+
+  /**
+   * 计算保护分数：某些数字不应该被杀
+   * 返回 Map<number, { protectScore: number, reasons: string[] }>
+   */
+  function computeProtection(hist) {
+    const protect = {};
+    for (let i = 1; i <= 49; i++) protect[i] = { score: 0, reasons: [] };
+
+    const lastRow = new Set(hist[hist.length - 1]);
+
+    // 保护1：上一行出现的数字，如果历史重复率高，则保护
+    for (let num = 1; num <= 49; num++) {
+      if (!lastRow.has(num)) continue;
+      let repeatCount = 0, repeatTotal = 0;
+      for (let i = 0; i < hist.length - 1; i++) {
+        if (hist[i].includes(num)) {
+          repeatTotal++;
+          if (hist[i + 1].includes(num)) repeatCount++;
+        }
+      }
+      const repeatRate = repeatTotal > 3 ? repeatCount / repeatTotal : 0.14;
+      if (repeatRate >= 0.12) {
+        protect[num].score += repeatRate * 3;
+        protect[num].reasons.push(`上期出现,重复率${(repeatRate * 100).toFixed(0)}%`);
+      }
+    }
+
+    // 保护2：遗漏太久可能要回归的数字
+    for (let num = 1; num <= 49; num++) {
+      let miss = 0;
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i].includes(num)) break;
+        miss++;
+      }
+      // 计算平均间隔
+      const appearances = [];
+      hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
+      let avgGap = 10;
+      if (appearances.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
+        avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      }
+      // 遗漏超过 2 倍平均间隔 → 可能回归
+      if (miss > avgGap * 2 && appearances.length >= 3) {
+        const urgency = miss / avgGap;
+        protect[num].score += Math.min(urgency * 0.5, 2);
+        protect[num].reasons.push(`遗漏${miss}期(均${avgGap.toFixed(0)}期),可能回归`);
+      }
+    }
+
+    // 保护3：近期活跃度突然升高的数字（趋势向上）
+    if (hist.length >= 20) {
+      const recent10 = hist.slice(-10);
+      const prev10 = hist.slice(-20, -10);
+      for (let num = 1; num <= 49; num++) {
+        const recentFreq = recent10.filter((r) => r.includes(num)).length;
+        const prevFreq = prev10.filter((r) => r.includes(num)).length;
+        if (recentFreq > prevFreq + 2) {
+          protect[num].score += (recentFreq - prevFreq) * 0.3;
+          protect[num].reasons.push(`近期活跃↑(${prevFreq}→${recentFreq})`);
+        }
+      }
+    }
+
+    return protect;
+  }
+
+  // ================================================================
+  //                      回测 + 加权综合
+  // ================================================================
+
+  function runKillPrediction(hist) {
+    const strategies = [
+      { name: "S1-频率反转", fn: strategyFrequencyInverse, label: "低频号" },
+      { name: "S2-遗漏U曲线", fn: strategyMissCycle, label: "中等遗漏" },
+      { name: "S3-尾数排除", fn: strategyTailExclusion, label: "冷尾数" },
+      { name: "S4-区间冷区", fn: strategyZoneCold, label: "冷区间" },
+      { name: "S5-邻号排除", fn: strategyNeighborExclude, label: "弱邻号" },
+      { name: "S6-奇偶平衡", fn: strategyOddEvenBalance, label: "奇偶偏" },
+      { name: "S7-和值偏移", fn: strategySumDeviation, label: "和值偏" },
+      { name: "S8-转移概率", fn: strategyTransition, label: "低转移" },
+      { name: "S9-连号衰减", fn: strategyConsecutiveDecay, label: "连号衰" },
+    ];
+
+    // ===== 回测各策略（最近 20 期）=====
+    const testPeriods = Math.min(20, hist.length - 15);
+    const strategyStats = strategies.map((s) => {
+      let correct = 0, total = 0;
+      for (let i = hist.length - testPeriods - 1; i < hist.length - 1; i++) {
+        const testHist = hist.slice(0, i + 1);
+        const nextRow = new Set(hist[i + 1]);
+        const preds = s.fn(testHist);
+        const top10 = preds.slice(0, 10);
+        top10.forEach((p) => {
+          total++;
+          if (!nextRow.has(p.num)) correct++;
+        });
+      }
+      const accuracy = total > 0 ? correct / total : 0;
+      return { ...s, accuracy, total };
+    });
+
+    // ===== 保护机制 =====
+    const protection = computeProtection(hist);
+
+    // ===== 回测保护机制的有效性 =====
+    let protectHits = 0, protectTotal = 0;
+    for (let i = Math.max(0, hist.length - 15); i < hist.length - 1; i++) {
+      const testHist = hist.slice(0, i + 1);
+      const nextRow = new Set(hist[i + 1]);
+      const testProtect = computeProtection(testHist);
+      for (let num = 1; num <= 49; num++) {
+        if (testProtect[num].score > 0.5) {
+          protectTotal++;
+          if (nextRow.has(num)) protectHits++;
+        }
+      }
+    }
+    const protectAccuracy = protectTotal > 0 ? protectHits / protectTotal : 0;
+
+    // ===== 当前预测 + 加权投票 =====
+    const votes = {};
+    for (let i = 1; i <= 49; i++) votes[i] = { score: 0, reasons: [] };
+
+    strategyStats.forEach((s) => {
+      const weight = s.accuracy * s.accuracy;
+      const preds = s.fn(hist);
+      preds.slice(0, 15).forEach((p, idx) => {
+        const posWeight = (15 - idx) / 15;
+        votes[p.num].score += weight * posWeight * p.score;
+        if (idx < 10 && p.score > 0.1) {
+          votes[p.num].reasons.push({
+            strategy: s.name,
+            label: s.label,
+            accuracy: s.accuracy,
+          });
+        }
+      });
+    });
+
+    // ===== 应用保护机制：削减被保护数字的杀码得分 =====
+    for (let num = 1; num <= 49; num++) {
+      if (protection[num].score > 0) {
+        const protectFactor = Math.max(0.1, 1 - protection[num].score * 0.4);
+        votes[num].score *= protectFactor;
+        if (protection[num].score > 0.5) {
+          votes[num].reasons.push({
+            strategy: "🛡️保护",
+            label: protection[num].reasons[0] || "受保护",
+            accuracy: protectAccuracy,
+          });
+        }
+      }
+    }
+
+    // ===== 排序选出 Top 10 =====
+    const sorted = Object.entries(votes)
+      .map(([num, data]) => ({ num: +num, ...data }))
+      .filter((d) => d.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    // 区间多样性
+    const final = [];
+    const zoneCounts = [0, 0, 0, 0, 0];
+    for (const cand of sorted) {
+      if (final.length >= 10) break;
+      const z = Math.min(Math.floor((cand.num - 1) / 10), 4);
+      if (zoneCounts[z] >= 3) continue;
+      final.push(cand);
+      zoneCounts[z]++;
+    }
+    for (const cand of sorted) {
+      if (final.length >= 10) break;
+      if (!final.find((f) => f.num === cand.num)) final.push(cand);
+    }
+
+    // ===== 回测最近 5 期验证（使用完整流程包含保护机制）=====
+    const recentBacktest = [];
+    for (let i = hist.length - 6; i < hist.length - 1; i++) {
+      const testHist = hist.slice(0, i + 1);
+      const nextRow = new Set(hist[i + 1]);
+      const testProtect = computeProtection(testHist);
+
+      const simVotes = {};
+      for (let n = 1; n <= 49; n++) simVotes[n] = { score: 0 };
+      strategyStats.forEach((s) => {
+        const w = s.accuracy * s.accuracy;
+        s.fn(testHist).slice(0, 15).forEach((p, idx) => {
+          simVotes[p.num].score += w * ((15 - idx) / 15) * p.score;
+        });
+      });
+      // 应用保护
+      for (let n = 1; n <= 49; n++) {
+        if (testProtect[n].score > 0) {
+          simVotes[n].score *= Math.max(0.1, 1 - testProtect[n].score * 0.4);
+        }
+      }
+      const simSorted = Object.entries(simVotes)
+        .map(([num, d]) => ({ num: +num, ...d }))
+        .filter((d) => d.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+      const killNums = simSorted.map((s) => s.num);
+      const failed = killNums.filter((n) => nextRow.has(n));
+      recentBacktest.push({
+        period: i + 1,
+        actual: hist[i + 1],
+        killNums,
+        failed,
+        success: killNums.length - failed.length,
+        rate: killNums.length > 0 ? (killNums.length - failed.length) / killNums.length : 0,
+      });
+    }
+
+    // 收集保护信息用于展示
+    const protectedNums = [];
+    for (let num = 1; num <= 49; num++) {
+      if (protection[num].score > 0.3) {
+        protectedNums.push({ num, ...protection[num] });
+      }
+    }
+    protectedNums.sort((a, b) => b.score - a.score);
+
+    return {
+      predictions: final,
+      strategies: strategyStats,
+      backtest: recentBacktest,
+      avgAccuracy:
+        recentBacktest.length > 0
+          ? recentBacktest.reduce((a, b) => a + b.rate, 0) / recentBacktest.length
+          : 0,
+      protectedNums,
+      protectAccuracy,
+    };
+  }
+
+  // ================================================================
+  //                           渲染
+  // ================================================================
+
+  const styles = {
+    container: {
+      maxWidth: 800,
+      margin: "0 auto",
+      padding: "20px",
+      fontFamily:
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      color: "#e0e0e0",
+      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+      minHeight: "100vh",
+    },
+    header: {
+      textAlign: "center",
+      marginBottom: 30,
+      padding: "20px 0",
+      borderBottom: "1px solid rgba(255,255,255,0.1)",
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: 700,
+      background: "linear-gradient(90deg, #e94560, #ff6b6b)",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      margin: 0,
+    },
+    subtitle: { fontSize: 14, color: "#8899aa", marginTop: 8 },
+    backLink: {
+      display: "inline-block",
+      marginBottom: 20,
+      color: "#64b5f6",
+      textDecoration: "none",
+      fontSize: 14,
+      padding: "6px 12px",
+      borderRadius: 6,
+      border: "1px solid rgba(100,181,246,0.3)",
+    },
+    card: {
+      background: "rgba(255,255,255,0.05)",
+      borderRadius: 12,
+      padding: "20px",
+      marginBottom: 20,
+      border: "1px solid rgba(255,255,255,0.08)",
+      backdropFilter: "blur(10px)",
+    },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: 600,
+      marginBottom: 15,
+      color: "#fff",
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+    },
+    numGrid: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 10,
+      justifyContent: "center",
+    },
+    numBall: (rank) => ({
+      width: 52,
+      height: 52,
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 700,
+      fontSize: 18,
+      color: "#fff",
+      background:
+        rank < 3
+          ? "linear-gradient(135deg, #e94560, #c23152)"
+          : rank < 6
+          ? "linear-gradient(135deg, #e67e22, #d35400)"
+          : "linear-gradient(135deg, #3498db, #2980b9)",
+      boxShadow:
+        rank < 3
+          ? "0 4px 15px rgba(233,69,96,0.4)"
+          : "0 4px 10px rgba(0,0,0,0.3)",
+      position: "relative",
+    }),
+    protectBall: {
+      width: 40,
+      height: 40,
+      borderRadius: "50%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 700,
+      fontSize: 15,
+      color: "#fff",
+      background: "linear-gradient(135deg, #27ae60, #2ecc71)",
+      boxShadow: "0 3px 10px rgba(46,204,113,0.3)",
+    },
+    rank: {
+      position: "absolute",
+      top: -6,
+      right: -6,
+      background: "#ffcc02",
+      color: "#1a1a2e",
+      width: 20,
+      height: 20,
+      borderRadius: "50%",
+      fontSize: 11,
+      fontWeight: 700,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    reason: { fontSize: 12, color: "#aaa", textAlign: "center", marginTop: 4 },
+    strategyBar: (accuracy) => ({
+      height: 8,
+      borderRadius: 4,
+      background: `linear-gradient(90deg, ${
+        accuracy > 0.85 ? "#2ecc71" : accuracy > 0.75 ? "#f1c40f" : "#e74c3c"
+      } ${accuracy * 100}%, rgba(255,255,255,0.1) ${accuracy * 100}%)`,
+      width: "100%",
+    }),
+    table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+    th: {
+      padding: "10px 8px",
+      textAlign: "center",
+      borderBottom: "1px solid rgba(255,255,255,0.15)",
+      color: "#8899aa",
+      fontWeight: 600,
+      fontSize: 12,
+    },
+    td: {
+      padding: "10px 8px",
+      textAlign: "center",
+      borderBottom: "1px solid rgba(255,255,255,0.06)",
+    },
+    loadingContainer: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "60vh",
+      gap: 16,
+    },
+    spinner: {
+      width: 40,
+      height: 40,
+      border: "3px solid rgba(255,255,255,0.1)",
+      borderTop: "3px solid #e94560",
+      borderRadius: "50%",
+      animation: "spin 0.8s linear infinite",
+    },
+  };
+
+  if (error) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <p style={{ color: "#e74c3c" }}>❌ {error}</p>
+          <a href="/" style={styles.backLink}>← 返回主页</a>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading || !result) {
+    return (
+      <div style={styles.container}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={styles.loadingContainer}>
+          <div style={styles.spinner} />
+          <p style={{ color: "#8899aa" }}>
+            {history.length === 0 ? "正在加载历史数据..." : "正在运行杀码预测算法..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.container}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+      <a href="/" style={styles.backLink}>← 返回主页</a>
+
+      <div style={styles.header}>
+        <h1 style={styles.title}>🎯 杀码预测 v2</h1>
+        <p style={styles.subtitle}>
+          基于 {history.length} 期历史数据 · 9 种策略 + 保护机制 · 回测准确率{" "}
+          <strong style={{ color: result.avgAccuracy > 0.8 ? "#2ecc71" : "#e67e22" }}>
+            {(result.avgAccuracy * 100).toFixed(1)}%
+          </strong>
+        </p>
+      </div>
+
+      {/* 预测结果 */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>🔮</span> 预测下期不会出现的 10 个数字
+        </div>
+        <div style={styles.numGrid}>
+          {result.predictions.map((p, idx) => (
+            <div key={p.num} style={{ textAlign: "center" }}>
+              <div style={styles.numBall(idx)}>
+                {p.num}
+                <span style={styles.rank}>{idx + 1}</span>
+              </div>
+              <div style={styles.reason}>
+                {p.reasons.length > 0
+                  ? p.reasons
+                      .filter((r) => !r.strategy.startsWith("🛡️"))
+                      .slice(0, 2)
+                      .map((r) => r.label)
+                      .join("+") || "综合"
+                  : "综合"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 保护区 */}
+      {result.protectedNums.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>
+            <span>🛡️</span> 受保护数字（不应杀的号码）
+          </div>
+          <p style={{ fontSize: 12, color: "#8899aa", marginBottom: 12 }}>
+            这些数字因为重复率高、遗漏过久可能回归、或近期趋势向上，被保护机制从杀码中排除/降权
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {result.protectedNums.slice(0, 12).map((p) => (
+              <div key={p.num} style={{ textAlign: "center" }}>
+                <div style={styles.protectBall}>{p.num}</div>
+                <div style={{ fontSize: 11, color: "#8899aa", marginTop: 4, maxWidth: 80 }}>
+                  {p.reasons[0]}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 策略准确率 */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>📊</span> 各策略回测准确率
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {result.strategies
+            .sort((a, b) => b.accuracy - a.accuracy)
+            .map((s) => (
+              <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 13, minWidth: 110, color: "#ccc" }}>{s.name}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={styles.strategyBar(s.accuracy)} />
+                </div>
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    minWidth: 50,
+                    textAlign: "right",
+                    color: s.accuracy > 0.85 ? "#2ecc71" : s.accuracy > 0.75 ? "#f1c40f" : "#e74c3c",
+                  }}
+                >
+                  {(s.accuracy * 100).toFixed(1)}%
+                </span>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* 回测验证 */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>🧪</span> 最近 5 期回测验证
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>期数</th>
+                <th style={styles.th}>实际开奖</th>
+                <th style={styles.th}>杀码预测</th>
+                <th style={styles.th}>命中率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.backtest.map((bt) => (
+                <tr key={bt.period}>
+                  <td style={styles.td}>{bt.period}</td>
+                  <td style={styles.td}>{bt.actual.join(", ")}</td>
+                  <td style={styles.td}>
+                    {bt.killNums.map((n, i) => {
+                      const isFailed = bt.failed.includes(n);
+                      return (
+                        <span key={i}>
+                          <span
+                            style={{
+                              color: isFailed ? "#e74c3c" : "#2ecc71",
+                              fontWeight: isFailed ? 700 : 400,
+                              textDecoration: isFailed ? "line-through" : "none",
+                            }}
+                          >
+                            {n}
+                          </span>
+                          {i < bt.killNums.length - 1 && ", "}
+                        </span>
+                      );
+                    })}
+                  </td>
+                  <td style={styles.td}>
+                    <span
+                      style={{
+                        color: bt.rate >= 0.9 ? "#2ecc71" : bt.rate >= 0.7 ? "#f1c40f" : "#e74c3c",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {bt.success}/{bt.killNums.length} ({(bt.rate * 100).toFixed(0)}%)
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 详细理由 */}
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>📝</span> 杀码依据详情
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>排名</th>
+                <th style={styles.th}>号码</th>
+                <th style={styles.th}>综合得分</th>
+                <th style={styles.th}>杀码依据</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.predictions.map((p, idx) => (
+                <tr key={p.num}>
+                  <td style={styles.td}>
+                    <span
+                      style={{
+                        background: idx < 3 ? "#e94560" : idx < 6 ? "#e67e22" : "#3498db",
+                        color: "#fff",
+                        borderRadius: 4,
+                        padding: "2px 8px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      #{idx + 1}
+                    </span>
+                  </td>
+                  <td style={{ ...styles.td, fontWeight: 700, fontSize: 16, color: "#fff" }}>
+                    {p.num}
+                  </td>
+                  <td style={styles.td}>
+                    <span style={{ color: "#ffcc02", fontWeight: 600 }}>
+                      {p.score.toFixed(2)}
+                    </span>
+                  </td>
+                  <td style={{ ...styles.td, textAlign: "left", fontSize: 12 }}>
+                    {p.reasons.length > 0
+                      ? p.reasons.map((r, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              display: "inline-block",
+                              background: r.strategy.startsWith("🛡️")
+                                ? "rgba(46,204,113,0.15)"
+                                : "rgba(255,255,255,0.08)",
+                              borderRadius: 4,
+                              padding: "2px 8px",
+                              margin: "2px 4px",
+                              fontSize: 11,
+                              color: r.strategy.startsWith("🛡️") ? "#2ecc71" : "#ccc",
+                            }}
+                          >
+                            {r.strategy} ({(r.accuracy * 100).toFixed(0)}%)
+                          </span>
+                        ))
+                      : <span style={{ color: "#666" }}>多策略综合</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}

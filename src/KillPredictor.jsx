@@ -2,14 +2,18 @@ import React, { useState, useEffect } from "react";
 
 /**
  * 杀码预测页面 - 独立路由 /kill
- * v2: 修复了重复号保护和遗漏周期反转的问题
+ * v3: 修复 03/33 同尾数集中错杀问题
  *
  * 改进要点：
  * 1. 新增「重复号保护」：上一行出现的数字有一定重复概率，不应轻易杀掉
  * 2. 修正「遗漏周期」：极长遗漏反而可能即将出现（回归效应），用 U 曲线
+ *    + 新增「爆发后沉寂」检测：连续出现后的沉寂期会增强回归信号
  * 3. 新增「转移概率」策略：基于马尔可夫链分析数字间的转移关系
  * 4. 新增「回归预警」策略：太长时间没出的数字可能即将回归，要保护
- * 5. 改进综合投票：加入"保护机制"，被保护的数字得分削减
+ * 5. 改进综合投票：加入"保护机制"，被保护的数字得分削减（系数提升至0.6）
+ * 6. 新增「同尾数限制」：同一尾数最多杀2个号，防止尾数集中错杀
+ * 7. 新增「周期性回归保护」+「爆发沉寂保护」
+ * 8. 新增 S10-同尾数约束策略
  */
 export default function KillPredictor() {
   const [history, setHistory] = useState([]);
@@ -100,9 +104,11 @@ export default function KillPredictor() {
   }
 
   /**
-   * S2：遗漏周期法（改进版 - U曲线）
+   * S2：遗漏周期法（改进版 - U曲线 + 爆发沉寂检测）
    * 修正：极长遗漏不再加分，而是减分（因为可能即将回归）
    * U曲线：中等遗漏最适合杀，极短和极长遗漏都不适合杀
+   * 新增：如果一个数字曾连续出现2+期后进入沉寂，当沉寂期达到
+   *       连续期数的3~5倍时，回归概率更高，应降低杀码分
    */
   function strategyMissCycle(hist) {
     const results = [];
@@ -124,21 +130,38 @@ export default function KillPredictor() {
 
       const ratio = avgGap > 0 ? currentMiss / avgGap : 0;
 
-      // U 曲线：
-      // ratio < 0.5  → 刚出现不久，有可能再来，不适合杀（低分）
-      // 0.5 < ratio < 1.5 → 中等遗漏，最适合杀（高分）
-      // ratio > 2.0  → 遗漏太久，可能要回归了（降低分数）
+      // 检测「爆发后沉寂」模式：最近一次出现前是否连续出现2+期
+      let lastBurstLen = 0;
+      if (appearances.length >= 2 && currentMiss > 0) {
+        const lastAppIdx = appearances[appearances.length - 1];
+        let burst = 1;
+        for (let k = appearances.length - 2; k >= 0; k--) {
+          if (appearances[k] === appearances[k + 1] - 1) burst++;
+          else break;
+        }
+        lastBurstLen = burst;
+      }
+
+      // U 曲线基础分
       let score;
       if (ratio < 0.3) {
-        score = ratio * 0.3; // 刚出现，不杀
+        score = ratio * 0.3;
       } else if (ratio <= 1.5) {
-        score = 0.5 + (ratio - 0.3) * 0.4; // 中等遗漏，高分
+        score = 0.5 + (ratio - 0.3) * 0.4;
       } else if (ratio <= 2.5) {
-        score = 1.0 - (ratio - 1.5) * 0.3; // 开始回落
+        score = 1.0 - (ratio - 1.5) * 0.3;
       } else {
-        score = 0.7 - (ratio - 2.5) * 0.2; // 太久没出，可能要来了
+        score = 0.7 - (ratio - 2.5) * 0.2;
         score = Math.max(0.1, score);
       }
+
+      // 爆发后沉寂惩罚：连续出现2+期后，沉寂达3~6倍连续期数时降分
+      if (lastBurstLen >= 2 && currentMiss >= lastBurstLen * 3) {
+        const silenceRatio = currentMiss / (lastBurstLen * 3);
+        const penalty = Math.min(silenceRatio * 0.3, 0.5);
+        score *= (1 - penalty);
+      }
+
       results.push({ num, score: Math.max(0, score) });
     }
     return results.sort((a, b) => b.score - a.score);
@@ -373,6 +396,50 @@ export default function KillPredictor() {
     return results.sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * S10：同尾数约束法（新增）
+   * 统计每个尾数近期出现的号码分布，如果某尾数近期出现较多号码，
+   * 说明该尾数仍然活跃，不应过度杀该尾数的号码
+   */
+  function strategyTailConstraint(hist) {
+    const recent = hist.slice(-20);
+    // 统计每个尾数在近期的出现次数
+    const tailAppear = Array(10).fill(0);
+    recent.forEach((row) => row.forEach((n) => tailAppear[n % 10]++));
+    const avgTailAppear = tailAppear.reduce((a, b) => a + b, 0) / 10;
+
+    // 统计每个尾数近期有多少不同号码出现过
+    const tailNums = Array.from({ length: 10 }, () => new Set());
+    recent.forEach((row) => row.forEach((n) => tailNums[n % 10].add(n)));
+
+    const results = [];
+    for (let num = 1; num <= 49; num++) {
+      const tail = num % 10;
+      const tailActive = tailAppear[tail] / Math.max(1, avgTailAppear);
+      const tailDiversity = tailNums[tail].size;
+
+      // 尾数活跃度高且多样性高 → 该尾数号码不应过度被杀（低分）
+      // 尾数活跃度低 → 可以杀（高分）
+      let score;
+      if (tailActive > 1.2 && tailDiversity >= 3) {
+        score = Math.max(0, 0.3 - (tailActive - 1) * 0.2);
+      } else if (tailActive < 0.6) {
+        score = (1 - tailActive) * 0.6;
+      } else {
+        score = 0.3;
+      }
+
+      // 如果该号码本身在近期出现过，降低杀码分
+      const numAppearRecent = recent.filter((r) => r.includes(num)).length;
+      if (numAppearRecent >= 2) {
+        score *= 0.5;
+      }
+
+      results.push({ num, score: Math.max(0, score) });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
   // ================================================================
   //               保护机制（关键改进）
   // ================================================================
@@ -411,7 +478,6 @@ export default function KillPredictor() {
         if (hist[i].includes(num)) break;
         miss++;
       }
-      // 计算平均间隔
       const appearances = [];
       hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
       let avgGap = 10;
@@ -420,10 +486,10 @@ export default function KillPredictor() {
         for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
         avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
       }
-      // 遗漏超过 2 倍平均间隔 → 可能回归
-      if (miss > avgGap * 2 && appearances.length >= 3) {
+      // 遗漏超过 1.5 倍平均间隔 → 可能回归（阈值从2降至1.5，更灵敏）
+      if (miss > avgGap * 1.5 && appearances.length >= 3) {
         const urgency = miss / avgGap;
-        protect[num].score += Math.min(urgency * 0.5, 2);
+        protect[num].score += Math.min(urgency * 0.6, 2.5);
         protect[num].reasons.push(`遗漏${miss}期(均${avgGap.toFixed(0)}期),可能回归`);
       }
     }
@@ -438,6 +504,59 @@ export default function KillPredictor() {
         if (recentFreq > prevFreq + 2) {
           protect[num].score += (recentFreq - prevFreq) * 0.3;
           protect[num].reasons.push(`近期活跃↑(${prevFreq}→${recentFreq})`);
+        }
+      }
+    }
+
+    // 保护4（新）：周期性回归保护 — 出现间隔稳定的号码，接近平均间隔时保护
+    for (let num = 1; num <= 49; num++) {
+      const appearances = [];
+      hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
+      if (appearances.length >= 4) {
+        const gaps = [];
+        for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
+        const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+        const stdDev = Math.sqrt(gaps.reduce((sum, g) => sum + (g - avgGap) ** 2, 0) / gaps.length);
+        const cv = avgGap > 0 ? stdDev / avgGap : 1; // 变异系数
+
+        let miss = 0;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i].includes(num)) break;
+          miss++;
+        }
+
+        // 变异系数小（间隔稳定）且当前遗漏接近平均间隔 → 保护
+        if (cv < 0.6 && miss >= avgGap * 0.7 && miss <= avgGap * 2) {
+          const nearness = 1 - Math.abs(miss - avgGap) / avgGap;
+          const protScore = nearness * (1 - cv) * 1.5;
+          if (protScore > 0.2) {
+            protect[num].score += protScore;
+            protect[num].reasons.push(`周期性(间隔≈${avgGap.toFixed(0)}期,cv=${cv.toFixed(2)}),遗漏${miss}期`);
+          }
+        }
+      }
+    }
+
+    // 保护5（新）：爆发后沉寂保护 — 连续出现2+期后进入沉寂，达到一定期数后应保护
+    for (let num = 1; num <= 49; num++) {
+      const appearances = [];
+      hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
+      if (appearances.length >= 2) {
+        // 找最后一次连续出现的长度
+        const lastAppIdx = appearances[appearances.length - 1];
+        let burstLen = 1;
+        for (let k = appearances.length - 2; k >= 0; k--) {
+          if (appearances[k] === appearances[k + 1] - 1) burstLen++;
+          else break;
+        }
+
+        let miss = hist.length - 1 - lastAppIdx;
+        // 连续出现2+期后，沉寂达到3倍以上 → 回归信号
+        if (burstLen >= 2 && miss >= burstLen * 3 && miss <= burstLen * 8) {
+          const silenceRatio = miss / (burstLen * 3);
+          const protScore = Math.min(silenceRatio * 0.5, 1.5);
+          protect[num].score += protScore;
+          protect[num].reasons.push(`爆发${burstLen}期后沉寂${miss}期,可能回归`);
         }
       }
     }
@@ -460,6 +579,7 @@ export default function KillPredictor() {
       { name: "S7-和值偏移", fn: strategySumDeviation, label: "和值偏" },
       { name: "S8-转移概率", fn: strategyTransition, label: "低转移" },
       { name: "S9-连号衰减", fn: strategyConsecutiveDecay, label: "连号衰" },
+      { name: "S10-尾数约束", fn: strategyTailConstraint, label: "尾数控" },
     ];
 
     // ===== 回测各策略（最近 20 期）=====
@@ -518,12 +638,12 @@ export default function KillPredictor() {
       });
     });
 
-    // ===== 应用保护机制：削减被保护数字的杀码得分 =====
+    // ===== 应用保护机制：削减被保护数字的杀码得分（系数从0.4提升到0.6）=====
     for (let num = 1; num <= 49; num++) {
       if (protection[num].score > 0) {
-        const protectFactor = Math.max(0.1, 1 - protection[num].score * 0.4);
+        const protectFactor = Math.max(0.05, 1 - protection[num].score * 0.6);
         votes[num].score *= protectFactor;
-        if (protection[num].score > 0.5) {
+        if (protection[num].score > 0.3) {
           votes[num].reasons.push({
             strategy: "🛡️保护",
             label: protection[num].reasons[0] || "受保护",
@@ -533,25 +653,42 @@ export default function KillPredictor() {
       }
     }
 
-    // ===== 排序选出 Top 10 =====
+    // ===== 排序选出 Top 10（含同尾数限制 + 区间多样性）=====
     const sorted = Object.entries(votes)
       .map(([num, data]) => ({ num: +num, ...data }))
       .filter((d) => d.score > 0)
       .sort((a, b) => b.score - a.score);
 
-    // 区间多样性
+    // 区间多样性 + 同尾数限制（每个尾数最多杀2个）
     const final = [];
     const zoneCounts = [0, 0, 0, 0, 0];
+    const tailCounts = Array(10).fill(0);
     for (const cand of sorted) {
       if (final.length >= 10) break;
       const z = Math.min(Math.floor((cand.num - 1) / 10), 4);
+      const tail = cand.num % 10;
       if (zoneCounts[z] >= 3) continue;
+      if (tailCounts[tail] >= 2) continue; // 同尾数最多杀2个
       final.push(cand);
       zoneCounts[z]++;
+      tailCounts[tail]++;
     }
     for (const cand of sorted) {
       if (final.length >= 10) break;
-      if (!final.find((f) => f.num === cand.num)) final.push(cand);
+      if (!final.find((f) => f.num === cand.num)) {
+        const tail = cand.num % 10;
+        if (tailCounts[tail] < 2) {
+          final.push(cand);
+          tailCounts[tail]++;
+        }
+      }
+    }
+    // 兜底：如果因为限制不够10个，放宽限制
+    if (final.length < 10) {
+      for (const cand of sorted) {
+        if (final.length >= 10) break;
+        if (!final.find((f) => f.num === cand.num)) final.push(cand);
+      }
     }
 
     // ===== 回测最近 5 期验证（使用完整流程包含保护机制）=====
@@ -569,10 +706,10 @@ export default function KillPredictor() {
           simVotes[p.num].score += w * ((15 - idx) / 15) * p.score;
         });
       });
-      // 应用保护
+      // 应用保护（与正式预测保持一致的系数0.6）
       for (let n = 1; n <= 49; n++) {
         if (testProtect[n].score > 0) {
-          simVotes[n].score *= Math.max(0.1, 1 - testProtect[n].score * 0.4);
+          simVotes[n].score *= Math.max(0.05, 1 - testProtect[n].score * 0.6);
         }
       }
       const simSorted = Object.entries(simVotes)

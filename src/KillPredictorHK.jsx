@@ -640,6 +640,118 @@ export default function KillPredictorHK() {
   }
 
   // ================================================================
+  //     可能出现的数字预测：选出5个最可能出现的号码
+  // ================================================================
+
+  function predictLikelyNumbers(hist) {
+    const MAX_NUM = 49;
+    const scores = [];
+
+    for (let num = 1; num <= MAX_NUM; num++) {
+      let score = 0;
+      const reasons = [];
+
+      // 计算遗漏期数
+      let lastMiss = hist.length;
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i].includes(num)) { lastMiss = hist.length - 1 - i; break; }
+      }
+
+      // 计算出现次数和平均间隔
+      const appearances = [];
+      hist.forEach((row, idx) => { if (row.includes(num)) appearances.push(idx); });
+      const totalAppear = appearances.length;
+      let avgGap = hist.length / 7; // 理论平均间隔
+      if (totalAppear >= 2) {
+        const gaps = [];
+        for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
+        avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      }
+
+      // 规律1：上期出现的数字有重复的可能（14%）
+      if (lastMiss === 0) {
+        let repeatCount = 0, repeatTotal = 0;
+        for (let i = 0; i < hist.length - 1; i++) {
+          if (hist[i].includes(num)) {
+            repeatTotal++;
+            if (hist[i + 1].includes(num)) repeatCount++;
+          }
+        }
+        const repeatRate = repeatTotal > 1 ? repeatCount / repeatTotal : 0.14;
+        if (repeatRate >= 0.15) {
+          score += repeatRate * 3;
+          reasons.push(`上期出现,重复率${(repeatRate * 100).toFixed(0)}%`);
+        }
+      }
+
+      // 规律2：遗漏超过平均间隔，回归概率升高
+      if (totalAppear >= 2) {
+        const missRatio = lastMiss / avgGap;
+        if (missRatio >= 1.3) {
+          score += Math.min(missRatio * 0.8, 3);
+          reasons.push(`遗漏${lastMiss}期(均${avgGap.toFixed(0)}期),即将回归`);
+        } else if (missRatio >= 0.9) {
+          score += missRatio * 0.4;
+          reasons.push(`接近平均间隔`);
+        }
+      }
+
+      // 规律3：近5期内出现2+次，热号趋势
+      const recent5 = hist.slice(-5);
+      const countRecent5 = recent5.filter(r => r.includes(num)).length;
+      if (countRecent5 >= 3) {
+        score += countRecent5 * 0.6;
+        reasons.push(`近5期出现${countRecent5}次,极热`);
+      } else if (countRecent5 >= 2) {
+        score += countRecent5 * 0.3;
+        reasons.push(`近5期出现${countRecent5}次,较热`);
+      }
+
+      // 规律4：周期性回归 — 间隔稳定且接近平均间隔
+      if (totalAppear >= 3) {
+        const gaps = [];
+        for (let i = 1; i < appearances.length; i++) gaps.push(appearances[i] - appearances[i - 1]);
+        const stdDev = Math.sqrt(gaps.reduce((sum, g) => sum + (g - avgGap) ** 2, 0) / gaps.length);
+        const cv = avgGap > 0 ? stdDev / avgGap : 1;
+        if (cv < 0.5 && lastMiss >= avgGap * 0.8 && lastMiss <= avgGap * 1.5) {
+          score += (1 - cv) * 1.2;
+          reasons.push(`周期性(间隔≈${avgGap.toFixed(0)}期),即将触发`);
+        }
+      }
+
+      // 规律5：转移概率 — 上期号码的邻号更容易出现
+      const lastRow = hist[hist.length - 1];
+      const isNeighbor = lastRow.some(n => Math.abs(n - num) === 1);
+      if (isNeighbor && lastMiss >= 2) {
+        score += 0.3;
+        reasons.push(`上期邻号`);
+      }
+
+      if (score > 0) {
+        scores.push({ num, score, reasons });
+      }
+    }
+
+    // 排序选出 Top 5，确保区间多样性
+    scores.sort((a, b) => b.score - a.score);
+    const result = [];
+    const zoneCounts = [0, 0, 0, 0, 0];
+    for (const c of scores) {
+      if (result.length >= 5) break;
+      const z = Math.min(Math.floor((c.num - 1) / 10), 4);
+      if (zoneCounts[z] >= 2) continue;
+      result.push(c);
+      zoneCounts[z]++;
+    }
+    // 兜底
+    for (const c of scores) {
+      if (result.length >= 5) break;
+      if (!result.find(r => r.num === c.num)) result.push(c);
+    }
+    return result;
+  }
+
+  // ================================================================
   //                      回测 + 加权综合
   // ================================================================
 
@@ -825,6 +937,7 @@ export default function KillPredictorHK() {
           : 0,
       protectedNums,
       protectAccuracy,
+      likelyNumbers: predictLikelyNumbers(hist),
     };
   }
 
@@ -1048,6 +1161,54 @@ export default function KillPredictorHK() {
           ))}
         </div>
       </div>
+
+      {/* 可能出现的数字 */}
+      {result.likelyNumbers && result.likelyNumbers.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>
+            <span>✨</span> 预测下期可能出现的 5 个数字
+          </div>
+          <p style={{ fontSize: 12, color: "#8899aa", marginBottom: 12 }}>
+            基于重复率、遗漏回归、热号趋势、周期性等规律综合评分
+          </p>
+          <div style={styles.numGrid}>
+            {result.likelyNumbers.map((p, idx) => (
+              <div key={p.num} style={{ textAlign: "center" }}>
+                <div style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: 18,
+                  color: "#1a1a2e",
+                  background: idx < 2
+                    ? "linear-gradient(135deg, #f1c40f, #f39c12)"
+                    : idx < 4
+                    ? "linear-gradient(135deg, #e67e22, #d35400)"
+                    : "linear-gradient(135deg, #e74c3c, #c0392b)",
+                  boxShadow: idx < 2
+                    ? "0 4px 15px rgba(241,196,15,0.4)"
+                    : "0 4px 10px rgba(0,0,0,0.3)",
+                  position: "relative",
+                }}>
+                  {p.num}
+                  <span style={{
+                    ...styles.rank,
+                    background: "#2ecc71",
+                    color: "#fff",
+                  }}>{idx + 1}</span>
+                </div>
+                <div style={styles.reason}>
+                  {p.reasons[0] || "综合"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 保护区 */}
       {result.protectedNums.length > 0 && (

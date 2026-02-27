@@ -2,18 +2,16 @@ import React, { useState, useEffect } from "react";
 
 /**
  * 杀码预测页面 - 独立路由 /kill
- * v3: 修复 03/33 同尾数集中错杀问题
+ * v4: 修复热号主导期准确率低的问题
  *
- * 改进要点：
- * 1. 新增「重复号保护」：上一行出现的数字有一定重复概率，不应轻易杀掉
- * 2. 修正「遗漏周期」：极长遗漏反而可能即将出现（回归效应），用 U 曲线
- *    + 新增「爆发后沉寂」检测：连续出现后的沉寂期会增强回归信号
- * 3. 新增「转移概率」策略：基于马尔可夫链分析数字间的转移关系
- * 4. 新增「回归预警」策略：太长时间没出的数字可能即将回归，要保护
- * 5. 改进综合投票：加入"保护机制"，被保护的数字得分削减（系数提升至0.6）
- * 6. 新增「同尾数限制」：同一尾数最多杀2个号，防止尾数集中错杀
- * 7. 新增「周期性回归保护」+「爆发沉寂保护」
- * 8. 新增 S10-同尾数约束策略
+ * v4 改进：
+ * 1. S1频率反转增加近期热号豁免（近5期出现2+次不杀）
+ * 2. 保护3阈值放宽（+2→+1），保护系数提高
+ * 3. 新增保护6：近5期高频号直接保护
+ * 4. 新增S11热度排除策略：近期高频号不应被杀
+ *
+ * v3 改进（保留）：
+ * - 同尾数限制、爆发沉寂检测、周期性回归保护、S10尾数约束
  */
 export default function KillPredictor() {
   const [history, setHistory] = useState([]);
@@ -69,12 +67,13 @@ export default function KillPredictor() {
   }, [history]);
 
   // ================================================================
-  //                  改进后的 9 种杀码策略
+  //                  改进后的 11 种杀码策略
   // ================================================================
 
   /**
-   * S1：频率反转法（改进版）
+   * S1：频率反转法（改进版 v2）
    * 使用最近30期的频率而非全局频率，更能反映近期趋势
+   * 新增：近5期出现2+次的号码（热号）直接豁免，不给杀码分
    */
   function strategyFrequencyInverse(hist) {
     const recentN = Math.min(30, hist.length);
@@ -88,16 +87,23 @@ export default function KillPredictor() {
     for (let i = 1; i <= 49; i++) globalFreq[i] = 0;
     hist.forEach((row) => row.forEach((n) => globalFreq[n]++));
 
+    // 近5期热号检测
+    const hot5 = {};
+    for (let i = 1; i <= 49; i++) hot5[i] = 0;
+    hist.slice(-5).forEach((row) => row.forEach((n) => hot5[n]++));
+
     return Object.entries(freq)
       .map(([num, f]) => {
         const n = +num;
+        // 近5期出现2+次 → 热号豁免，不杀
+        if (hot5[n] >= 2) {
+          return { num: n, score: 0 };
+        }
         const recentRate = f / recentN;
         const globalRate = globalFreq[n] / hist.length;
-        // 近期频率低 + 全局频率也低 = 更适合杀
-        // 但近期频率低 + 全局频率高 = 可能在回归，要降低杀码信心
         const score = globalRate <= recentRate
           ? 1 - recentRate
-          : (1 - recentRate) * 0.5; // 全局高近期低=可能要回归，减半
+          : (1 - recentRate) * 0.5;
         return { num: n, score: Math.max(0, score) };
       })
       .sort((a, b) => b.score - a.score);
@@ -440,6 +446,46 @@ export default function KillPredictor() {
     return results.sort((a, b) => b.score - a.score);
   }
 
+  /**
+   * S11：热度排除法（新增）
+   * 近5-8期中出现频率高的号码不应被杀
+   * 这是一个"反面策略"：降低热号的杀码分，抬高冷号的杀码分
+   */
+  function strategyHotExclusion(hist) {
+    const recent8 = hist.slice(-8);
+    const recent5 = hist.slice(-5);
+    const results = [];
+
+    for (let num = 1; num <= 49; num++) {
+      const count8 = recent8.filter((r) => r.includes(num)).length;
+      const count5 = recent5.filter((r) => r.includes(num)).length;
+
+      let score;
+      if (count5 >= 3) {
+        // 5期内出现3+次 → 极热，绝不杀
+        score = 0;
+      } else if (count5 >= 2) {
+        // 5期内出现2次 → 较热，基本不杀
+        score = 0.05;
+      } else if (count8 >= 3) {
+        // 8期内出现3+次 → 近期活跃，少杀
+        score = 0.15;
+      } else if (count8 >= 2) {
+        // 8期内出现2次 → 中等活跃
+        score = 0.3;
+      } else if (count8 === 1) {
+        // 8期内只出现1次 → 中等可杀
+        score = 0.5;
+      } else {
+        // 最近8期未出现 → 适合杀
+        score = 0.7;
+      }
+
+      results.push({ num, score });
+    }
+    return results.sort((a, b) => b.score - a.score);
+  }
+
   // ================================================================
   //               保护机制（关键改进）
   // ================================================================
@@ -494,15 +540,16 @@ export default function KillPredictor() {
       }
     }
 
-    // 保护3：近期活跃度突然升高的数字（趋势向上）
+    // 保护3：近期活跃度突然升高的数字（趋势向上）— 阈值放宽
     if (hist.length >= 20) {
       const recent10 = hist.slice(-10);
       const prev10 = hist.slice(-20, -10);
       for (let num = 1; num <= 49; num++) {
         const recentFreq = recent10.filter((r) => r.includes(num)).length;
         const prevFreq = prev10.filter((r) => r.includes(num)).length;
-        if (recentFreq > prevFreq + 2) {
-          protect[num].score += (recentFreq - prevFreq) * 0.3;
+        // 阈值从 +2 放宽到 +1，保护系数从 0.3 提高到 0.5
+        if (recentFreq > prevFreq + 1) {
+          protect[num].score += (recentFreq - prevFreq) * 0.5;
           protect[num].reasons.push(`近期活跃↑(${prevFreq}→${recentFreq})`);
         }
       }
@@ -561,6 +608,21 @@ export default function KillPredictor() {
       }
     }
 
+    // 保护6（新）：近5期高频号直接保护 — 出现2+次直接给高保护分
+    const recentShort = hist.slice(-5);
+    for (let num = 1; num <= 49; num++) {
+      const countRecent5 = recentShort.filter((r) => r.includes(num)).length;
+      if (countRecent5 >= 3) {
+        // 5期内出现3+次 → 强保护
+        protect[num].score += countRecent5 * 0.8;
+        protect[num].reasons.push(`近5期出现${countRecent5}次,极热`);
+      } else if (countRecent5 >= 2) {
+        // 5期内出现2次 → 中保护
+        protect[num].score += countRecent5 * 0.5;
+        protect[num].reasons.push(`近5期出现${countRecent5}次,较热`);
+      }
+    }
+
     return protect;
   }
 
@@ -580,6 +642,7 @@ export default function KillPredictor() {
       { name: "S8-转移概率", fn: strategyTransition, label: "低转移" },
       { name: "S9-连号衰减", fn: strategyConsecutiveDecay, label: "连号衰" },
       { name: "S10-尾数约束", fn: strategyTailConstraint, label: "尾数控" },
+      { name: "S11-热度排除", fn: strategyHotExclusion, label: "热号避" },
     ];
 
     // ===== 回测各策略（最近 20 期）=====

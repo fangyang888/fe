@@ -12,12 +12,15 @@ import NumberDigitPredictor from "./NumberDigitPredictor.jsx";
 import Crawler from "./Crawler.jsx";
 // @ts-ignore
 import KillPredictor from "./KillPredictor.jsx";
+// @ts-ignore
+import KillPredictorHK from "./KillPredictorHK.jsx";
 
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter basename="/fe">
     <Routes>
       <Route path="/" element={<App />} />
       <Route path="/kill" element={<KillPredictor />} />
+      <Route path="/kill_hk" element={<KillPredictorHK />} />
       <Route path="/crawler" element={<Crawler />} />
     </Routes>
   </BrowserRouter>,

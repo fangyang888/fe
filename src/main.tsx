@@ -14,11 +14,11 @@ import Crawler from "./Crawler.jsx";
 import KillPredictor from "./KillPredictor.jsx";
 
 createRoot(document.getElementById("root")!).render(
-  <BrowserRouter>
+  <BrowserRouter basename="/fe">
     <Routes>
-      <Route path="/fe" element={<App />} />
-      <Route path="/fe/kill" element={<KillPredictor />} />
-      <Route path="/fe/crawler" element={<Crawler />} />
+      <Route path="/" element={<App />} />
+      <Route path="/kill" element={<KillPredictor />} />
+      <Route path="/crawler" element={<Crawler />} />
     </Routes>
   </BrowserRouter>,
 );

@@ -14,6 +14,8 @@ import Crawler from "./Crawler.jsx";
 import KillPredictor from "./KillPredictor.jsx";
 // @ts-ignore
 import KillPredictorHK from "./KillPredictorHK.jsx";
+// @ts-ignore
+import HistoryManager from "./HistoryManager.jsx";
 
 createRoot(document.getElementById("root")!).render(
   <BrowserRouter basename="/fe">
@@ -22,6 +24,7 @@ createRoot(document.getElementById("root")!).render(
       <Route path="/kill" element={<KillPredictor />} />
       <Route path="/kill_hk" element={<KillPredictorHK />} />
       <Route path="/crawler" element={<Crawler />} />
+      <Route path="/history" element={<HistoryManager />} />
     </Routes>
   </BrowserRouter>,
 );

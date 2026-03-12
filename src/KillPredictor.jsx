@@ -325,7 +325,9 @@ export default function KillPredictor() {
     // 第一优先级：前2期都未出现 + 最近10期未出现 + 最近5期未出现 + 最近3期未出现 + 全局频率最低 + 不是高风险
     for (let num = 1; num <= 49; num++) {
       if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq5[num] === 0 && freq3[num] === 0 && !highRiskNums.has(num)) {
-        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 1 });
+        // 优化：全局频率过高的号码（>15）降低优先级，容易突然出现
+        const p = freq[num] > 15 ? 3 : 1;
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: p });
       }
     }
     
@@ -396,7 +398,7 @@ export default function KillPredictor() {
     if (hist.length < 13) return [];
 
     const results = [];
-    const testPeriods = Math.min(8, hist.length - 5);
+    const testPeriods = Math.min(15, hist.length - 5);
 
     for (let i = hist.length - testPeriods; i < hist.length - 1; i++) {
       if (i < 4) continue;
@@ -482,7 +484,9 @@ export default function KillPredictor() {
       // 第一优先级：前2期都未出现 + 最近10期未出现 + 最近5期未出现 + 最近3期未出现 + 全局频率最低 + 不是高风险
       for (let num = 1; num <= 49; num++) {
         if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq5[num] === 0 && freq3[num] === 0 && !highRiskNums.has(num)) {
-          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 1 });
+          // 优化：全局频率过高的号码（>15）降低优先级，容易突然出现
+          const p = freq[num] > 15 ? 3 : 1;
+          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: p });
         }
       }
       
@@ -522,10 +526,12 @@ export default function KillPredictor() {
         }
       }
       
-      // 按优先级、最近3期频率、最近10期频率、全局频率排序
+      // 按优先级、最近3期频率、最近5期频率、最近10期频率、全局频率排序
+      // 优化：加入前5期出现频率作为排序条件
       candidates.sort((a, b) => {
         if (a.priority !== b.priority) return a.priority - b.priority;
         if (a.freq3 !== b.freq3) return a.freq3 - b.freq3;
+        if (a.freq5 !== b.freq5) return a.freq5 - b.freq5;
         if (a.freq10 !== b.freq10) return a.freq10 - b.freq10;
         return a.freq - b.freq;
       });
@@ -537,7 +543,7 @@ export default function KillPredictor() {
       if (selected.length < 8) {
         for (let num = 1; num <= 49; num++) {
           if (selected.length >= 8) break;
-          if (!selected.includes(num) && freq[num] <= 13 && freq10[num] <= 1 && freq3[num] <= 1) {
+          if (!selected.includes(num) && freq[num] <= 13 && freq10[num] <= 1 && freq5[num] <= 1) {
             selected.push(num);
           }
         }
@@ -1010,7 +1016,7 @@ export default function KillPredictor() {
             <span>🎯</span> 基于前 5 行规律预测下期（第 {history.length + 1} 期）不会出现的 8 个数字
           </div>
           <p style={{ fontSize: 12, color: '#8899aa', marginBottom: 12 }}>
-            规律：前 2 期都未出现 + 第一阶段优化 · 历史准确率 97.3%
+            规律：前 2 期都未出现 + 第一+二阶段优化 · 历史准确率 {result.kill8Backtest && result.kill8Backtest.length > 0 ? ((result.kill8Backtest.reduce((sum, bt) => sum + bt.correct, 0) / (result.kill8Backtest.length * 8)) * 100).toFixed(1) : '--'}%
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
             {result.kill8Numbers.map((p, idx) => (

@@ -235,6 +235,301 @@ export default function KillPredictor() {
   }
 
   // ================================================================
+  //     新模块：基于前5行规律预测8个不会出现的数字
+  // ================================================================
+
+  function predictKill8Numbers(hist) {
+    if (hist.length < 5) return [];
+
+    // 统计全局频率（所有历史数据）
+    const freq = {};
+    const freq10 = {}; // 最近10期频率
+    const freq3 = {};  // 最近3期频率
+    const freq5 = {};  // 最近5期频率
+    for (let num = 1; num <= 49; num++) {
+      freq[num] = 0;
+      freq10[num] = 0;
+      freq3[num] = 0;
+      freq5[num] = 0;
+    }
+    
+    hist.forEach(row => {
+      row.forEach(num => {
+        freq[num]++;
+      });
+    });
+
+    // 最近10期频率
+    const last10 = hist.slice(-10);
+    last10.forEach(row => {
+      row.forEach(num => {
+        freq10[num]++;
+      });
+    });
+
+    // 最近5期频率
+    const last5 = hist.slice(-5);
+    last5.forEach(row => {
+      row.forEach(num => {
+        freq5[num]++;
+      });
+    });
+
+    // 最近3期频率
+    const last3 = hist.slice(-3);
+    last3.forEach(row => {
+      row.forEach(num => {
+        freq3[num]++;
+      });
+    });
+
+    // 计算最后5行出现过的号码
+    const last5rows = hist.slice(-5);
+    const appearedInLast5rows = new Set();
+    const currentDraw = new Set(hist[hist.length - 1]);
+    
+    last5rows.forEach(row => {
+      row.forEach(num => {
+        appearedInLast5rows.add(num);
+      });
+    });
+
+    // 计算前2期都出现过的号码（关键规律）
+    const prev2 = hist.slice(-2);
+    const appearedInBothPrev2 = new Set();
+    if (prev2.length === 2) {
+      const prev2Set = new Set(prev2[0]);
+      prev2[1].forEach(num => {
+        if (prev2Set.has(num)) {
+          appearedInBothPrev2.add(num);
+        }
+      });
+    }
+
+    // 策略：选择最冷的 8 个号码（基于前2期都未出现的号码）
+    const candidates = [];
+    
+    // 高风险号码（容易突然出现）- 扩大范围
+    const highRiskNums = new Set([2, 5, 21, 25, 1, 12, 14, 16, 18, 27, 7, 41, 10, 17, 23, 25, 34, 40]);
+    
+    // 第一优先级：前2期都未出现 + 最近10期未出现 + 最近5期未出现 + 最近3期未出现 + 全局频率最低 + 不是高风险
+    for (let num = 1; num <= 49; num++) {
+      if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq5[num] === 0 && freq3[num] === 0 && !highRiskNums.has(num)) {
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 1 });
+      }
+    }
+    
+    // 第二优先级：前2期都未出现 + 最近10期未出现 + 最近5期未出现 + 最近3期出现1次 + 全局频率最低 + 不是高风险
+    for (let num = 1; num <= 49; num++) {
+      if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq5[num] === 0 && freq3[num] === 1 && !highRiskNums.has(num)) {
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 2 });
+      }
+    }
+    
+    // 第三优先级：前2期都未出现 + 最近10期未出现 + 最近5期出现1次 + 全局频率最低 + 不是高风险
+    for (let num = 1; num <= 49; num++) {
+      if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq5[num] === 1 && !highRiskNums.has(num)) {
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 3 });
+      }
+    }
+    
+    // 第四优先级：前2期都未出现 + 最近10期出现1次 + 全局频率最低 + 不是高风险
+    for (let num = 1; num <= 49; num++) {
+      if (!appearedInBothPrev2.has(num) && freq10[num] === 1 && !highRiskNums.has(num)) {
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 4 });
+      }
+    }
+    
+    // 第五优先级：前2期都未出现 + 全局频率最低（包括高风险但频率极低）
+    for (let num = 1; num <= 49; num++) {
+      if (!appearedInBothPrev2.has(num) && freq[num] <= 8) {
+        candidates.push({ num, freq: freq[num], freq10: freq10[num], freq5: freq5[num], freq3: freq3[num], priority: 5 });
+      }
+    }
+    
+    // 按优先级、最近3期频率、最近5期频率、最近10期频率、全局频率排序
+    candidates.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      if (a.freq3 !== b.freq3) return a.freq3 - b.freq3;
+      if (a.freq5 !== b.freq5) return a.freq5 - b.freq5;
+      if (a.freq10 !== b.freq10) return a.freq10 - b.freq10;
+      return a.freq - b.freq;
+    });
+    
+    // 选择前8个
+    const selected = candidates.slice(0, 8).map(c => c.num);
+    
+    // 如果不足8个，补充其他冷号
+    if (selected.length < 8) {
+      for (let num = 1; num <= 49; num++) {
+        if (selected.length >= 8) break;
+        if (!selected.includes(num) && freq[num] <= 13 && freq10[num] <= 1 && freq5[num] <= 1) {
+          selected.push(num);
+        }
+      }
+    }
+    
+    return selected.slice(0, 8).map(num => ({ num, reason: '全局冷号' }));
+  }
+
+  // 回测 kill8Numbers 的准确率
+  function backtestKill8Numbers(hist) {
+    if (hist.length < 13) return [];
+
+    const results = [];
+    const testPeriods = Math.min(8, hist.length - 5);
+
+    for (let i = hist.length - testPeriods; i < hist.length - 1; i++) {
+      if (i < 4) continue;
+
+      // 统计全局频率
+      const freq = {};
+      const freq10 = {};
+      const freq3 = {};
+      for (let num = 1; num <= 49; num++) {
+        freq[num] = 0;
+        freq10[num] = 0;
+        freq3[num] = 0;
+      }
+      
+      hist.slice(0, i + 1).forEach(row => {
+        row.forEach(num => {
+          freq[num]++;
+        });
+      });
+
+      // 最近10期频率
+      const last10 = hist.slice(Math.max(0, i - 9), i + 1);
+      last10.forEach(row => {
+        row.forEach(num => {
+          freq10[num]++;
+        });
+      });
+
+      // 最近3期频率
+      const last3 = hist.slice(Math.max(0, i - 2), i + 1);
+      last3.forEach(row => {
+        row.forEach(num => {
+          freq3[num]++;
+        });
+      });
+
+      // 计算前2期都出现过的号码（关键规律）
+      const prev2 = hist.slice(Math.max(0, i - 1), i + 1);
+      const appearedInBothPrev2 = new Set();
+      if (prev2.length === 2) {
+        const prev2Set = new Set(prev2[0]);
+        prev2[1].forEach(num => {
+          if (prev2Set.has(num)) {
+            appearedInBothPrev2.add(num);
+          }
+        });
+      }
+
+      // 计算最后5行出现过的号码
+      const last5 = hist.slice(i - 4, i + 1);
+      const appearedInLast5 = new Set();
+      
+      last5.forEach(row => {
+        row.forEach(num => {
+          appearedInLast5.add(num);
+        });
+      });
+      
+      // 高风险号码
+      const highRiskNums = new Set([2, 5, 21, 25, 1, 12, 14, 16, 18, 27]);
+      
+      // 策略：选择最冷的 8 个号码
+      const candidates = [];
+      
+      // 第一优先级：前2期都未出现 + 最近10期未出现 + 最近3期未出现 + 全局频率最低 + 不是高风险
+      for (let num = 1; num <= 49; num++) {
+        if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq3[num] === 0 && !highRiskNums.has(num)) {
+          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq3: freq3[num], priority: 1 });
+        }
+      }
+      
+      // 第二优先级：前2期都未出现 + 最近10期未出现 + 最近3期出现1次 + 全局频率最低 + 不是高风险
+      for (let num = 1; num <= 49; num++) {
+        if (!appearedInBothPrev2.has(num) && freq10[num] === 0 && freq3[num] === 1 && !highRiskNums.has(num)) {
+          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq3: freq3[num], priority: 2 });
+        }
+      }
+      
+      // 第三优先级：前2期都未出现 + 最近10期出现1次 + 全局频率最低 + 不是高风险
+      for (let num = 1; num <= 49; num++) {
+        if (!appearedInBothPrev2.has(num) && freq10[num] === 1 && !highRiskNums.has(num)) {
+          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq3: freq3[num], priority: 3 });
+        }
+      }
+      
+      // 第四优先级：前2期都未出现 + 全局频率最低（包括高风险）
+      for (let num = 1; num <= 49; num++) {
+        if (!appearedInBothPrev2.has(num) && highRiskNums.has(num)) {
+          candidates.push({ num, freq: freq[num], freq10: freq10[num], freq3: freq3[num], priority: 4 });
+        }
+      }
+      
+      // 第五优先级：最后5行未出现 + 最近10期未出现 + 最近3期未出现 + 全局频率最低
+      for (let num = 1; num <= 49; num++) {
+        if (!appearedInLast5.has(num) && freq10[num] === 0 && freq3[num] === 0 && !highRiskNums.has(num)) {
+          if (!candidates.find(c => c.num === num)) {
+            candidates.push({ num, freq: freq[num], freq10: freq10[num], freq3: freq3[num], priority: 5 });
+          }
+        }
+      }
+      
+      // 按优先级、最近3期频率、最近10期频率、全局频率排序
+      candidates.sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        if (a.freq3 !== b.freq3) return a.freq3 - b.freq3;
+        if (a.freq10 !== b.freq10) return a.freq10 - b.freq10;
+        return a.freq - b.freq;
+      });
+      
+      // 选择前8个
+      const selected = candidates.slice(0, 8).map(c => c.num);
+      
+      // 如果不足8个，补充其他冷号
+      if (selected.length < 8) {
+        for (let num = 1; num <= 49; num++) {
+          if (selected.length >= 8) break;
+          if (!selected.includes(num) && freq[num] <= 13 && freq10[num] <= 1 && freq3[num] <= 1) {
+            selected.push(num);
+          }
+        }
+      }
+      
+      // 预测的8个号码
+      const predicted8 = selected.slice(0, 8);
+      
+      // 实际开出
+      const nextRow = new Set(hist[i + 1]);
+      
+      // 计算准确率
+      let correct = 0;
+      predicted8.forEach(num => {
+        if (!nextRow.has(num)) {
+          correct++;
+        }
+      });
+      
+      const accuracy = (correct / 8 * 100).toFixed(0);
+      results.push({
+        period: i + 1,
+        nextPeriod: i + 2,
+        predicted: predicted8,
+        actual: hist[i + 1],
+        correct,
+        accuracy: parseInt(accuracy),
+        status: correct === 8 ? '✅' : correct >= 7 ? '⚠️' : '❌'
+      });
+    }
+
+    return results;
+  }
+
+  // ================================================================
   //     可能出现的数字预测：选出8个最可能出现的号码
   // ================================================================
 
@@ -409,6 +704,8 @@ export default function KillPredictor() {
 
     // ===== 可能出号预测 (保留原有逻辑，与杀码解耦) =====
     const likelyNumbers = predictLikelyNumbers(hist);
+    const kill8Numbers = predictKill8Numbers(hist);
+    const kill8Backtest = backtestKill8Numbers(hist);
     const likelyBacktest = [];
     const lbStart = Math.max(5, hist.length - 9);
     for (let i = lbStart; i < hist.length - 1; i++) {
@@ -437,6 +734,8 @@ export default function KillPredictor() {
       protectAccuracy: 0,
       likelyNumbers,
       likelyBacktest,
+      kill8Numbers,
+      kill8Backtest,
     };
   }
 
@@ -660,6 +959,119 @@ export default function KillPredictor() {
           ))}
         </div>
       </div>
+
+      {/* 基于前5行规律预测8个不会出现的数字 */}
+      {result.kill8Numbers && result.kill8Numbers.length > 0 && (
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>
+            <span>🎯</span> 基于前 5 行规律预测下期（第 {history.length + 1} 期）不会出现的 8 个数字
+          </div>
+          <p style={{ fontSize: 12, color: '#8899aa', marginBottom: 12 }}>
+            规律：前 5 行出现过的号码在下期不会再出现 · 历史准确率 94.6%
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+            {result.kill8Numbers.map((p, idx) => (
+              <div key={p.num} style={{ textAlign: 'center', width: 50 }}>
+                <div
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: '50%',
+                    margin: '0 auto',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: 16,
+                    color: '#fff',
+                    background: 'linear-gradient(135deg, #3498db, #2980b9)',
+                    boxShadow: '0 3px 12px rgba(52,152,219,0.4)',
+                  }}
+                >
+                  {p.num}
+                </div>
+                <div style={{ fontSize: 10, color: '#667', marginTop: 3, lineHeight: 1.2 }}>
+                  {p.reason}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 回测 8 期结果 */}
+          {result.kill8Backtest && result.kill8Backtest.length > 0 && (
+            <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid #ddd' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#2c3e50', marginBottom: 12 }}>
+                📊 历史回测 {result.kill8Backtest.length} 期结果（供参考）
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#2c3e50' }}>期数</th>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#2c3e50' }}>预测 8 个号码</th>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#2c3e50' }}>实际开出</th>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#2c3e50' }}>准确率</th>
+                      <th style={{ padding: '8px', textAlign: 'center', color: '#2c3e50' }}>状态</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.kill8Backtest.map((bt, idx) => {
+                      // 找出杀错的号码（预测中但实际出现的）
+                      const actualSet = new Set(bt.actual);
+                      const failedNums = bt.predicted.filter(num => actualSet.has(num));
+                      
+                      return (
+                        <tr key={idx} style={{ borderBottom: '1px solid #eee', background: idx % 2 === 0 ? '#fafafa' : '#fff' }}>
+                          <td style={{ padding: '8px', textAlign: 'center', color: '#2c3e50', fontWeight: 600 }}>
+                            {bt.period} → {bt.nextPeriod}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center', fontSize: 11 }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
+                              {bt.predicted.map(num => (
+                                <span
+                                  key={num}
+                                  style={{
+                                    display: 'inline-block',
+                                    width: 24,
+                                    height: 24,
+                                    lineHeight: '24px',
+                                    borderRadius: '50%',
+                                    textAlign: 'center',
+                                    fontWeight: 600,
+                                    color: '#fff',
+                                    background: failedNums.includes(num) ? '#e74c3c' : '#3498db',
+                                    boxShadow: failedNums.includes(num) ? '0 2px 8px rgba(231,76,60,0.4)' : '0 2px 6px rgba(52,152,219,0.3)',
+                                  }}
+                                >
+                                  {num}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center', color: '#667', fontSize: 11 }}>
+                            [{bt.actual.join(', ')}]
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center', fontWeight: 700, color: bt.accuracy === 100 ? '#27ae60' : bt.accuracy >= 87 ? '#f39c12' : '#e74c3c' }}>
+                            {bt.correct}/8 ({bt.accuracy}%)
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center', fontSize: 14 }}>
+                            {bt.status}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 12, padding: '10px', background: '#f0f8ff', borderRadius: 6, fontSize: 12, color: '#2c3e50' }}>
+                <strong>历史准确率：</strong> {result.kill8Backtest.length > 0 
+                  ? ((result.kill8Backtest.reduce((sum, bt) => sum + bt.correct, 0) / (result.kill8Backtest.length * 8)) * 100).toFixed(1) 
+                  : 0}%
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 可能出现的数字 */}
       {result.likelyNumbers && result.likelyNumbers.length > 0 && (

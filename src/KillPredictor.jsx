@@ -19,6 +19,51 @@ export default function KillPredictor() {
   const [error, setError] = useState(null);
   const [copiedExclude, setCopiedExclude] = useState(false);
 
+  // 方案B：真实预测记录系统
+  const STORAGE_KEY = 'kill10_records';
+  const [records, setRecords] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  });
+  const [inputActual, setInputActual] = useState('');
+  const [inputPeriod, setInputPeriod] = useState('');
+  const [recordSaved, setRecordSaved] = useState(false);
+
+  const saveRecord = (actual7) => {
+    if (!result || !inputPeriod.trim()) return;
+    const killNums = result.predictions.map(p => p.num);
+    const actualSet = new Set(actual7);
+    const failed = killNums.filter(n => actualSet.has(n));
+    const correct = killNums.length - failed.length;
+    const newRecord = {
+      period: inputPeriod.trim(),
+      date: new Date().toLocaleDateString('zh-CN'),
+      killNums,
+      actual: actual7,
+      failed,
+      correct,
+      accuracy: Math.round(correct / killNums.length * 100),
+    };
+    const updated = [...records, newRecord].slice(-50);
+    setRecords(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    setInputActual('');
+    setInputPeriod('');
+    setRecordSaved(true);
+    setTimeout(() => setRecordSaved(false), 2000);
+  };
+
+  const handleSaveActual = () => {
+    const nums = inputActual.split(/[,\s，]+/).map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n) && n >= 1 && n <= 49);
+    if (nums.length !== 7) { alert('请输入7个号码（1-49）'); return; }
+    saveRecord(nums);
+  };
+
+  const deleteRecord = (idx) => {
+    const updated = records.filter((_, i) => i !== idx);
+    setRecords(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  };
+
   useEffect(() => {
     const load = async () => {
       const paths = ['/fe/history.txt', '/history.txt', './history.txt', 'history.txt'];
@@ -236,8 +281,140 @@ export default function KillPredictor() {
     }));
   }
 
+  // ================================================================
+  // 10杀自适应集成学习引擎
+  // 每5期从多套策略中自动选出近期最优，应用到下期10杀预测
+  // 策略维度：decay / protectWindow / missRiskMult / tailBalance / altBonus
+  // ================================================================
+  const KILL10_PARAM_GRID = [];
+  for (const decay of [0.80, 0.85, 0.90]) {
+    for (const protectWindow of [1, 2, 3]) {
+      for (const missRiskMult of [1.5, 2.0, 2.5]) {
+        for (const tailBalance of [true, false]) {
+          for (const altBonus of [12, 18, 24]) {
+            KILL10_PARAM_GRID.push({ decay, protectWindow, missRiskMult, tailBalance, altBonus });
+          }
+        }
+      }
+    }
+  }
+
+  const kill10Cache = { opts: null, learnedAt: -1, score: 0, strategyName: '' };
+
+  function buildScoreEngineWithOpts(hist, opts) {
+    const { decay, protectWindow, missRiskMult } = opts;
+    const hn = hist.length;
+    const wFreq = new Array(50).fill(0);
+    hist.forEach((row, idx) => {
+      const age = hn - 1 - idx;
+      const w = Math.pow(decay, age);
+      row.forEach(n => { wFreq[n] += w; });
+    });
+    const protect = new Set();
+    const protectReason = {};
+    hist.slice(-protectWindow).forEach(r => r.forEach(n => {
+      protect.add(n);
+      protectReason[n] = protectReason[n] || `近${protectWindow}期热号`;
+    }));
+    for (let n = 1; n <= 49; n++) {
+      if (protect.has(n)) continue;
+      const apps = [];
+      hist.forEach((row, idx) => { if (row.includes(n)) apps.push(idx); });
+      if (apps.length < 3) continue;
+      const lastIdx = apps[apps.length - 1];
+      const gaps = [];
+      for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i - 1]);
+      const avgGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : hn / 7;
+      const lastMiss = hn - 1 - lastIdx;
+      if (lastMiss >= avgGap * missRiskMult) {
+        protect.add(n);
+        protectReason[n] = `遗漏回归风险(缺${lastMiss}期)`;
+        continue;
+      }
+      if (lastIdx === hn - 1) {
+        let rc = 0, rt = 0;
+        for (let j = 0; j < hist.length - 1; j++) {
+          if (hist[j].includes(n)) { rt++; if (hist[j + 1].includes(n)) rc++; }
+        }
+        if (rt > 2 && rc / rt >= 0.20) { protect.add(n); protectReason[n] = `重复率${Math.round(rc/rt*100)}%`; }
+      }
+      if (lastIdx === hn - 2) {
+        let sk = 0, ap = 0;
+        for (let j = 0; j < hist.length - 2; j++) {
+          if (hist[j].includes(n) && !hist[j+1].includes(n)) { ap++; if (hist[j+2].includes(n)) sk++; }
+        }
+        if (ap > 2 && sk / ap >= 0.25) { protect.add(n); protectReason[n] = `跳期率${Math.round(sk/ap*100)}%`; }
+      }
+    }
+    const candidates = [];
+    for (let n = 1; n <= 49; n++) {
+      if (!protect.has(n)) candidates.push({ n, w: wFreq[n], reason: protectReason[n] || '' });
+    }
+    candidates.sort((a, b) => a.w - b.w);
+    return { protect, wFreq, candidates, protectReason };
+  }
+
+  function kill10WithOpts(hist, opts) {
+    const { tailBalance, altBonus } = opts;
+    const N = hist.length;
+    const { candidates } = buildScoreEngineWithOpts(hist, opts);
+    const scored = candidates.map(c => {
+      const p1 = hist[N-1]?.includes(c.n) ? 1 : 0;
+      const p2 = hist[N-2]?.includes(c.n) ? 1 : 0;
+      const p3 = hist[N-3]?.includes(c.n) ? 1 : 0;
+      let bonus = 0;
+      if (p1 === 1 && p2 === 0 && p3 === 1) bonus = -altBonus;
+      if (p1 === 0 && p2 === 1 && p3 === 0) bonus = +altBonus;
+      return { ...c, adjustedW: c.w + bonus };
+    });
+    scored.sort((a, b) => a.adjustedW - b.adjustedW);
+    if (!tailBalance) return scored.slice(0, 10).map(c => c.n);
+    const tailCounts = Array(10).fill(0);
+    const selected = [];
+    for (const c of scored) {
+      if (selected.length >= 10) break;
+      const tail = c.n % 10;
+      if (tailCounts[tail] < 2) { selected.push(c); tailCounts[tail]++; }
+    }
+    for (const c of scored) {
+      if (selected.length >= 10) break;
+      if (!selected.find(s => s.n === c.n)) selected.push(c);
+    }
+    return selected.slice(0, 10).map(c => c.n);
+  }
+
+  function getAdaptiveKill10Opts(hist) {
+    const DEFAULT = { decay: 0.85, protectWindow: 2, missRiskMult: 2.0, tailBalance: true, altBonus: 18 };
+    if (hist.length < 30) return { opts: DEFAULT, score: 0, learnedAt: hist.length };
+    if (kill10Cache.opts && hist.length - kill10Cache.learnedAt < 5) {
+      return { opts: kill10Cache.opts, score: kill10Cache.score, learnedAt: kill10Cache.learnedAt };
+    }
+    const evalWindow = Math.min(30, hist.length - 10);
+    let bestOpts = DEFAULT, bestScore = -1;
+    for (const opts of KILL10_PARAM_GRID) {
+      let correct = 0, total = 0;
+      const start = hist.length - evalWindow;
+      for (let i = start; i < hist.length - 1; i++) {
+        const sub = hist.slice(0, i + 1);
+        const kill = kill10WithOpts(sub, opts);
+        const nextSet = new Set(hist[i + 1]);
+        correct += kill.filter(n => !nextSet.has(n)).length;
+        total += 10;
+      }
+      const acc = correct / total;
+      if (acc > bestScore) { bestScore = acc; bestOpts = opts; }
+    }
+    kill10Cache.opts = bestOpts;
+    kill10Cache.learnedAt = hist.length;
+    kill10Cache.score = bestScore;
+    kill10Cache.strategyName = `decay=${bestOpts.decay} win=${bestOpts.protectWindow} miss=${bestOpts.missRiskMult} tail=${bestOpts.tailBalance} alt=${bestOpts.altBonus}`;
+    return { opts: bestOpts, score: bestScore, learnedAt: hist.length };
+  }
+
   /**
    * buildScoreEngine：供10杀模块使用（保持兼容）
+   * 方案C：加入「遗漏回归风险过滤」
+   * 遗漏期数 > 平均间隔 × 2.0 的号码移出杀码候选（有回归压力）
    */
   function buildScoreEngine(hist) {
     const hn = hist.length;
@@ -259,6 +436,21 @@ export default function KillPredictor() {
       hist.forEach((row, idx) => { if (row.includes(n)) apps.push(idx); });
       if (apps.length < 3) continue;
       const lastIdx = apps[apps.length - 1];
+
+      // ── 方案C：遗漏回归风险过滤 ──────────────────────────────
+      // 计算平均间隔
+      const gaps = [];
+      for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i - 1]);
+      const avgGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : hn / 7;
+      const lastMiss = hn - 1 - lastIdx;
+      // 遗漏超过平均间隔2倍 → 回归压力高，移入保护（不杀）
+      if (lastMiss >= avgGap * 2.0) {
+        protect.add(n);
+        protectReason[n] = `遗漏回归风险(缺${lastMiss}期,均${avgGap.toFixed(0)}期)`;
+        continue;
+      }
+      // ──────────────────────────────────────────────────────────
+
       if (lastIdx === hn - 1) {
         let rc = 0, rt = 0;
         for (let j = 0; j < hist.length - 1; j++) {
@@ -274,12 +466,8 @@ export default function KillPredictor() {
         if (ap > 2 && sk / ap >= 0.25) { protect.add(n); protectReason[n] = `跳期率${Math.round(sk/ap*100)}%`; }
       }
       if (apps.length >= 4) {
-        const gaps = [];
-        for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i-1]);
-        const avgGap = gaps.reduce((a,b) => a+b, 0) / gaps.length;
         const stdDev = Math.sqrt(gaps.reduce((s,g) => s + (g-avgGap)**2, 0) / gaps.length);
         const cv = avgGap > 0 ? stdDev / avgGap : 1;
-        const lastMiss = hn - 1 - lastIdx;
         if (lastMiss >= avgGap * 2.5 && cv < 0.6) { protect.add(n); protectReason[n] = `即将回归(遗漏${lastMiss}期)`; }
       }
     }
@@ -292,43 +480,17 @@ export default function KillPredictor() {
   }
 
   /**
-   * 标准10杀：兼顾覆盖面，总准确率~87%
+   * 标准10杀 v8.0：自适应集成学习版
+   * 每5期自动从 KILL10_PARAM_GRID 中选最优参数
    */
-  function strategyAbsoluteSafe(hist) {
+  function strategyAbsoluteSafe(hist, adaptiveOpts) {
     if (hist.length < 10)
       return Array.from({ length: 49 }, (_, i) => ({ num: i + 1, score: 0, label: '', tier: '' }));
-
-    const N = hist.length;
-    const { candidates } = buildScoreEngine(hist);
-
-    // 附加：冷热交替检测（在候选里加权）
-    const scored = candidates.map(c => {
-      let bonus = 0;
-      const p1 = hist[N-1]?.includes(c.n) ? 1 : 0;
-      const p2 = hist[N-2]?.includes(c.n) ? 1 : 0;
-      const p3 = hist[N-3]?.includes(c.n) ? 1 : 0;
-      if (p1 === 1 && p2 === 0 && p3 === 1) bonus = -18; // 交替出模式，下期冷
-      if (p1 === 0 && p2 === 1 && p3 === 0) bonus = +18;  // 交替缺模式，下期热（不宜杀）
-      return { ...c, adjustedW: c.w + bonus };
-    });
-    scored.sort((a, b) => a.adjustedW - b.adjustedW);
-
-    // 尾数平衡：每个尾数最多2个
-    const tailCounts = Array(10).fill(0);
-    const selected = [];
-    for (const c of scored) {
-      if (selected.length >= 10) break;
-      const tail = c.n % 10;
-      if (tailCounts[tail] < 2) { selected.push(c); tailCounts[tail]++; }
-    }
-    for (const c of scored) {
-      if (selected.length >= 10) break;
-      if (!selected.find(s => s.n === c.n)) selected.push(c);
-    }
-
-    return selected.slice(0, 10).map((c, i) => ({
-      num: c.n,
-      score: -c.adjustedW,
+    const opts = adaptiveOpts || { decay: 0.85, protectWindow: 2, missRiskMult: 2.0, tailBalance: true, altBonus: 18 };
+    const nums = kill10WithOpts(hist, opts);
+    return nums.map((n, i) => ({
+      num: n,
+      score: -(i + 1),
       label: i < 3 ? '极冷' : i < 6 ? '冷号' : '低频',
       tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
       freq: 0,
@@ -505,13 +667,24 @@ export default function KillPredictor() {
     }
     const kill5Accuracy = kill5Total > 0 ? kill5Correct / kill5Total : 0;
 
+    // ── 自适应参数学习（10杀）──
+    const { opts: kill10Opts, score: kill10AdaptiveScore } = getAdaptiveKill10Opts(hist);
+    const kill10AdaptiveInfo = {
+      opts: kill10Opts,
+      score: kill10AdaptiveScore,
+      learnedAt: kill10Cache.learnedAt,
+      strategyName: kill10Cache.strategyName || '',
+      nextLearnAt: kill10Cache.learnedAt + 5,
+    };
+
     // ── 回测10杀 ──
     let kill10Correct = 0, kill10Total = 0;
     const kill10Backtest = [];
     for (let i = hist.length - testPeriods - 1; i < hist.length - 1; i++) {
       const testHist = hist.slice(0, i + 1);
+      const { opts: subOpts } = getAdaptiveKill10Opts(testHist);
       const nextRow = new Set(hist[i + 1]);
-      const preds = strategyAbsoluteSafe(testHist);
+      const preds = strategyAbsoluteSafe(testHist, subOpts);
       const nums = preds.map(p => p.num);
       const failed = nums.filter(n => nextRow.has(n));
       const correct = nums.length - failed.length;
@@ -529,9 +702,16 @@ export default function KillPredictor() {
     }
     const kill10Accuracy = kill10Total > 0 ? kill10Correct / kill10Total : 0;
 
+    // ── 近5期10杀详细回测 ──
+    const kill10Recent5 = kill10Backtest.slice(-5).map(bt => ({
+      ...bt,
+      accuracy: Math.round(bt.rate * 100),
+      status: bt.rate === 1 ? '✅全中' : bt.rate >= 0.9 ? '⚠️9+' : bt.rate >= 0.8 ? '🟡8+' : '❌',
+    }));
+
     // ── 当期预测 ──
     const kill5Preds = strategyKill5(hist);
-    const kill10Preds = strategyAbsoluteSafe(hist);
+    const kill10Preds = strategyAbsoluteSafe(hist, kill10Opts);
 
     const final = kill10Preds.map(p => ({
       num: p.num,
@@ -550,6 +730,64 @@ export default function KillPredictor() {
       accuracy: Math.round(bt.rate * 100),
       status: bt.rate === 1 ? '✅' : bt.rate >= 0.8 ? '⚠️' : '❌',
     }));
+
+    // ── 方案C：区间/奇偶/大小 三维分析 ──────────────────────────
+    // 区间：1-16(小), 17-32(中), 33-49(大3段)
+    // 实际分3段：[1-16],[17-32],[33-49]
+    function analyzeDistribution(rows) {
+      const zoneCounts = [0, 0, 0]; // [1-16, 17-32, 33-49]
+      let oddCount = 0, evenCount = 0;
+      let smallCount = 0, bigCount = 0; // small:1-24, big:25-49
+      rows.forEach(row => {
+        row.forEach(n => {
+          if (n <= 16) zoneCounts[0]++;
+          else if (n <= 32) zoneCounts[1]++;
+          else zoneCounts[2]++;
+          if (n % 2 === 1) oddCount++; else evenCount++;
+          if (n <= 24) smallCount++; else bigCount++;
+        });
+      });
+      const total = rows.length * 7;
+      return {
+        zone: zoneCounts.map(c => c / total),
+        oddRatio: oddCount / total,
+        evenRatio: evenCount / total,
+        smallRatio: smallCount / total,
+        bigRatio: bigCount / total,
+      };
+    }
+
+    // 分析全量历史
+    const distAll = analyzeDistribution(hist);
+    // 近10期趋势
+    const distRecent = analyzeDistribution(hist.slice(-10));
+    // 最近一期特征
+    const lastRow = hist[hist.length - 1];
+    const lastOdd = lastRow.filter(n => n % 2 === 1).length;
+    const lastEven = 7 - lastOdd;
+    const lastSmall = lastRow.filter(n => n <= 24).length;
+    const lastBig = 7 - lastSmall;
+    const lastZone = [lastRow.filter(n=>n<=16).length, lastRow.filter(n=>n>16&&n<=32).length, lastRow.filter(n=>n>32).length];
+
+    // 基于分布预测下期「过热区间」的号码应纳入保护（不杀）
+    // 近10期某区间出现率 > 历史均值 * 1.3 → 该区间热，下期继续出概率高
+    const zoneHot = distRecent.zone.map((r, i) => r > distAll.zone[i] * 1.2);
+    const oddHot = distRecent.oddRatio > distAll.oddRatio * 1.15;
+    const bigHot = distRecent.bigRatio > distAll.bigRatio * 1.15;
+
+    const distributionAnalysis = {
+      distAll, distRecent,
+      lastOdd, lastEven, lastSmall, lastBig, lastZone,
+      zoneHot, oddHot, bigHot,
+      // 下期预测倾向
+      nextOddTrend: oddHot ? '奇数热，下期奇数多' : '偶数补偿，下期偶数多',
+      nextSizeTrend: bigHot ? '大号热，下期大号多' : '小号补偿，下期小号多',
+      nextZoneTrend: zoneHot.map((hot, i) => {
+        const names = ['低区(1-16)', '中区(17-32)', '高区(33-49)'];
+        return hot ? `${names[i]}热` : `${names[i]}冷`;
+      }),
+    };
+    // ─────────────────────────────────────────────────────────────
 
     const likelyNumbers = predictLikelyNumbers(hist);
     const likelyBacktest = [];
@@ -571,10 +809,11 @@ export default function KillPredictor() {
     return {
       predictions: final,
       strategies: [
-        { name: '10杀标准版', accuracy: kill10Accuracy, total: kill10Total },
+        { name: '10杀标准版(方案C)', accuracy: kill10Accuracy, total: kill10Total },
         { name: '5杀高置信版', accuracy: kill5Accuracy, total: kill5Total },
       ],
       backtest: kill10Backtest.slice(-5),
+      kill10Recent5,
       avgAccuracy: kill10Accuracy,
       kill5Preds,
       kill5Accuracy,
@@ -586,6 +825,8 @@ export default function KillPredictor() {
       likelyBacktest,
       kill8Numbers,
       kill8Backtest,
+      distributionAnalysis,
+      kill10AdaptiveInfo,
     };
   }
 
@@ -694,18 +935,31 @@ export default function KillPredictor() {
       <a href="/" style={styles.backLink}>← 返回主页</a>
 
       <div style={styles.header}>
-        <h1 style={styles.title}>🎯 杀码预测 v7.0</h1>
+        <h1 style={styles.title}>🎯 杀码预测 v8.0</h1>
         <p style={styles.subtitle}>
-          基于 {history.length} 期历史数据 · 指数衰减权重 · 回测准确率{' '}
+          基于 {history.length} 期历史数据 · 自适应集成学习 · 回测准确率{' '}
           <strong style={{ color: result.avgAccuracy > 0.90 ? '#2ecc71' : result.avgAccuracy > 0.85 ? '#f1c40f' : '#e67e22' }}>
             {(result.avgAccuracy * 100).toFixed(1)}%
           </strong>
         </p>
+        {result.kill10AdaptiveInfo && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#667788', display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <span>🧠 自适应策略 · 每5期自动优化</span>
+            <span style={{ color: '#64b5f6' }}>当前最优回测分: <strong>{(result.kill10AdaptiveInfo.score * 100).toFixed(1)}%</strong></span>
+            <span style={{ color: '#8899aa' }}>下次更新: 第 {result.kill10AdaptiveInfo.nextLearnAt} 期</span>
+          </div>
+        )}
       </div>
 
       {/* 预测结果 */}
       <div style={styles.card}>
-        <div style={styles.cardTitle}><span>🔮</span> 预测下期不会出现的 10 个数字</div>
+        <div style={styles.cardTitle}><span>🔮</span> 预测下期不会出现的 10 个数字
+          {result.kill10AdaptiveInfo && (
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: '#8899aa' }}>
+              策略: decay={result.kill10AdaptiveInfo.opts.decay} · miss={result.kill10AdaptiveInfo.opts.missRiskMult}x · win={result.kill10AdaptiveInfo.opts.protectWindow}
+            </span>
+          )}
+        </div>
         <div style={styles.numGrid}>
           {result.predictions.map((p, idx) => (
             <div key={p.num} style={{ textAlign: 'center' }}>
@@ -720,6 +974,242 @@ export default function KillPredictor() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* 方案C：三维分布分析 */}
+      {result.distributionAnalysis && (
+        <div style={{ ...styles.card, border: '1px solid rgba(155,89,182,0.35)', background: 'rgba(155,89,182,0.04)' }}>
+          <div style={styles.cardTitle}><span>📐</span> 三维分布分析（方案C）
+            <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9b59b6', fontWeight: 400 }}>区间 · 奇偶 · 大小</span>
+          </div>
+          {(() => {
+            const d = result.distributionAnalysis;
+            const zoneNames = ['低区\n1-16', '中区\n17-32', '高区\n33-49'];
+            const zoneColors = ['#3498db','#e67e22','#e74c3c'];
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* 区间分布 */}
+                <div>
+                  <div style={{ fontSize: 13, color: '#9b59b6', fontWeight: 600, marginBottom: 8 }}>区间分布（历史均值 vs 近10期）</div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    {[0,1,2].map(i => (
+                      <div key={i} style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '10px 8px', textAlign: 'center', border: d.zoneHot[i] ? `1px solid ${zoneColors[i]}55` : '1px solid rgba(255,255,255,0.06)' }}>
+                        <div style={{ fontSize: 11, color: '#8899aa', whiteSpace: 'pre-line', marginBottom: 6 }}>{zoneNames[i]}</div>
+                        <div style={{ fontSize: 13, color: zoneColors[i], fontWeight: 700 }}>{(d.distRecent.zone[i]*100).toFixed(0)}%</div>
+                        <div style={{ fontSize: 11, color: '#667788' }}>均值{(d.distAll.zone[i]*100).toFixed(0)}%</div>
+                        <div style={{ fontSize: 11, marginTop: 4, color: d.zoneHot[i] ? '#f1c40f' : '#8899aa' }}>{d.zoneHot[i] ? '🔥热区' : '❄️冷区'}</div>
+                        <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>上期{d.lastZone[i]}个</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* 奇偶 + 大小 */}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: 12, color: '#9b59b6', fontWeight: 600, marginBottom: 8 }}>奇偶比</div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                      <div style={{ flex: d.distRecent.oddRatio, height: 8, borderRadius: 4, background: '#e74c3c' }} />
+                      <div style={{ flex: d.distRecent.evenRatio, height: 8, borderRadius: 4, background: '#3498db' }} />
+                    </div>
+                    <div style={{ fontSize: 12, color: '#ccc' }}>近10期 奇{(d.distRecent.oddRatio*100).toFixed(0)}% : 偶{(d.distRecent.evenRatio*100).toFixed(0)}%</div>
+                    <div style={{ fontSize: 11, color: '#8899aa' }}>历史均 奇{(d.distAll.oddRatio*100).toFixed(0)}% : 偶{(d.distAll.evenRatio*100).toFixed(0)}%</div>
+                    <div style={{ fontSize: 11, color: '#f1c40f', marginTop: 6 }}>上期：{d.lastOdd}奇 {d.lastEven}偶</div>
+                    <div style={{ fontSize: 11, color: d.oddHot ? '#e74c3c' : '#3498db', marginTop: 4, fontWeight: 600 }}>{d.nextOddTrend}</div>
+                  </div>
+                  <div style={{ flex: 1, background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '12px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: 12, color: '#9b59b6', fontWeight: 600, marginBottom: 8 }}>大小比（≤24小 / ≥25大）</div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                      <div style={{ flex: d.distRecent.smallRatio, height: 8, borderRadius: 4, background: '#2ecc71' }} />
+                      <div style={{ flex: d.distRecent.bigRatio, height: 8, borderRadius: 4, background: '#e67e22' }} />
+                    </div>
+                    <div style={{ fontSize: 12, color: '#ccc' }}>近10期 小{(d.distRecent.smallRatio*100).toFixed(0)}% : 大{(d.distRecent.bigRatio*100).toFixed(0)}%</div>
+                    <div style={{ fontSize: 11, color: '#8899aa' }}>历史均 小{(d.distAll.smallRatio*100).toFixed(0)}% : 大{(d.distAll.bigRatio*100).toFixed(0)}%</div>
+                    <div style={{ fontSize: 11, color: '#f1c40f', marginTop: 6 }}>上期：{d.lastSmall}小 {d.lastBig}大</div>
+                    <div style={{ fontSize: 11, color: d.bigHot ? '#e67e22' : '#2ecc71', marginTop: 4, fontWeight: 600 }}>{d.nextSizeTrend}</div>
+                  </div>
+                </div>
+                {/* 下期建议 */}
+                <div style={{ padding: '10px 14px', background: 'rgba(155,89,182,0.08)', borderRadius: 8, border: '1px solid rgba(155,89,182,0.2)' }}>
+                  <div style={{ fontSize: 12, color: '#9b59b6', fontWeight: 600, marginBottom: 6 }}>📌 下期杀码参考建议</div>
+                  <div style={{ fontSize: 12, color: '#ccc', lineHeight: 1.8 }}>
+                    {d.nextZoneTrend.map((t, i) => <span key={i} style={{ marginRight: 12, color: d.zoneHot[i] ? '#f1c40f' : '#8899aa' }}>{t}</span>)}
+                    <br />
+                    <span style={{ color: d.oddHot ? '#e74c3c' : '#3498db' }}>{d.nextOddTrend}</span>
+                    <span style={{ marginLeft: 16, color: d.bigHot ? '#e67e22' : '#2ecc71' }}>{d.nextSizeTrend}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {result.kill10Recent5 && result.kill10Recent5.length > 0 && (
+        <div style={{ ...styles.card, border: '1px solid rgba(52,152,219,0.35)', background: 'rgba(52,152,219,0.04)' }}>
+          <div style={styles.cardTitle}>
+            <span>📊</span> 近 {result.kill10Recent5.length} 期 10杀回测验证
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64b5f6', fontWeight: 400 }}>
+              方案C：遗漏回归风险过滤已启用
+            </span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.06)', borderBottom: '2px solid rgba(255,255,255,0.15)' }}>
+                  {['期数', '预测10杀号码（红=误杀）', '实际开出', '准确率', '状态'].map(h => (
+                    <th key={h} style={{ padding: '10px 8px', textAlign: 'center', color: '#8899aa', fontSize: 12, fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.kill10Recent5.map((bt, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                    <td style={{ padding: '10px 8px', textAlign: 'center', color: '#ccc', fontWeight: 600 }}>
+                      第{bt.period}期 →<br /><span style={{ fontSize: 11, color: '#8899aa' }}>预测第{bt.period + 1}期</span>
+                    </td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, justifyContent: 'center' }}>
+                        {bt.killNums.map(num => {
+                          const isFailed = bt.failed.includes(num);
+                          return (
+                            <span key={num} style={{
+                              display: 'inline-flex', width: 28, height: 28, borderRadius: '50%',
+                              alignItems: 'center', justifyContent: 'center',
+                              fontWeight: 700, fontSize: 13, color: '#fff',
+                              background: isFailed
+                                ? 'linear-gradient(135deg,#e74c3c,#c0392b)'
+                                : 'linear-gradient(135deg,#27ae60,#2ecc71)',
+                              boxShadow: isFailed ? '0 2px 8px rgba(231,76,60,0.5)' : '0 2px 6px rgba(46,204,113,0.4)',
+                            }}>{num}</span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center', color: '#4fc3f7', fontSize: 12 }}>
+                      {bt.actual.join(', ')}
+                    </td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: bt.rate >= 0.9 ? '#2ecc71' : bt.rate >= 0.8 ? '#f39c12' : '#e74c3c' }}>
+                        {bt.success}/{bt.killNums.length}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#8899aa' }}>({bt.accuracy}%)</div>
+                    </td>
+                    <td style={{ padding: '10px 8px', textAlign: 'center', fontSize: 13, fontWeight: 600,
+                      color: bt.rate === 1 ? '#2ecc71' : bt.rate >= 0.9 ? '#f1c40f' : bt.rate >= 0.8 ? '#f39c12' : '#e74c3c' }}>
+                      {bt.status}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* 汇总统计 */}
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13 }}>
+            <span>✅ 全中：<strong style={{ color: '#2ecc71' }}>{result.kill10Recent5.filter(bt => bt.rate === 1).length} 期</strong></span>
+            <span>⚠️ 9中：<strong style={{ color: '#f1c40f' }}>{result.kill10Recent5.filter(bt => bt.rate >= 0.9 && bt.rate < 1).length} 期</strong></span>
+            <span>🟡 8中：<strong style={{ color: '#f39c12' }}>{result.kill10Recent5.filter(bt => bt.rate >= 0.8 && bt.rate < 0.9).length} 期</strong></span>
+            <span>❌ 误杀：<strong style={{ color: '#e74c3c' }}>{result.kill10Recent5.filter(bt => bt.rate < 0.8).length} 期</strong></span>
+            <span style={{ marginLeft: 'auto' }}>
+              近5期综合准确率：<strong style={{ color: '#64b5f6' }}>
+                {(result.kill10Recent5.reduce((s, bt) => s + bt.rate, 0) / result.kill10Recent5.length * 100).toFixed(1)}%
+              </strong>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* 方案B：真实预测记录系统 */}
+      <div style={{ ...styles.card, border: '1px solid rgba(46,204,113,0.35)', background: 'rgba(46,204,113,0.04)' }}>
+        <div style={styles.cardTitle}><span>📝</span> 真实预测记录（方案B）
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#2ecc71', fontWeight: 400 }}>
+            共记录 {records.length} 期 · 真实命中率{' '}
+            {records.length > 0
+              ? <strong style={{ color: records.reduce((s,r)=>s+r.accuracy,0)/records.length >= 85 ? '#2ecc71' : '#f1c40f' }}>
+                  {(records.reduce((s,r)=>s+r.accuracy,0)/records.length).toFixed(1)}%
+                </strong>
+              : <span style={{ color: '#667788' }}>暂无</span>}
+          </span>
+        </div>
+
+        {/* 录入下期实际结果 */}
+        <div style={{ padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#aaa', marginBottom: 10 }}>开奖后录入实际结果，系统自动计算本次10杀命中率：</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              value={inputPeriod}
+              onChange={e => setInputPeriod(e.target.value)}
+              placeholder="期号 如131"
+              style={{ width: 90, padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 13, outline: 'none' }}
+            />
+            <input
+              value={inputActual}
+              onChange={e => setInputActual(e.target.value)}
+              placeholder="实际开出7个号码，逗号分隔"
+              style={{ flex: 1, minWidth: 200, padding: '8px 10px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: 13, outline: 'none' }}
+            />
+            <button
+              onClick={handleSaveActual}
+              style={{ padding: '8px 18px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13, color: '#fff',
+                background: recordSaved ? 'linear-gradient(135deg,#27ae60,#2ecc71)' : 'linear-gradient(135deg,#2ecc71,#27ae60)',
+                boxShadow: '0 2px 8px rgba(46,204,113,0.3)', transition: 'all 0.3s' }}>
+              {recordSaved ? '✓ 已保存' : '保存'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: '#667788', marginTop: 6 }}>当前预测的10杀：{result.predictions.map(p=>p.num).join(', ')}</div>
+        </div>
+
+        {/* 历史记录表 */}
+        {records.length > 0 && (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'rgba(255,255,255,0.06)', borderBottom: '2px solid rgba(255,255,255,0.12)' }}>
+                    {['期号', '预测10杀', '实际开出', '误杀号', '命中率', '日期', ''].map(h => (
+                      <th key={h} style={{ padding: '8px 6px', textAlign: 'center', color: '#8899aa', fontSize: 11, fontWeight: 600 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...records].reverse().map((rec, idx) => (
+                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: idx%2===0?'rgba(255,255,255,0.02)':'transparent' }}>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: '#f1c40f', fontWeight: 700 }}>第{rec.period}期</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: 11, color: '#8899aa' }}>{rec.killNums.join(',')}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: '#4fc3f7', fontSize: 11 }}>{rec.actual.join(',')}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                        {rec.failed.length === 0
+                          ? <span style={{ color: '#2ecc71', fontWeight: 700 }}>无误杀 ✅</span>
+                          : <span style={{ color: '#e74c3c', fontWeight: 700 }}>{rec.failed.join(',')}</span>}
+                      </td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700,
+                        color: rec.accuracy === 100 ? '#2ecc71' : rec.accuracy >= 90 ? '#f1c40f' : rec.accuracy >= 80 ? '#f39c12' : '#e74c3c' }}>
+                        {rec.correct}/10 ({rec.accuracy}%)
+                      </td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: '#667788', fontSize: 11 }}>{rec.date}</td>
+                      <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                        <button onClick={() => deleteRecord(records.length - 1 - idx)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: 14 }}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* 汇总 */}
+            <div style={{ marginTop: 10, padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 13 }}>
+              <span>✅ 全中：<strong style={{color:'#2ecc71'}}>{records.filter(r=>r.accuracy===100).length}期</strong></span>
+              <span>⚠️ 9中：<strong style={{color:'#f1c40f'}}>{records.filter(r=>r.accuracy>=90&&r.accuracy<100).length}期</strong></span>
+              <span>🟡 8中：<strong style={{color:'#f39c12'}}>{records.filter(r=>r.accuracy>=80&&r.accuracy<90).length}期</strong></span>
+              <span>❌ 有误杀：<strong style={{color:'#e74c3c'}}>{records.filter(r=>r.accuracy<80).length}期</strong></span>
+              <span style={{marginLeft:'auto'}}>真实综合准确率：<strong style={{color: records.reduce((s,r)=>s+r.accuracy,0)/records.length>=85?'#2ecc71':'#f1c40f'}}>{(records.reduce((s,r)=>s+r.accuracy,0)/records.length).toFixed(1)}%</strong></span>
+            </div>
+          </div>
+        )}
+        {records.length === 0 && (
+          <div style={{ textAlign: 'center', color: '#667788', fontSize: 13, padding: '20px 0' }}>
+            开奖后录入实际结果，这里会自动追踪算法的真实命中率
+          </div>
+        )}
       </div>
 
       {/* 5杀高置信模块 */}

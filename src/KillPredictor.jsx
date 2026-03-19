@@ -731,6 +731,127 @@ export default function KillPredictor() {
       status: bt.rate === 1 ? '✅' : bt.rate >= 0.8 ? '⚠️' : '❌',
     }));
 
+    // ── 智能7码精选 ──────────────────────────────────────────────
+    // 从10杀回测统计每个号码「误杀次数」，选误杀最少的6个
+    // + 从4杀高置信选误杀最少的1个，合并为7码
+    const kill10ErrorCount = {};
+    const kill10TotalAppear = {};
+    kill10Backtest.forEach(bt => {
+      bt.killNums.forEach(n => {
+        kill10TotalAppear[n] = (kill10TotalAppear[n] || 0) + 1;
+        if (bt.failed.includes(n)) {
+          kill10ErrorCount[n] = (kill10ErrorCount[n] || 0) + 1;
+        }
+      });
+    });
+    const kill10WithError = final.map(p => {
+      const appear = kill10TotalAppear[p.num] || 1;
+      const errors = kill10ErrorCount[p.num] || 0;
+      return { ...p, errors, appear, errorRate: errors / appear };
+    });
+    kill10WithError.sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors);
+    const selected6 = kill10WithError.slice(0, 6);
+
+    const kill5ErrCount = {};
+    const kill5AppearCount = {};
+    kill5Backtest.forEach(bt => {
+      (bt.killNums || bt.predicted || []).forEach(n => {
+        kill5AppearCount[n] = (kill5AppearCount[n] || 0) + 1;
+        const actualSet = new Set(bt.actual);
+        if (actualSet.has(n)) {
+          kill5ErrCount[n] = (kill5ErrCount[n] || 0) + 1;
+        }
+      });
+    });
+    const kill5WithError = kill5Preds.map(p => {
+      const appear = kill5AppearCount[p.num] || 1;
+      const errors = kill5ErrCount[p.num] || 0;
+      return { ...p, errors, appear, errorRate: errors / appear };
+    });
+    kill5WithError.sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors);
+    const selected1from4 = kill5WithError[0] || null;
+
+    // ── 智能7码精选 近6期回测 ──
+    const smart7Backtest = [];
+    const s7BtCount = Math.min(6, hist.length - 15);
+    for (let i = hist.length - s7BtCount - 1; i < hist.length - 1; i++) {
+      if (i < 14) continue;
+      const subHist = hist.slice(0, i + 1);
+      const nextRow = hist[i + 1];
+      const nextSet = new Set(nextRow);
+
+      // 复现10杀回测误杀统计（用subHist的kill10Backtest）
+      const subKill10Opts = getAdaptiveKill10Opts(subHist).opts;
+      const subFinal = strategyAbsoluteSafe(subHist, subKill10Opts);
+      const subKill10BtErr = {};
+      const subKill10BtApp = {};
+      const subBtLen = Math.min(20, subHist.length - 10);
+      for (let j = subHist.length - subBtLen - 1; j < subHist.length - 1; j++) {
+        if (j < 9) continue;
+        const { opts: jOpts } = getAdaptiveKill10Opts(subHist.slice(0, j + 1));
+        const jPreds = strategyAbsoluteSafe(subHist.slice(0, j + 1), jOpts);
+        const jNext = new Set(subHist[j + 1]);
+        jPreds.forEach(p => {
+          subKill10BtApp[p.num] = (subKill10BtApp[p.num] || 0) + 1;
+          if (jNext.has(p.num)) subKill10BtErr[p.num] = (subKill10BtErr[p.num] || 0) + 1;
+        });
+      }
+      const subKill10Ranked = subFinal.map(p => {
+        const appear = subKill10BtApp[p.num] || 1;
+        const errors = subKill10BtErr[p.num] || 0;
+        return { ...p, errors, appear, errorRate: errors / appear };
+      });
+      subKill10Ranked.sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors);
+      const sub6 = subKill10Ranked.slice(0, 6).map(p => p.num);
+
+      // 复现4杀误杀统计
+      const subKill5Preds = strategyKill5(subHist);
+      const subKill5BtErr = {};
+      const subKill5BtApp = {};
+      const subK5Len = Math.min(20, subHist.length - 10);
+      for (let j = subHist.length - subK5Len - 1; j < subHist.length - 1; j++) {
+        if (j < 9) continue;
+        const jPreds5 = strategyKill5(subHist.slice(0, j + 1));
+        const jNext5 = new Set(subHist[j + 1]);
+        jPreds5.forEach(p => {
+          subKill5BtApp[p.num] = (subKill5BtApp[p.num] || 0) + 1;
+          if (jNext5.has(p.num)) subKill5BtErr[p.num] = (subKill5BtErr[p.num] || 0) + 1;
+        });
+      }
+      const subKill5Ranked = subKill5Preds.map(p => {
+        const appear = subKill5BtApp[p.num] || 1;
+        const errors = subKill5BtErr[p.num] || 0;
+        return { ...p, errors, appear, errorRate: errors / appear };
+      });
+      subKill5Ranked.sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors);
+      const sub1 = subKill5Ranked[0] ? subKill5Ranked[0].num : null;
+
+      const sub7 = [...sub6, ...(sub1 !== null ? [sub1] : [])];
+      const failed7 = sub7.filter(n => nextSet.has(n));
+      const correct7 = sub7.length - failed7.length;
+      smart7Backtest.push({
+        period: i + 1,
+        predicted: sub7,
+        from10nums: sub6,
+        from4num: sub1,
+        actual: nextRow,
+        failed: failed7,
+        correct: correct7,
+        total: sub7.length,
+        rate: correct7 / sub7.length,
+      });
+    }
+
+    const smart7 = {
+      from10: selected6,
+      from4: selected1from4,
+      all7: [...selected6, ...(selected1from4 ? [selected1from4] : [])],
+      kill10WithError,
+      kill5WithError,
+      backtest: smart7Backtest,
+    };
+    // ─────────────────────────────────────────────────────────────
+
     // ── 方案C：区间/奇偶/大小 三维分析 ──────────────────────────
     // 区间：1-16(小), 17-32(中), 33-49(大3段)
     // 实际分3段：[1-16],[17-32],[33-49]
@@ -827,6 +948,7 @@ export default function KillPredictor() {
       kill8Backtest,
       distributionAnalysis,
       kill10AdaptiveInfo,
+      smart7,
     };
   }
 
@@ -975,6 +1097,224 @@ export default function KillPredictor() {
           ))}
         </div>
       </div>
+
+      {/* 智能7码精选模块 */}
+      {result.smart7 && result.smart7.all7.length > 0 && (
+        <div style={{
+          ...styles.card,
+          border: '2px solid rgba(233,69,96,0.6)',
+          background: 'linear-gradient(135deg, rgba(233,69,96,0.08) 0%, rgba(255,107,107,0.04) 100%)',
+        }}>
+          <div style={styles.cardTitle}>
+            <span>🎯</span> 智能7码精选
+            <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: '#e94560' }}>
+              10杀选6（误杀最少）+ 高置信4杀选1 = 7码组合
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#8899aa', marginBottom: 16, marginTop: 0 }}>
+            从回测误杀记录中规避高风险号码，保留最稳定的 6 个杀码，再从高置信4杀中补入最稳1个，组成 7 码杀码组合。
+          </p>
+
+          {/* 7码展示 */}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 20 }}>
+            {result.smart7.from10.map((p, idx) => (
+              <div key={p.num} style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 54, height: 54, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 20, color: '#fff', position: 'relative',
+                  background: p.errorRate === 0
+                    ? 'linear-gradient(135deg,#27ae60,#2ecc71)'
+                    : p.errorRate < 0.2
+                    ? 'linear-gradient(135deg,#2980b9,#3498db)'
+                    : 'linear-gradient(135deg,#e67e22,#f39c12)',
+                  boxShadow: p.errorRate === 0
+                    ? '0 4px 16px rgba(46,204,113,0.45)'
+                    : '0 4px 14px rgba(52,152,219,0.35)',
+                }}>
+                  {p.num}
+                  <span style={{
+                    position: 'absolute', top: -6, right: -6,
+                    background: '#1a1a2e', color: '#e94560',
+                    width: 18, height: 18, borderRadius: '50%',
+                    fontSize: 10, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid #e94560',
+                  }}>{idx + 1}</span>
+                </div>
+                <div style={{ fontSize: 10, color: p.errorRate === 0 ? '#2ecc71' : '#8899aa', marginTop: 4 }}>
+                  误杀 {p.errors}/{p.appear}
+                </div>
+                <div style={{ fontSize: 9, color: '#556677', marginTop: 1 }}>10杀</div>
+              </div>
+            ))}
+
+            {/* 分隔符 */}
+            <div style={{ display: 'flex', alignItems: 'center', color: '#e94560', fontSize: 20, fontWeight: 700, padding: '0 4px' }}>+</div>
+
+            {/* 来自4杀的1个 */}
+            {result.smart7.from4 && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 54, height: 54, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 20, color: '#1a1a2e', position: 'relative',
+                  background: 'linear-gradient(135deg,#f1c40f,#f39c12)',
+                  boxShadow: '0 4px 16px rgba(241,196,15,0.45)',
+                }}>
+                  {result.smart7.from4.num}
+                  <span style={{
+                    position: 'absolute', top: -6, right: -6,
+                    background: '#1a1a2e', color: '#f1c40f',
+                    width: 18, height: 18, borderRadius: '50%',
+                    fontSize: 10, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid #f1c40f',
+                  }}>★</span>
+                </div>
+                <div style={{ fontSize: 10, color: '#f1c40f', marginTop: 4 }}>
+                  误杀 {result.smart7.from4.errors}/{result.smart7.from4.appear}
+                </div>
+                <div style={{ fontSize: 9, color: '#f39c12', marginTop: 1 }}>高置信4杀</div>
+              </div>
+            )}
+          </div>
+
+          {/* 汇总号码 */}
+          <div style={{
+            padding: '12px 16px',
+            background: 'rgba(233,69,96,0.08)',
+            borderRadius: 10,
+            border: '1px solid rgba(233,69,96,0.25)',
+            marginBottom: 14,
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{ fontSize: 13, color: '#e94560', fontWeight: 700, whiteSpace: 'nowrap' }}>📋 7码组合：</span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {result.smart7.all7.map((p, idx) => (
+                <span key={p.num} style={{
+                  display: 'inline-flex', width: 32, height: 32, borderRadius: '50%',
+                  alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 14,
+                  color: idx < 6 ? '#fff' : '#1a1a2e',
+                  background: idx < 6
+                    ? 'linear-gradient(135deg,#e94560,#c23152)'
+                    : 'linear-gradient(135deg,#f1c40f,#f39c12)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                }}>{p.num}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* 10杀完整误杀详情表 */}
+          <div style={{ fontSize: 12, color: '#8899aa', marginBottom: 8 }}>📊 10杀各号回测误杀明细（用于筛选6个最稳号码）</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {result.smart7.kill10WithError.map((p, idx) => {
+              const isSelected = result.smart7.from10.some(s => s.num === p.num);
+              return (
+                <div key={p.num} style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  padding: '6px 10px', borderRadius: 8, minWidth: 52,
+                  background: isSelected ? 'rgba(46,204,113,0.12)' : 'rgba(255,255,255,0.04)',
+                  border: isSelected ? '1px solid rgba(46,204,113,0.4)' : '1px solid rgba(255,255,255,0.07)',
+                  opacity: isSelected ? 1 : 0.55,
+                }}>
+                  <span style={{ fontWeight: 700, fontSize: 15, color: isSelected ? '#2ecc71' : '#8899aa' }}>{p.num}</span>
+                  <span style={{ fontSize: 10, color: p.errors === 0 ? '#2ecc71' : p.errorRate < 0.2 ? '#f1c40f' : '#e74c3c', marginTop: 2 }}>
+                    {p.errors}误/{p.appear}次
+                  </span>
+                  <span style={{ fontSize: 9, color: '#445566', marginTop: 1 }}>{(p.errorRate * 100).toFixed(0)}%</span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 智能7码精选 近6期回测 */}
+          {result.smart7.backtest && result.smart7.backtest.length > 0 && (
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', marginBottom: 12 }}>
+                🧪 近 {result.smart7.backtest.length} 期回测验证
+                <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 400, color: '#8899aa' }}>
+                  综合准确率：<strong style={{ color:
+                    result.smart7.backtest.reduce((s, b) => s + b.rate, 0) / result.smart7.backtest.length >= 0.9 ? '#2ecc71'
+                    : result.smart7.backtest.reduce((s, b) => s + b.rate, 0) / result.smart7.backtest.length >= 0.8 ? '#f1c40f' : '#e74c3c'
+                  }}>
+                    {(result.smart7.backtest.reduce((s, b) => s + b.rate, 0) / result.smart7.backtest.length * 100).toFixed(1)}%
+                  </strong>
+                </span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.06)', borderBottom: '2px solid rgba(255,255,255,0.12)' }}>
+                      {['期数', '预测7码（红=误杀）', '实际开出', '准确率', '状态'].map(h => (
+                        <th key={h} style={{ padding: '8px 6px', textAlign: 'center', color: '#8899aa', fontSize: 11, fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.smart7.backtest.map((bt, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                        <td style={{ padding: '8px 6px', textAlign: 'center', color: '#ccc', fontWeight: 600 }}>
+                          第{bt.period}期
+                          <br /><span style={{ fontSize: 10, color: '#667788' }}>→第{bt.period + 1}期</span>
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
+                            {bt.predicted.map((n, ni) => {
+                              const isFailed = bt.failed.includes(n);
+                              const isFrom4 = n === bt.from4num;
+                              return (
+                                <span key={n} style={{
+                                  display: 'inline-flex', width: 26, height: 26, borderRadius: '50%',
+                                  alignItems: 'center', justifyContent: 'center',
+                                  fontWeight: 700, fontSize: 12, color: isFailed ? '#fff' : isFrom4 ? '#1a1a2e' : '#fff',
+                                  background: isFailed
+                                    ? 'linear-gradient(135deg,#e74c3c,#c0392b)'
+                                    : isFrom4
+                                    ? 'linear-gradient(135deg,#f1c40f,#f39c12)'
+                                    : 'linear-gradient(135deg,#27ae60,#2ecc71)',
+                                  boxShadow: isFailed ? '0 2px 6px rgba(231,76,60,0.5)' : '0 1px 4px rgba(0,0,0,0.3)',
+                                  outline: isFrom4 && !isFailed ? '2px solid #f39c12' : 'none',
+                                }}>{n}</span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'center', color: '#4fc3f7', fontSize: 11 }}>
+                          {bt.actual.join(', ')}
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'center' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14,
+                            color: bt.rate >= 1 ? '#2ecc71' : bt.rate >= 6/7 ? '#f1c40f' : bt.rate >= 5/7 ? '#f39c12' : '#e74c3c' }}>
+                            {bt.correct}/{bt.total}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#8899aa' }}>({(bt.rate * 100).toFixed(0)}%)</div>
+                        </td>
+                        <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: 14, fontWeight: 700,
+                          color: bt.rate >= 1 ? '#2ecc71' : bt.rate >= 6/7 ? '#f1c40f' : bt.rate >= 5/7 ? '#f39c12' : '#e74c3c' }}>
+                          {bt.rate >= 1 ? '✅全中' : bt.rate >= 6/7 ? '⚠️6中' : bt.rate >= 5/7 ? '🟡5中' : '❌'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(233,69,96,0.06)', borderRadius: 8, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+                <span>✅ 全中：<strong style={{ color: '#2ecc71' }}>{result.smart7.backtest.filter(b => b.rate >= 1).length} 期</strong></span>
+                <span>⚠️ 6中：<strong style={{ color: '#f1c40f' }}>{result.smart7.backtest.filter(b => b.rate >= 6/7 && b.rate < 1).length} 期</strong></span>
+                <span>🟡 5中：<strong style={{ color: '#f39c12' }}>{result.smart7.backtest.filter(b => b.rate >= 5/7 && b.rate < 6/7).length} 期</strong></span>
+                <span>❌ 误杀：<strong style={{ color: '#e74c3c' }}>{result.smart7.backtest.filter(b => b.rate < 5/7).length} 期</strong></span>
+                <span style={{ marginLeft: 'auto' }}>
+                  7码组合命中率：<strong style={{ color: '#e94560' }}>
+                    {(result.smart7.backtest.reduce((s, b) => s + b.rate, 0) / result.smart7.backtest.length * 100).toFixed(1)}%
+                  </strong>
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 方案C：三维分布分析 */}
       {result.distributionAnalysis && (

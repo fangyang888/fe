@@ -5,22 +5,47 @@ on:
     branches: [main]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Build Frontend
+        run: |
+          npm install
+          npm run build
+
+      - name: Build Backend
+        run: |
+          cd server
+          npm install
+          npm run build
+
+      - name: Deploy to ECS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          password: ${{ secrets.ECS_PASSWORD }}
+          source: "dist/,server/dist/,server/package.json,server/package-lock.json,ecosystem.config.cjs"
+          target: "/home/deploy/fe"
+          strip_components: 0
+
+      - name: Post-deployment
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
-          key: ${{ secrets.ECS_SSH_KEY }}
+          password: ${{ secrets.ECS_PASSWORD }}
           script: |
-            cd /home/deploy/fe
-            git pull origin main
-            npm install
-            npm run build
-            cd server
-            npm install
-            npm run build
+            cd /home/deploy/fe/server
+            npm install --production
             cd ..
-            pm2 restart fe-server
+            pm2 startOrReload ecosystem.config.cjs --env production

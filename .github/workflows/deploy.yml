@@ -2,7 +2,7 @@ name: Deploy to Alibaba Cloud ECS
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/v4]
 
 jobs:
   build-and-deploy:
@@ -34,8 +34,8 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: "dist/,server/dist/,server/package.json,server/package-lock.json,ecosystem.config.cjs"
-          target: "/home/deploy/fe"
+          source: 'dist/,server/dist/,server/package.json,server/package-lock.json,ecosystem.config.cjs'
+          target: '/home/deploy/fe'
           strip_components: 0
 
       - name: Post-deployment

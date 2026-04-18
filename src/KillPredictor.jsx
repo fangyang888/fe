@@ -1264,7 +1264,7 @@ export default function KillPredictor() {
     <div style={styles.container}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <a href="/" style={styles.backLink}>← 返回主页</a>
+      <a href="/" style={styles.backLink}>← 返回主页1</a>
 
       <div style={styles.header}>
         <h1 style={styles.title}>🎯 杀码预测 v8.0</h1>

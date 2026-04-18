@@ -50,6 +50,16 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
           script: |
+            # 调试信息
+            echo "Current PATH: $PATH"
+            echo "Current User: $(whoami)"
+            
+            echo "Searching for npm..."
+            which npm || find /usr/bin /usr/local/bin -name npm 2>/dev/null || true
+            
+            echo "Searching for pm2..."
+            which pm2 || find /usr/bin /usr/local/bin -name pm2 2>/dev/null || true
+
             # 强制加载环境变量
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"

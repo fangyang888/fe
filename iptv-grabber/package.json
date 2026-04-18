@@ -1,0 +1,13 @@
+{
+  "name": "iptv-grabber",
+  "version": "1.0.0",
+  "description": "公开 IPTV 直播源抓取工具",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "check": "node index.js --check"
+  },
+  "dependencies": {
+    "axios": "^1.7.0"
+  }
+}

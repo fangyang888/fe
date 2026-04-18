@@ -50,23 +50,9 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
           script: |
-            echo "--- 系统信息 ---"
-            cat /etc/os-release | grep PRETTY_NAME || true
-            
-            echo "--- 正在全盘查找 npm (可能较慢) ---"
-            find / -name npm -type f -executable 2>/dev/null | grep bin | head -n 3 || echo "未找到 npm"
-            
-            echo "--- 正在全盘查找 pm2 ---"
-            find / -name pm2 -type f -executable 2>/dev/null | grep bin | head -n 3 || echo "未找到 pm2"
-            
-            echo "--- 检查 Node 状态 ---"
-            node -v || /usr/bin/node -v || echo "Node 也不在路径中"
-
-            # 之前的尝试
+            # 加载环境变量
             export PATH=$PATH:/usr/local/bin:/usr/bin:/bin
-            
-            # 如果你知道路径，可以在这里手动添加，例如：
-            # export PATH=$PATH:/your/node/path/bin
+            [ -s "$HOME/.nvm/nvm.sh" ] && \. "$HOME/.nvm/nvm.sh"
 
             cd /home/deploy/fe/server
             npm install --production

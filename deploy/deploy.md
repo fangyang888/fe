@@ -1,35 +1,36 @@
-# 阿里云 ECS 部署指南
+# 阿里云 ECS 部署指南 (针对 Alibaba Cloud Linux 3 / CentOS)
 
 ## 1. 购买 ECS
 
-- 推荐配置：2C4G Ubuntu 22.04
+- 推荐配置：2C4G Alibaba Cloud Linux 3
 - 安全组开放端口：22 (SSH), 80 (HTTP), 443 (HTTPS), 3306 (MySQL, 仅内网)
 
 ## 2. 安装基础环境
 
 ```bash
 # 更新系统
-sudo apt update && sudo apt upgrade -y
+sudo dnf update -y
 
-# 安装 Node.js 18
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs
+# 安装 Node.js 和 npm
+sudo dnf install -y nodejs npm
 
 # 安装 PM2
 sudo npm install -g pm2
 
 # 安装 Nginx
-sudo apt install -y nginx
+sudo dnf install -y nginx
 
 # 安装 MySQL 8
-sudo apt install -y mysql-server
-sudo mysql_secure_installation
+sudo dnf install -y mysql-server
+sudo systemctl start mysqld
+sudo systemctl enable mysqld
+# sudo mysql_secure_installation  # 可选：初始化数据库安全设置
 ```
 
 ## 3. 配置 MySQL
 
 ```bash
-sudo mysql
+mysql
 
 # 创建数据库和用户
 CREATE DATABASE fe_prediction CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

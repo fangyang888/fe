@@ -39,7 +39,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/,server/dist/,server/package.json,server/package-lock.json,ecosystem.config.cjs'
+          source: 'dist/**,server/dist/**,server/package.json,server/package-lock.json,ecosystem.config.cjs'
           target: '/home/deploy/fe'
           strip_components: 0
 
@@ -53,6 +53,10 @@ jobs:
             # 加载环境变量
             export PATH=$PATH:/usr/local/bin:/usr/bin:/bin
             [ -s "$HOME/.nvm/nvm.sh" ] && \. "$HOME/.nvm/nvm.sh"
+
+            # 调试：检查后端产物是否存在
+            echo "Current directory: $(pwd)"
+            ls -R /home/deploy/fe/server/dist || echo "Backend dist NOT found!"
 
             cd /home/deploy/fe/server
             npm install --production

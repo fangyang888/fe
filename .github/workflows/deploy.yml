@@ -54,11 +54,19 @@ jobs:
             export PATH=$PATH:/usr/local/bin:/usr/bin:/bin
             [ -s "$HOME/.nvm/nvm.sh" ] && \. "$HOME/.nvm/nvm.sh"
 
-            # 调试：检查后端产物是否存在
-            echo "Current directory: $(pwd)"
-            ls -R /home/deploy/fe/server/dist || echo "Backend dist NOT found!"
-
             cd /home/deploy/fe/server
+            
+            # 动态生成 .env 文件
+            echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
+            echo "DB_PORT=3306" >> .env
+            echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+            echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+            echo "PORT=3000" >> .env
+
+            echo ".env file generated successfully."
+
+            # 安装依赖并重启服务
             npm install --production
             cd ..
             pm2 startOrReload ecosystem.config.cjs --env production

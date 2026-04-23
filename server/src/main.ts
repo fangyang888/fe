@@ -11,7 +11,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 允许跨域（开发环境）
+  // 允许跨域（开发环境）shi
   app.enableCors();
 
   const port = process.env.PORT || 3000;

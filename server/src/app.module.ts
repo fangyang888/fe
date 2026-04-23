@@ -1,30 +1,35 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { HistoryModule } from './history/history.module';
 import { History } from './history/history.entity';
 import { AppController } from './app.controller';
+import { CrawlerModule } from './crawler/crawler.module';
 
 @Module({
   imports: [
     // 加载 .env 配置
     ConfigModule.forRoot({
-      envFilePath: join(__dirname, '..', '.env'),
+      envFilePath: join(process.cwd(), '.env'),
       isGlobal: true,
     }),
 
     // MySQL 连接（TypeORM）
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '3306', 10),
-      username: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'fe_prediction',
-      entities: [History],
-      synchronize: true, // 开发环境自动同步表结构，生产环境建议关闭
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'mysql',
+        host: configService.get<string>('DB_HOST', 'localhost'),
+        port: configService.get<number>('DB_PORT', 3306),
+        username: configService.get<string>('DB_USER', 'root'),
+        password: configService.get<string>('DB_PASSWORD', ''),
+        database: configService.get<string>('DB_NAME', 'fe_prediction'),
+        entities: [History],
+        synchronize: process.env.NODE_ENV !== 'production', // 生产环境关闭自动同步
+      }),
     }),
 
     // 生产环境：托管前端 dist 静态文件
@@ -36,6 +41,8 @@ import { AppController } from './app.controller';
 
     // History 模块
     HistoryModule,
+
+    CrawlerModule,
   ],
   controllers: [AppController],
 })

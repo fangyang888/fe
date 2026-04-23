@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'fe-server',
       cwd: './server',
-      script: 'dist/src/main.js',
+      script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
       env: {

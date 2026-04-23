@@ -1,3 +1,10 @@
+import * as crypto from 'crypto';
+Object.defineProperty(globalThis, 'crypto', {
+  value: {
+    randomUUID: crypto.randomUUID,
+  },
+});
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 

@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
 
+interface PredictionResult {
+  n: number;
+  w: number;
+}
+
 @Injectable()
 export class PredictorService {
   constructor(private readonly historyService: HistoryService) {}
@@ -160,7 +165,7 @@ export class PredictorService {
     return { candidates };
   }
 
-  private kill10WithOptsMemo(hist: number[][], opts: any) {
+  private kill10WithOptsMemo(hist: number[][], opts: any): PredictionResult[] {
     const key = `${hist.length}-${JSON.stringify(opts)}`;
     if (this.memoKill10.has(key)) return this.memoKill10.get(key);
     const res = this.kill10WithOpts(hist, opts);
@@ -209,9 +214,9 @@ export class PredictorService {
     }
     for (const c of scored) {
       if (selected.length >= 10) break;
-      if (!selected.find((s) => s.n === c.n)) selected.push(c);
+      if (!selected.find((s: any) => s.n === c.n)) selected.push(c);
     }
-    return selected.slice(0, 10).map(c => ({n: c.n, w: c.w}));
+    return selected.slice(0, 10).map((c: any) => ({n: c.n, w: c.w}));
   }
 
   private getAdaptiveKill10Opts(hist: number[][]) {
@@ -233,9 +238,9 @@ export class PredictorService {
       const start = hist.length - evalWindow;
       for (let i = start; i < hist.length - 1; i++) {
         const sub = hist.slice(0, i + 1);
-        const kill = this.kill10WithOptsMemo(sub, opts).map(c => c.n);
+        const kill = this.kill10WithOptsMemo(sub, opts).map((c: any) => c.n);
         const nextSet = new Set(hist[i + 1]);
-        correct += kill.filter((n) => !nextSet.has(n)).length;
+        correct += kill.filter((n: number) => !nextSet.has(n)).length;
         total += 10;
       }
       baseResults.push({ opts, score: total > 0 ? correct / total : 0 });
@@ -255,9 +260,9 @@ export class PredictorService {
         const start = hist.length - evalWindow;
         for (let i = start; i < hist.length - 1; i++) {
           const sub = hist.slice(0, i + 1);
-          const kill = this.kill10WithRepulsionMemo(sub, combined).map(c => c.n);
+          const kill = this.kill10WithRepulsionMemo(sub, combined).map((c: any) => c.n);
           const nextSet = new Set(hist[i + 1]);
-          correct += kill.filter((n) => !nextSet.has(n)).length;
+          correct += kill.filter((n: number) => !nextSet.has(n)).length;
           total += 10;
         }
         const acc = total > 0 ? correct / total : 0;
@@ -273,7 +278,7 @@ export class PredictorService {
   /**
    * kill10 enhanced with repulsion scoring from co-occurrence matrix & Apriori rules.
    */
-  private kill10WithRepulsionMemo(hist: number[][], opts: any) {
+  private kill10WithRepulsionMemo(hist: number[][], opts: any): PredictionResult[] {
     const key = `${hist.length}-${JSON.stringify(opts)}`;
     if (this.memoKillRepulsion.has(key)) return this.memoKillRepulsion.get(key);
     const res = this.kill10WithRepulsion(hist, opts);
@@ -518,7 +523,7 @@ export class PredictorService {
     // Server Extra: Markov Penalty Filtering
     // We heavily penalize numbers that have a high markov transition probability.
     const markovProbs = this.getMarkovPredictions(hist);
-    baseNums = baseNums.filter(c => {
+    baseNums = baseNums.filter((c: any) => {
       // average prob is around 7/49 = 0.142
       // If a number has > 0.25 probability to appear from markov chain, it's dangerous to kill
       if (markovProbs[c.n] > 0.22) return false;
@@ -532,10 +537,10 @@ export class PredictorService {
 
     const lowCVPicks = this.pickLowCVFromLastRow(hist, 2);
     const top8 = baseNums.slice(0, 8);
-    const top8Nums = top8.map(c => c.n);
+    const top8Nums = top8.map((c: any) => c.n);
     
-    const validPicks = lowCVPicks.filter((p) => !top8Nums.includes(p.n)).map(p => ({ n: p.n, reason: "上期低CV", tier: "C2" }));
-    const finalNums = [...top8.map((c, i) => ({
+    const validPicks = lowCVPicks.filter((p: any) => !top8Nums.includes(p.n)).map((p: any) => ({ n: p.n, reason: "上期低CV", tier: "C2" }));
+    const finalNums = [...top8.map((c: any, i: number) => ({
       n: c.n,
       tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
       repulsionScore: Math.round((repulsionScores[c.n] || 0) * 100) / 100,
@@ -543,8 +548,8 @@ export class PredictorService {
     })), ...validPicks];
     
     if (finalNums.length < 10) {
-      const extras = baseNums.slice(8).filter((c) => !finalNums.find(f => f.n === c.n));
-      extras.forEach(e => finalNums.push({ n: e.n, tier: 'S3', repulsionScore: 0, aprioriScore: 0 }));
+      const extras = baseNums.slice(8).filter((c: any) => !finalNums.find((f: any) => f.n === c.n));
+      extras.forEach((e: any) => finalNums.push({ n: e.n, tier: 'S3', repulsionScore: 0, aprioriScore: 0 }));
     }
     
     // Fill if still < 10 (due to markov filter dropping too many)

@@ -6,6 +6,7 @@ import { join } from 'path';
 import { HistoryModule } from './history/history.module';
 import { History } from './history/history.entity';
 import { AppController } from './app.controller';
+import { PredictorModule } from './predictor/predictor.module';
 import { CrawlerModule } from './crawler/crawler.module';
 
 @Module({
@@ -41,7 +42,7 @@ import { CrawlerModule } from './crawler/crawler.module';
 
     // History 模块
     HistoryModule,
-
+    PredictorModule,
     CrawlerModule,
   ],
   controllers: [AppController],

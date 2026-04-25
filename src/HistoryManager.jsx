@@ -9,6 +9,8 @@ export default function HistoryManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inputs, setInputs] = useState(["", "", "", "", "", "", ""]);
+  const [yearInput, setYearInput] = useState("");
+  const [noInput, setNoInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -40,16 +42,22 @@ export default function HistoryManager() {
       setMsg({ type: "error", text: "请输入7个 1-49 之间的数字" });
       return;
     }
+    const payload = { numbers };
+    if (yearInput.trim()) payload.year = parseInt(yearInput.trim(), 10);
+    if (noInput.trim()) payload.No = parseInt(noInput.trim(), 10);
+
     setSubmitting(true);
     setMsg(null);
     try {
       const res = await fetch(API_BASE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numbers }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("新增失败");
       setInputs(["", "", "", "", "", "", ""]);
+      setYearInput("");
+      setNoInput("");
       setMsg({ type: "success", text: "✅ 新增成功" });
       fetchRecords();
     } catch (e) {
@@ -241,6 +249,20 @@ export default function HistoryManager() {
               style={styles.input}
             />
           ))}
+          <input
+            type="number"
+            value={yearInput}
+            onChange={(e) => setYearInput(e.target.value)}
+            placeholder="Year"
+            style={{ ...styles.input, width: 60 }}
+          />
+          <input
+            type="number"
+            value={noInput}
+            onChange={(e) => setNoInput(e.target.value)}
+            placeholder="No"
+            style={{ ...styles.input, width: 60 }}
+          />
           <button
             onClick={handleAdd}
             disabled={submitting}
@@ -271,6 +293,8 @@ export default function HistoryManager() {
               <thead>
                 <tr>
                   <th style={styles.th}>ID</th>
+                  <th style={styles.th}>Year</th>
+                  <th style={styles.th}>No</th>
                   <th style={styles.th}>号码</th>
                   <th style={styles.th}>时间</th>
                   <th style={styles.th}>操作</th>
@@ -280,6 +304,8 @@ export default function HistoryManager() {
                 {records.map((r) => (
                   <tr key={r.id}>
                     <td style={styles.td}>{r.id}</td>
+                    <td style={styles.td}>{r.year || "-"}</td>
+                    <td style={styles.td}>{r.No || "-"}</td>
                     <td style={{ ...styles.td, ...styles.numCell }}>
                       {[r.n1, r.n2, r.n3, r.n4, r.n5, r.n6, r.n7]
                         .map((n) => String(n).padStart(2, "0"))

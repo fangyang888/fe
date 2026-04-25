@@ -14,6 +14,8 @@ import { History } from './history.entity';
 
 class CreateHistoryDto {
   numbers: number[];
+  year?: number;
+  No?: number;
 }
 
 @Controller('api/history')
@@ -42,7 +44,7 @@ export class HistoryController {
   /** POST /api/history — 新增 { numbers: [7个数字] } */
   @Post()
   async create(@Body() dto: CreateHistoryDto): Promise<History> {
-    return this.historyService.create(dto.numbers);
+    return this.historyService.create(dto.numbers, dto.year, dto.No);
   }
 
   /** PUT /api/history/:id — 修改 */
@@ -51,7 +53,7 @@ export class HistoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateHistoryDto,
   ): Promise<History> {
-    return this.historyService.update(id, dto.numbers);
+    return this.historyService.update(id, dto.numbers, dto.year, dto.No);
   }
 
   /** DELETE /api/history/:id — 删除 */

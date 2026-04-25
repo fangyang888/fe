@@ -105,28 +105,25 @@ export default function KillPredictor() {
 
   useEffect(() => {
     const load = async () => {
-      const paths = ['/fe/history.txt', '/history.txt', './history.txt', 'history.txt'];
-      for (const path of paths) {
-        try {
-          const res = await fetch(path);
-          if (res.ok) {
-            const text = await res.text();
-            if (text.trim()) {
-              const rows = text
-                .trim()
-                .split('\n')
-                .filter((line) => line.trim())
-                .map((line) => line.split(',').map((n) => parseInt(n.trim(), 10)))
-                .filter((row) => row.length === 7 && row.every((n) => !isNaN(n)));
-              if (rows.length > 0) {
-                setHistory(rows);
-                return;
-              }
-            }
+      // 从后端接口读取 (this.historyService.findAll())
+      try {
+        const res = await fetch('/api/history');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            // 将对象数组格式转换为原先算法需要的二维数组格式
+            const rows = data.map(item => [
+              item.n1, item.n2, item.n3, item.n4, item.n5, item.n6, item.n7
+            ]);
+            setHistory(rows);
+            return;
           }
-        } catch (_) {}
+        }
+      } catch (err) {
+        console.error('从接口读取失败', err);
       }
-      setError('无法加载 history.txt');
+
+      setError('无法加载 history 数据');
       setLoading(false);
     };
     load();
@@ -1495,10 +1492,14 @@ export default function KillPredictor() {
     <div style={styles.container}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <a href="/" style={styles.backLink}>
-        ← 返回主页1
-      </a>
-
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+        <a href="/" style={styles.backLink}>
+          ← 返回主页1
+        </a>
+        <a href="/fe/history" style={styles.backLink}>
+          📋 历史数据管理
+        </a>
+      </div>
       <div style={styles.header}>
         <h1 style={styles.title}>🎯 预测 v8.0</h1>
         <p style={styles.subtitle}>

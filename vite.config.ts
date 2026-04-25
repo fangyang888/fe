@@ -13,6 +13,12 @@ export default defineConfig({
     port: 5173, // 默认端口
     strictPort: false, // 如果端口被占用，自动尝试下一个可用端口
     cors: true, // 允许所有来源访问（开发环境）
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      }
+    },
     // 禁用 HMR 的客户端主机检查，允许移动端访问
     hmr: {
       clientPort: 5173,

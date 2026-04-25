@@ -25,7 +25,7 @@ export class HistoryService {
   }
 
   /** 新增一行 */
-  async create(numbers: number[]): Promise<History> {
+  async create(numbers: number[], year?: number, No?: number): Promise<History> {
     if (numbers.length !== 7) {
       throw new Error('需要恰好 7 个数字');
     }
@@ -37,12 +37,14 @@ export class HistoryService {
       n5: numbers[4],
       n6: numbers[5],
       n7: numbers[6],
+      year,
+      No,
     });
     return this.historyRepo.save(record);
   }
 
   /** 修改一行 */
-  async update(id: number, numbers: number[]): Promise<History> {
+  async update(id: number, numbers: number[], year?: number, No?: number): Promise<History> {
     if (numbers.length !== 7) {
       throw new Error('需要恰好 7 个数字');
     }
@@ -54,6 +56,8 @@ export class HistoryService {
     record.n5 = numbers[4];
     record.n6 = numbers[5];
     record.n7 = numbers[6];
+    if (year !== undefined) record.year = year;
+    if (No !== undefined) record.No = No;
     return this.historyRepo.save(record);
   }
 

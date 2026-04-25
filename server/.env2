@@ -1,0 +1,9 @@
+# MySQL 配置
+DB_HOST=47.106.103.79
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=Fangyang6579!
+DB_NAME=fe_prediction
+
+# 服务端口
+PORT=3000

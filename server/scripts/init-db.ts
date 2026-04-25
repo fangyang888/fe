@@ -48,10 +48,10 @@ async function initDb() {
     .trim()
     .split('\n')
     .filter((line) => line.trim())
-    .map((line) =>
-      line.split(',').map((n) => parseInt(n.trim(), 10)),
-    )
-    .filter((row) => row.length === 7 && row.every((n) => !isNaN(n)));
+    .map((line) => line.split(',').map((n) => parseInt(n.trim(), 10)))
+    .filter(
+      (row) => row.length >= 7 && row.slice(0, 7).every((n) => !isNaN(n)),
+    );
 
   console.log(`📊 解析到 ${rows.length} 行数据`);
 
@@ -65,6 +65,8 @@ async function initDb() {
     record.n5 = row[4];
     record.n6 = row[5];
     record.n7 = row[6];
+    record.year = row.length > 7 && !isNaN(row[7]) ? row[7] : 2026;
+    record.No = row.length > 8 && !isNaN(row[8]) ? row[8] : 0;
     return record;
   });
 
@@ -79,8 +81,6 @@ initDb().catch((err) => {
   console.error('❌ 初始化失败:', err.message);
   process.exit(1);
 });
-
-
 
 // 2000  6000 -> 4000  2000
 // 4000  12000 -> 8000  4000
@@ -125,15 +125,12 @@ initDb().catch((err) => {
 // 2199023255552000 6597069766656000 -> 4398046511104000 2199023255552000
 // 4398046511104000 13194139533312000 -> 8796093022208000 43980465
 
-
 // 1,12,41,35,45,17,46,2,7,39
 // 1, 12, 41, 35, 45, 46, 17, 2, 47, 7
 
 // 300 200 400 -> 900 600 1200 -> 600 400 800
 // 900 400 500 -> 2700 1200 1500 -> 1600 800 1000
 
-
 // 300 * 3 * 3 * 3 = 8100 - 300 = 7800
 // 200 * 3 + (200 * 2 * 2) + (200 * 2 * 2 * 2) = 600 + 800 + 1600 = 3000 - 200 = 2800
 // 400 * 2 + 500 * 2 + 600 * 2 = 800 + 1000 + 1200 = 3000
-

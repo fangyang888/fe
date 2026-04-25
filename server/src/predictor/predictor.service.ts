@@ -5,8 +5,28 @@ import { HistoryService } from '../history/history.service';
 export class PredictorService {
   constructor(private readonly historyService: HistoryService) {}
 
+  // 性能优化：缓存高频计算结果
+  private memoKill10 = new Map<string, any>();
+  private memoKillRepulsion = new Map<string, any>();
+  private memoAdaptiveOpts = new Map<number, any>();
+  private memoStrategy = new Map<number, any>();
+  private lastHistLength = 0;
+
+  private checkAndClearCache(currentHistLength: number) {
+    // 如果数据长度减小了（可能是数据库重置），清空缓存
+    if (currentHistLength < this.lastHistLength) {
+      this.memoKill10.clear();
+      this.memoKillRepulsion.clear();
+      this.memoAdaptiveOpts.clear();
+      this.memoStrategy.clear();
+    }
+    this.lastHistLength = currentHistLength;
+  }
+
   async getKillPredictions() {
     const rawHist = await this.historyService.findAll();
+    this.checkAndClearCache(rawHist.length); // 检查是否需要清理缓存
+    
     const hist = rawHist.map(item => [
       item.n1, item.n2, item.n3, item.n4, item.n5, item.n6, item.n7
     ]);
@@ -140,6 +160,14 @@ export class PredictorService {
     return { candidates };
   }
 
+  private kill10WithOptsMemo(hist: number[][], opts: any) {
+    const key = `${hist.length}-${JSON.stringify(opts)}`;
+    if (this.memoKill10.has(key)) return this.memoKill10.get(key);
+    const res = this.kill10WithOpts(hist, opts);
+    this.memoKill10.set(key, res);
+    return res;
+  }
+
   private kill10WithOpts(hist: number[][], opts: any) {
     const { tailBalance, altBonus } = opts;
     const N = hist.length;
@@ -187,6 +215,13 @@ export class PredictorService {
   }
 
   private getAdaptiveKill10Opts(hist: number[][]) {
+    if (this.memoAdaptiveOpts.has(hist.length)) return this.memoAdaptiveOpts.get(hist.length);
+    const res = this.getAdaptiveKill10OptsInternal(hist);
+    this.memoAdaptiveOpts.set(hist.length, res);
+    return res;
+  }
+
+  private getAdaptiveKill10OptsInternal(hist: number[][]) {
     // Phase 1: Find top-5 base param sets from 48 combinations
     const baseGrid = this.getBaseParamGrid();
     const DEFAULT = baseGrid[0];
@@ -198,7 +233,7 @@ export class PredictorService {
       const start = hist.length - evalWindow;
       for (let i = start; i < hist.length - 1; i++) {
         const sub = hist.slice(0, i + 1);
-        const kill = this.kill10WithOpts(sub, opts).map(c => c.n);
+        const kill = this.kill10WithOptsMemo(sub, opts).map(c => c.n);
         const nextSet = new Set(hist[i + 1]);
         correct += kill.filter((n) => !nextSet.has(n)).length;
         total += 10;
@@ -214,13 +249,13 @@ export class PredictorService {
     let bestScore = top5Base[0].score;
     
     for (const base of top5Base) {
-      for (const rep of repulsionGrid) {
+      for (let rep of repulsionGrid) {
         const combined = { ...base.opts, ...rep };
         let correct = 0, total = 0;
         const start = hist.length - evalWindow;
         for (let i = start; i < hist.length - 1; i++) {
           const sub = hist.slice(0, i + 1);
-          const kill = this.kill10WithRepulsion(sub, combined).map(c => c.n);
+          const kill = this.kill10WithRepulsionMemo(sub, combined).map(c => c.n);
           const nextSet = new Set(hist[i + 1]);
           correct += kill.filter((n) => !nextSet.has(n)).length;
           total += 10;
@@ -238,6 +273,14 @@ export class PredictorService {
   /**
    * kill10 enhanced with repulsion scoring from co-occurrence matrix & Apriori rules.
    */
+  private kill10WithRepulsionMemo(hist: number[][], opts: any) {
+    const key = `${hist.length}-${JSON.stringify(opts)}`;
+    if (this.memoKillRepulsion.has(key)) return this.memoKillRepulsion.get(key);
+    const res = this.kill10WithRepulsion(hist, opts);
+    this.memoKillRepulsion.set(key, res);
+    return res;
+  }
+
   private kill10WithRepulsion(hist: number[][], opts: any) {
     let baseNums = this.kill10WithOpts(hist, opts);
     const { repulsionWeight = 0.5, aprioriWeight = 0.5, repulsionThreshold = 0.10 } = opts;
@@ -462,8 +505,15 @@ export class PredictorService {
   }
 
   private strategyServerSide(hist: number[][]): { predictions: any[]; repulsionInfo: any } {
+    if (this.memoStrategy.has(hist.length)) return this.memoStrategy.get(hist.length);
+    const res = this.strategyServerSideInternal(hist);
+    this.memoStrategy.set(hist.length, res);
+    return res;
+  }
+
+  private strategyServerSideInternal(hist: number[][]): { predictions: any[]; repulsionInfo: any } {
     const opts = this.getAdaptiveKill10Opts(hist);
-    let baseNums = this.kill10WithRepulsion(hist, opts);
+    let baseNums = this.kill10WithRepulsionMemo(hist, opts);
     
     // Server Extra: Markov Penalty Filtering
     // We heavily penalize numbers that have a high markov transition probability.

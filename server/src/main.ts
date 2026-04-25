@@ -15,7 +15,11 @@ async function bootstrap() {
   app.enableCors();
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
+  const server = await app.listen(port);
+  
+  // 设置 HTTP 服务端超时时间为 300 秒 (5分钟)，匹配 Nginx 设置
+  server.setTimeout(300000);
+
   console.log(`🚀 Server running on http://localhost:${port}`);
   console.log(`📡 API: http://localhost:${port}/api/history`);
   console.log(`🌐 Frontend: http://localhost:${port}/fe`);

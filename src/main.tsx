@@ -21,7 +21,7 @@ import KillPredictorHK from './KillPredictorHK.jsx';
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter basename="/fe">
     <Routes>
-      <Route path="/" element={<App />} />
+      <Route path="/" element={<KillPredictorHK />} />
       <Route path="/kill" element={<KillPredictor />} />
       <Route path="/kill/new" element={<NewKillPredictor />} />
       <Route path="/kill/hk" element={<KillPredictorHK />} />

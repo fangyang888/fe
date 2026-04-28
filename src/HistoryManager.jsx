@@ -13,8 +13,9 @@ export default function HistoryManager() {
   const [noInput, setNoInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [activeTab, setActiveTab] = useState("default");
 
-  const API_BASE = "/api/history";
+  const API_BASE = activeTab === "hk" ? "/api/hk/history" : "/api/history";
 
   // 加载数据
   const fetchRecords = async () => {
@@ -33,7 +34,7 @@ export default function HistoryManager() {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [activeTab]);
 
   // 新增
   const handleAdd = async () => {
@@ -127,6 +128,14 @@ export default function HistoryManager() {
       WebkitTextFillColor: "transparent",
     },
     subtitle: { fontSize: 14, color: "#8899aa", marginBottom: 24 },
+    tabBtn: {
+      padding: "8px 16px",
+      borderRadius: "8px",
+      border: "none",
+      fontWeight: 600,
+      cursor: "pointer",
+      transition: "all 0.2s",
+    },
     card: {
       background: "rgba(255,255,255,0.05)",
       borderRadius: 12,
@@ -224,8 +233,32 @@ export default function HistoryManager() {
       <a href="/fe" style={styles.backLink}>← 返回主页</a>
 
       <h1 style={styles.title}>📋 历史数据管理</h1>
+
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+        <button 
+          onClick={() => setActiveTab("default")} 
+          style={{ 
+            ...styles.tabBtn, 
+            background: activeTab === "default" ? "linear-gradient(135deg, #4fc3f7, #81d4fa)" : "rgba(255,255,255,0.1)", 
+            color: activeTab === "default" ? "#000" : "#fff" 
+          }}
+        >
+          默认数据
+        </button>
+        <button 
+          onClick={() => setActiveTab("hk")} 
+          style={{ 
+            ...styles.tabBtn, 
+            background: activeTab === "hk" ? "linear-gradient(135deg, #4fc3f7, #81d4fa)" : "rgba(255,255,255,0.1)", 
+            color: activeTab === "hk" ? "#000" : "#fff" 
+          }}
+        >
+          香港数据
+        </button>
+      </div>
+
       <p style={styles.subtitle}>
-        共 {records.length} 条记录 · 支持在线新增和删除
+        当前库：{activeTab === "hk" ? "香港 (hk)" : "默认 (default)"} · 共 {records.length} 条记录 · 支持在线新增和删除
       </p>
 
       {/* 新增表单 */}

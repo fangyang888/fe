@@ -5,6 +5,8 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { HistoryModule } from './history/history.module';
 import { History } from './history/history.entity';
+import { HistoryHkModule } from './history-hk/history-hk.module';
+import { HistoryHk } from './history-hk/history-hk.entity';
 import { AppController } from './app.controller';
 import { PredictorModule } from './predictor/predictor.module';
 import { CrawlerModule } from './crawler/crawler.module';
@@ -28,7 +30,7 @@ import { CrawlerModule } from './crawler/crawler.module';
         username: configService.get<string>('DB_USER', 'root'),
         password: configService.get<string>('DB_PASSWORD', ''),
         database: configService.get<string>('DB_NAME', 'fe_prediction'),
-        entities: [History],
+        entities: [History, HistoryHk],
         synchronize: process.env.NODE_ENV !== 'production', // 生产环境关闭自动同步
       }),
     }),
@@ -42,6 +44,7 @@ import { CrawlerModule } from './crawler/crawler.module';
 
     // History 模块
     HistoryModule,
+    HistoryHkModule,
     PredictorModule,
     CrawlerModule,
   ],

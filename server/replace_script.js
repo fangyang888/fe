@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+const fs = require('fs');
+
+const code = `import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
 
 interface PredictionResult {
@@ -42,8 +44,6 @@ export class PredictorService {
   private memoKillRepulsion = new BoundedCache<string, any>(500);
   private memoAdaptiveOpts = new BoundedCache<number, any>(500);
   private memoStrategy = new BoundedCache<number, any>(500);
-  private memoApriori = new BoundedCache<number, any>(500);
-  private memoCrossRepulsion = new BoundedCache<string, any>(500);
   private lastHistLength = 0;
 
   private checkAndClearCache(currentHistLength: number) {
@@ -53,8 +53,6 @@ export class PredictorService {
       this.memoKillRepulsion.clear();
       this.memoAdaptiveOpts.clear();
       this.memoStrategy.clear();
-      this.memoApriori.clear();
-      this.memoCrossRepulsion.clear();
     }
     this.lastHistLength = currentHistLength;
   }
@@ -203,7 +201,7 @@ export class PredictorService {
   }
 
   private kill10WithOptsMemo(hist: number[][], opts: PredictorOpts): PredictionResult[] {
-    const key = `${hist.length}-${JSON.stringify(opts)}`;
+    const key = \`\${hist.length}-\${JSON.stringify(opts)}\`;
     if (this.memoKill10.has(key)) return this.memoKill10.get(key);
     const res = this.kill10WithOpts(hist, opts);
     this.memoKill10.set(key, res);
@@ -315,7 +313,7 @@ export class PredictorService {
    * kill10 enhanced with repulsion scoring from co-occurrence matrix & Apriori rules.
    */
   private kill10WithRepulsionMemo(hist: number[][], opts: PredictorOpts): PredictionResult[] {
-    const key = `${hist.length}-${JSON.stringify(opts)}`;
+    const key = \`\${hist.length}-\${JSON.stringify(opts)}\`;
     if (this.memoKillRepulsion.has(key)) return this.memoKillRepulsion.get(key);
     const res = this.kill10WithRepulsion(hist, opts);
     this.memoKillRepulsion.set(key, res);
@@ -410,13 +408,6 @@ export class PredictorService {
   // Builds a 49x49 cross-period co-occurrence matrix (period T numbers → period T+1 numbers).
   // Returns a score array [0..49] where higher score = stronger repulsion from last row.
   private getCrossPerioRepulsionScores(hist: number[][], threshold = 0.10): number[] {
-    const key = `${hist.length}-${threshold}`;
-    if (this.memoCrossRepulsion.has(key)) return this.memoCrossRepulsion.get(key);
-    const res = this.getCrossPerioRepulsionScoresInternal(hist, threshold);
-    this.memoCrossRepulsion.set(key, res);
-    return res;
-  }
-  private getCrossPerioRepulsionScoresInternal(hist: number[][], threshold = 0.10): number[] {
     const scores = new Array(50).fill(0);
     if (hist.length < 5) return scores;
 
@@ -476,13 +467,6 @@ export class PredictorService {
   // Mines rules of the form: {A, B} in period T → ¬C in period T+1
   // Returns { scores: number[50], rules: {pair, target, support, confidence}[] }
   private getAprioriRepulsionRules(hist: number[][]): { scores: number[]; rules: any[] } {
-    const key = hist.length;
-    if (this.memoApriori.has(key)) return this.memoApriori.get(key);
-    const res = this.getAprioriRepulsionRulesInternal(hist);
-    this.memoApriori.set(key, res);
-    return res;
-  }
-  private getAprioriRepulsionRulesInternal(hist: number[][]): { scores: number[]; rules: any[] } {
     const scores = new Array(50).fill(0);
     const rules: any[] = [];
     if (hist.length < 10) return { scores, rules };
@@ -505,7 +489,7 @@ export class PredictorService {
           const b = Math.max(row[x], row[y]);
           // Only track pairs where BOTH numbers are in the last row
           if (!lastRowSet.has(a) || !lastRowSet.has(b)) continue;
-          const key = `${a},${b}`;
+          const key = \`\${a},\${b}\`;
           if (!pairOccurrences.has(key)) pairOccurrences.set(key, []);
           pairOccurrences.get(key)!.push(i);
         }
@@ -674,3 +658,7 @@ export class PredictorService {
     return { details: results, overallAccuracy, totalCorrect, totalPredicted, calcPeriods: actualCalcPeriods };
   }
 }
+`;
+
+fs.writeFileSync('/Users/yang/fe/fe/server/src/predictor/predictor.service.ts', code);
+console.log('Successfully wrote new service code.');

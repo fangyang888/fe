@@ -10,9 +10,16 @@ export class HistoryHkService {
     private readonly historyHkRepo: Repository<HistoryHk>,
   ) {}
 
-  /** 获取所有记录（按 id 升序） */
-  async findAll(): Promise<HistoryHk[]> {
-    return this.historyHkRepo.find({ order: { id: 'ASC' } });
+  /** 获取记录（可选年份过滤，按 id 升序） */
+  async findAll(year?: number): Promise<HistoryHk[]> {
+    const where: any = {};
+    if (year) {
+      where.year = year;
+    }
+    return this.historyHkRepo.find({
+      where,
+      order: { id: 'ASC' },
+    });
   }
 
   /** 获取单条记录 */
@@ -68,8 +75,8 @@ export class HistoryHkService {
   }
 
   /** 以纯文本格式返回（兼容前端 history.txt 格式） */
-  async getAsText(): Promise<string> {
-    const records = await this.findAll();
+  async getAsText(year?: number): Promise<string> {
+    const records = await this.findAll(year);
     return records
       .map((r) => `${r.n1},${r.n2},${r.n3},${r.n4},${r.n5},${r.n6},${r.n7}`)
       .join('\n');

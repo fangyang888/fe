@@ -9,11 +9,12 @@ export default function HistoryManager() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [inputs, setInputs] = useState(["", "", "", "", "", "", ""]);
-  const [yearInput, setYearInput] = useState("");
+  const [yearInput, setYearInput] = useState(new Date().getFullYear().toString());
   const [noInput, setNoInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState(null);
   const [activeTab, setActiveTab] = useState("default");
+  const [queryYear, setQueryYear] = useState(new Date().getFullYear());
 
   const API_BASE = activeTab === "hk" ? "/api/hk/history" : "/api/history";
 
@@ -21,7 +22,8 @@ export default function HistoryManager() {
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const res = await fetch(API_BASE);
+      const url = queryYear ? `${API_BASE}?year=${queryYear}` : API_BASE;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("加载失败");
       const data = await res.json();
       setRecords(data);
@@ -34,7 +36,7 @@ export default function HistoryManager() {
 
   useEffect(() => {
     fetchRecords();
-  }, [activeTab]);
+  }, [activeTab, queryYear]);
 
   // 新增
   const handleAdd = async () => {
@@ -57,7 +59,7 @@ export default function HistoryManager() {
       });
       if (!res.ok) throw new Error("新增失败");
       setInputs(["", "", "", "", "", "", ""]);
-      setYearInput("");
+      setYearInput(queryYear.toString());
       setNoInput("");
       setMsg({ type: "success", text: "✅ 新增成功" });
       fetchRecords();
@@ -258,7 +260,7 @@ export default function HistoryManager() {
       </div>
 
       <p style={styles.subtitle}>
-        当前库：{activeTab === "hk" ? "香港 (hk)" : "默认 (default)"} · 共 {records.length} 条记录 · 支持在线新增和删除
+        当前库：{activeTab === "hk" ? "香港 (hk)" : "默认 (default)"} · {queryYear}年 · 共 {records.length} 条记录 · 支持在线新增和删除
       </p>
 
       {/* 新增表单 */}
@@ -312,7 +314,16 @@ export default function HistoryManager() {
       {/* 数据列表 */}
       <div style={styles.card}>
         <div style={styles.cardTitle}>
-          <span>📊</span> 全部数据
+          <span>📊</span> 数据查询
+          <div style={{ marginLeft: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#8899aa" }}>年份：</span>
+            <input
+              type="number"
+              value={queryYear}
+              onChange={(e) => setQueryYear(parseInt(e.target.value) || "")}
+              style={{ ...styles.input, width: 80, height: 32, fontSize: 14 }}
+            />
+          </div>
         </div>
         {loading ? (
           <p style={{ color: "#8899aa" }}>加载中...</p>

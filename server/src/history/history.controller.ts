@@ -8,6 +8,7 @@ import {
   Body,
   ParseIntPipe,
   Header,
+  Query,
 } from '@nestjs/common';
 import { HistoryService } from './history.service';
 import { History } from './history.entity';
@@ -22,17 +23,19 @@ class CreateHistoryDto {
 export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
 
-  /** GET /api/history — 获取全部记录 */
+  /** GET /api/history — 获取记录，支持 ?year=2025 */
   @Get()
-  async findAll(): Promise<History[]> {
-    return this.historyService.findAll();
+  async findAll(@Query('year') year?: string): Promise<History[]> {
+    const yearNum = year ? parseInt(year, 10) : undefined;
+    return this.historyService.findAll(yearNum);
   }
 
-  /** GET /api/history/text — 以纯文本格式返回（兼容前端） */
+  /** GET /api/history/text — 以纯文本格式返回，支持 ?year=2025 */
   @Get('text')
   @Header('Content-Type', 'text/plain')
-  async getAsText(): Promise<string> {
-    return this.historyService.getAsText();
+  async getAsText(@Query('year') year?: string): Promise<string> {
+    const yearNum = year ? parseInt(year, 10) : undefined;
+    return this.historyService.getAsText(yearNum);
   }
 
   /** GET /api/history/:id — 获取单条 */

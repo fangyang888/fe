@@ -17,6 +17,27 @@ interface PredictorOpts {
   repulsionThreshold?: number;
 }
 
+interface AppearScore {
+  n: number;
+  appearProb: number;
+  killConfidence: number;
+  features: Record<string, number>;
+}
+
+interface AppearWeights {
+  name: string;
+  freq10: number;
+  freq20: number;
+  freq50: number;
+  freq100: number;
+  longFreq: number;
+  markov: number;
+  markov2: number;
+  knn: number;
+  bayesAppear: number;
+  gapRisk: number;
+}
+
 class BoundedCache<K, V> {
   private map = new Map<K, V>();
   constructor(private readonly maxSize: number) {}
@@ -37,6 +58,9 @@ class BoundedCache<K, V> {
 export class PredictorService {
   constructor(private readonly historyService: HistoryService) {}
 
+  private readonly randomKillProb = 42 / 49;
+  private readonly randomAppearProb = 7 / 49;
+
   // 性能优化：缓存高频计算结果，防止内存泄漏，设置最大容量 500
   private memoKill10 = new BoundedCache<string, any>(500);
   private memoKillRepulsion = new BoundedCache<string, any>(500);
@@ -48,6 +72,8 @@ export class PredictorService {
   private memoNB = new BoundedCache<number, any>(500);
   private memoMarkov2 = new BoundedCache<number, any>(500);
   private memoExpertWeights = new BoundedCache<number, any>(500);
+  private memoAppearScores = new BoundedCache<number, AppearScore[]>(500);
+  private memoAppearWeights = new BoundedCache<number, any>(500);
   private lastHistLength = 0;
 
   private checkAndClearCache(currentHistLength: number) {
@@ -63,6 +89,8 @@ export class PredictorService {
       this.memoNB.clear();
       this.memoMarkov2.clear();
       this.memoExpertWeights.clear();
+      this.memoAppearScores.clear();
+      this.memoAppearWeights.clear();
     }
     this.lastHistLength = currentHistLength;
   }
@@ -77,11 +105,13 @@ export class PredictorService {
     
     const { predictions, repulsionInfo } = this.strategyServerSide(hist);
     const backtestStats = this.runBacktest(hist, 10, 100);
+    const probabilityBacktestStats = this.runProbabilityBacktest(hist, 10, Math.max(0, hist.length - 80));
     
     return {
       predictions,
       repulsionInfo,
-      backtestStats
+      backtestStats,
+      probabilityBacktestStats
     };
   }
 
@@ -218,8 +248,17 @@ export class PredictorService {
     return res;
   }
 
-  private kill10WithOpts(hist: number[][], opts: PredictorOpts) {
-    const { tailBalance, altBonus } = opts;
+  private scoreKillSelection(killNums: number[], nextSet: Set<number>) {
+    const failed = killNums.filter((n) => nextSet.has(n)).length;
+    const correct = killNums.length - failed;
+    const avgAcc = correct / killNums.length;
+
+    // 平均杀号准确率仍是地基；0误杀给奖励，但不让小样本全中冲掉稳定性。
+    return avgAcc + (failed === 0 ? 0.05 : 0) - failed * 0.03;
+  }
+
+  private getBaseAdjustedCandidates(hist: number[][], opts: PredictorOpts) {
+    const { altBonus } = opts;
     const N = hist.length;
     const { candidates } = this.buildScoreEngineWithOpts(hist, opts);
     
@@ -232,8 +271,9 @@ export class PredictorService {
       if (freqLast5[n] >= 2) hotInLast5.add(n);
     }));
     const filteredCandidates = candidates.filter(c => !hotInLast5.has(c.n));
+    const source = filteredCandidates.length >= 10 ? filteredCandidates : candidates;
   
-    const scored = filteredCandidates.map((c) => {
+    const scored = source.map((c) => {
       const p1 = hist[N - 1]?.includes(c.n) ? 1 : 0;
       const p2 = hist[N - 2]?.includes(c.n) ? 1 : 0;
       const p3 = hist[N - 3]?.includes(c.n) ? 1 : 0;
@@ -244,13 +284,16 @@ export class PredictorService {
     });
     
     scored.sort((a, b) => a.adjustedW - b.adjustedW);
-    
-    if (!tailBalance) return scored.slice(0, 10).map(c => ({n: c.n, w: c.w}));
+    return scored;
+  }
+
+  private selectKillCandidates(scored: any[], count: number, tailBalance: boolean) {
+    if (!tailBalance) return scored.slice(0, count).map(c => ({n: c.n, w: c.w}));
     
     const tailCounts = Array(10).fill(0);
     const selected = [];
     for (const c of scored) {
-      if (selected.length >= 10) break;
+      if (selected.length >= count) break;
       const tail = c.n % 10;
       if (tailCounts[tail] < 2) {
         selected.push(c);
@@ -258,10 +301,14 @@ export class PredictorService {
       }
     }
     for (const c of scored) {
-      if (selected.length >= 10) break;
+      if (selected.length >= count) break;
       if (!selected.find((s: any) => s.n === c.n)) selected.push(c);
     }
-    return selected.slice(0, 10).map((c: any) => ({n: c.n, w: c.w}));
+    return selected.slice(0, count).map((c: any) => ({n: c.n, w: c.w}));
+  }
+
+  private kill10WithOpts(hist: number[][], opts: PredictorOpts) {
+    return this.selectKillCandidates(this.getBaseAdjustedCandidates(hist, opts), 10, opts.tailBalance);
   }
 
   private getAdaptiveKill10Opts(hist: number[][]) {
@@ -279,15 +326,18 @@ export class PredictorService {
     
     for (const opts of baseGrid) {
       let correct = 0, total = 0;
+      let objective = 0, evalCount = 0;
       const start = hist.length - evalWindow;
       for (let i = start; i < hist.length - 1; i++) {
         const sub = hist.slice(0, i + 1);
         const kill = this.kill10WithOptsMemo(sub, opts).map((c: any) => c.n);
         const nextSet = new Set(hist[i + 1]);
         correct += kill.filter((n: number) => !nextSet.has(n)).length;
+        objective += this.scoreKillSelection(kill, nextSet);
+        evalCount++;
         total += 10;
       }
-      baseResults.push({ opts, score: total > 0 ? correct / total : 0 });
+      baseResults.push({ opts, score: evalCount > 0 ? objective / evalCount : (total > 0 ? correct / total : 0) });
     }
     baseResults.sort((a, b) => b.score - a.score);
     const top5Base = baseResults.slice(0, 5);
@@ -301,17 +351,20 @@ export class PredictorService {
       for (const rep of repulsionGrid) {
         const combined = { ...base.opts, ...rep };
         let correct = 0, total = 0;
+        let objective = 0, evalCount = 0;
         const start = hist.length - evalWindow;
         for (let i = start; i < hist.length - 1; i++) {
           const sub = hist.slice(0, i + 1);
           const kill = this.kill10WithRepulsionMemo(sub, combined).map((c: any) => c.n);
           const nextSet = new Set(hist[i + 1]);
           correct += kill.filter((n: number) => !nextSet.has(n)).length;
+          objective += this.scoreKillSelection(kill, nextSet);
+          evalCount++;
           total += 10;
         }
-        const acc = total > 0 ? correct / total : 0;
-        if (acc > bestScore) {
-          bestScore = acc;
+        const score = evalCount > 0 ? objective / evalCount : (total > 0 ? correct / total : 0);
+        if (score > bestScore) {
+          bestScore = score;
           bestOpts = combined;
         }
       }
@@ -330,24 +383,27 @@ export class PredictorService {
     return res;
   }
 
-  private kill10WithRepulsion(hist: number[][], opts: PredictorOpts) {
-    const baseNums = this.kill10WithOpts(hist, opts);
+  private getRepulsionAdjustedCandidates(hist: number[][], opts: PredictorOpts) {
+    const baseCandidates = this.getBaseAdjustedCandidates(hist, opts);
     const { repulsionWeight = 0.5, aprioriWeight = 0.5, repulsionThreshold = 0.10 } = opts;
 
-    // Cross-period repulsion bonus
     const repulsionScores = this.getCrossPerioRepulsionScores(hist, repulsionThreshold);
-    // Apriori rule bonus
     const aprioriScores = this.getAprioriRepulsionRules(hist);
 
-    // 修复 Bug：降低排斥得分高的号码的权重 w，使其更容易被选中作为杀号（在排序中排到更前面）
-    const reScored = baseNums.map(c => {
+    // 对全量候选重排，而不是只在基础前10名里调顺序。
+    const reScored = baseCandidates.map(c => {
       const rBonus = (repulsionScores[c.n] || 0) * repulsionWeight;
       const aBonus = (aprioriScores.scores[c.n] || 0) * aprioriWeight;
-      return { ...c, w: c.w - rBonus - aBonus };
+      return { ...c, w: c.adjustedW - rBonus - aBonus };
     });
     
     reScored.sort((a, b) => a.w - b.w);
-    return reScored.slice(0, 10);
+    return reScored;
+  }
+
+  private kill10WithRepulsion(hist: number[][], opts: PredictorOpts) {
+    const reScored = this.getRepulsionAdjustedCandidates(hist, opts);
+    return this.selectKillCandidates(reScored, 10, opts.tailBalance);
   }
 
   private pickLowCVFromLastRow(hist: number[][], count = 2) {
@@ -636,6 +692,251 @@ export class PredictorService {
     return nextProbs;
   }
 
+  private getAppearProbabilityScoresMemo(hist: number[][]): AppearScore[] {
+    const key = hist.length;
+    if (this.memoAppearScores.has(key)) return this.memoAppearScores.get(key)!;
+    const res = this.getAppearProbabilityScores(hist);
+    this.memoAppearScores.set(key, res);
+    return res;
+  }
+
+  private getDefaultAppearWeights(): AppearWeights {
+    return {
+      name: 'balanced-default',
+      freq10: 0.18,
+      freq20: 0.18,
+      freq50: 0.14,
+      freq100: 0.08,
+      longFreq: 0.10,
+      markov: 0.12,
+      markov2: 0.08,
+      knn: 0.06,
+      bayesAppear: 0.04,
+      gapRisk: 0.02,
+    };
+  }
+
+  private normalizeAppearWeights(weights: AppearWeights): AppearWeights {
+    const { name, ...rest } = weights;
+    const sum = Object.values(rest).reduce((s, v) => s + Math.max(0, v), 0) || 1;
+    const normalized: any = { name };
+    for (const [key, value] of Object.entries(rest)) {
+      normalized[key] = Math.max(0, value as number) / sum;
+    }
+    return normalized as AppearWeights;
+  }
+
+  private getAppearWeightCandidates(): AppearWeights[] {
+    const presets: AppearWeights[] = [
+      this.getDefaultAppearWeights(),
+      { name: 'recent-hot-risk', freq10: 0.28, freq20: 0.24, freq50: 0.12, freq100: 0.04, longFreq: 0.06, markov: 0.10, markov2: 0.05, knn: 0.05, bayesAppear: 0.03, gapRisk: 0.03 },
+      { name: 'mid-window-stable', freq10: 0.10, freq20: 0.18, freq50: 0.24, freq100: 0.14, longFreq: 0.10, markov: 0.08, markov2: 0.05, knn: 0.04, bayesAppear: 0.03, gapRisk: 0.04 },
+      { name: 'transition-led', freq10: 0.10, freq20: 0.10, freq50: 0.12, freq100: 0.08, longFreq: 0.06, markov: 0.24, markov2: 0.16, knn: 0.07, bayesAppear: 0.04, gapRisk: 0.03 },
+      { name: 'pattern-led', freq10: 0.10, freq20: 0.12, freq50: 0.12, freq100: 0.06, longFreq: 0.06, markov: 0.12, markov2: 0.08, knn: 0.22, bayesAppear: 0.07, gapRisk: 0.05 },
+      { name: 'gap-protection', freq10: 0.10, freq20: 0.12, freq50: 0.12, freq100: 0.08, longFreq: 0.08, markov: 0.10, markov2: 0.07, knn: 0.04, bayesAppear: 0.04, gapRisk: 0.25 },
+      { name: 'cold-frequency', freq10: 0.22, freq20: 0.22, freq50: 0.20, freq100: 0.12, longFreq: 0.12, markov: 0.04, markov2: 0.02, knn: 0.02, bayesAppear: 0.02, gapRisk: 0.02 },
+      { name: 'low-noise-long', freq10: 0.06, freq20: 0.10, freq50: 0.22, freq100: 0.20, longFreq: 0.18, markov: 0.08, markov2: 0.04, knn: 0.03, bayesAppear: 0.03, gapRisk: 0.06 },
+      { name: 'bayes-plus-transition', freq10: 0.08, freq20: 0.10, freq50: 0.12, freq100: 0.08, longFreq: 0.08, markov: 0.18, markov2: 0.10, knn: 0.06, bayesAppear: 0.16, gapRisk: 0.04 },
+      { name: 'gap-and-recent', freq10: 0.24, freq20: 0.20, freq50: 0.10, freq100: 0.04, longFreq: 0.04, markov: 0.08, markov2: 0.04, knn: 0.03, bayesAppear: 0.03, gapRisk: 0.20 },
+    ];
+    return presets.map(p => this.normalizeAppearWeights(p));
+  }
+
+  private getTrainedAppearWeights(hist: number[][]) {
+    const key = hist.length;
+    if (this.memoAppearWeights.has(key)) return this.memoAppearWeights.get(key);
+    const res = this.trainAppearWeights(hist);
+    this.memoAppearWeights.set(key, res);
+    return res;
+  }
+
+  private trainAppearWeights(hist: number[][]) {
+    const candidates = this.getAppearWeightCandidates();
+    if (hist.length < 120) {
+      return { weights: this.getDefaultAppearWeights(), score: 0, evalPeriods: 0, leaderboard: [] };
+    }
+
+    const evalWindow = Math.min(160, hist.length - 80);
+    const start = hist.length - evalWindow;
+    const leaderboard = candidates.map(weights => {
+      let objective = 0;
+      let totalCorrect = 0;
+      let allCorrect = 0;
+      let ninePlus = 0;
+      let evalPeriods = 0;
+
+      for (let i = start; i < hist.length; i++) {
+        const subHist = hist.slice(0, i);
+        const actualSet = new Set(hist[i]);
+        const killNums = this.scoreAppearRows(this.getAppearFeatureRows(subHist), weights)
+          .slice(0, 10)
+          .map(s => s.n);
+        const failed = killNums.filter(n => actualSet.has(n)).length;
+        const correct = killNums.length - failed;
+        totalCorrect += correct;
+        if (failed === 0) allCorrect++;
+        if (failed <= 1) ninePlus++;
+        objective += correct / 10 + (failed === 0 ? 0.08 : 0) + (failed <= 1 ? 0.025 : 0) - failed * 0.025;
+        evalPeriods++;
+      }
+
+      const avgAccuracy = evalPeriods > 0 ? totalCorrect / (evalPeriods * 10) : 0;
+      const allCorrectRate = evalPeriods > 0 ? allCorrect / evalPeriods : 0;
+      const ninePlusRate = evalPeriods > 0 ? ninePlus / evalPeriods : 0;
+      return {
+        weights,
+        score: evalPeriods > 0 ? objective / evalPeriods : 0,
+        evalPeriods,
+        avgAccuracy,
+        allCorrectRate,
+        ninePlusRate,
+      };
+    }).sort((a, b) => b.score - a.score);
+
+    return {
+      weights: leaderboard[0].weights,
+      score: leaderboard[0].score,
+      evalPeriods: leaderboard[0].evalPeriods,
+      leaderboard: leaderboard.slice(0, 5).map(item => ({
+        name: item.weights.name,
+        score: Math.round(item.score * 10000) / 10000,
+        avgAccuracy: Math.round(item.avgAccuracy * 10000) / 100,
+        allCorrectRate: Math.round(item.allCorrectRate * 10000) / 100,
+        ninePlusRate: Math.round(item.ninePlusRate * 10000) / 100,
+        weights: item.weights,
+      })),
+    };
+  }
+
+  private getAppearFeatureRows(hist: number[][]): Array<{ n: number; features: Record<string, number> }> {
+    const hn = hist.length;
+    if (hn === 0) return [];
+
+    const allApps = Array.from({ length: 50 }, () => [] as number[]);
+    for (let i = 0; i < hn; i++) {
+      for (const n of hist[i]) allApps[n].push(i);
+    }
+
+    const markov = this.getMarkovPredictions(hist);
+    const markov2 = this.getMarkov2PredictionsMemo(hist);
+    const knn = this.getKnnPredictionsMemo(hist, 30);
+    const bayesKill = this.getNaiveBayesKillProbMemo(hist);
+
+    const countInWindow = (n: number, window: number) => {
+      let count = 0;
+      for (let i = Math.max(0, hn - window); i < hn; i++) {
+        if (hist[i].includes(n)) count++;
+      }
+      return count;
+    };
+
+    const rows: Array<{ n: number; features: Record<string, number> }> = [];
+    for (let n = 1; n <= 49; n++) {
+      const apps = allApps[n];
+      const longFreq = apps.length / hn;
+      const freq10 = countInWindow(n, 10) / Math.min(10, hn);
+      const freq20 = countInWindow(n, 20) / Math.min(20, hn);
+      const freq50 = countInWindow(n, 50) / Math.min(50, hn);
+      const freq100 = countInWindow(n, 100) / Math.min(100, hn);
+
+      const lastSeen = apps.length > 0 ? apps[apps.length - 1] : -1;
+      const currentGap = lastSeen >= 0 ? hn - 1 - lastSeen : hn;
+      const gaps: number[] = [];
+      for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i - 1]);
+      const avgGap = gaps.length > 0 ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 49 / 7;
+      const gapRatio = avgGap > 0 ? currentGap / avgGap : 1;
+      const stdDev = gaps.length > 0
+        ? Math.sqrt(gaps.reduce((s, g) => s + (g - avgGap) ** 2, 0) / gaps.length)
+        : avgGap;
+      const cv = avgGap > 0 ? stdDev / avgGap : 1;
+
+      // 过久未出有回补风险，刚出/短期很热也有继续出现风险；中间区域相对适合杀码。
+      let gapRisk = this.randomAppearProb;
+      if (gapRatio >= 2.5) gapRisk += 0.06;
+      else if (gapRatio >= 1.4) gapRisk += 0.025;
+      else if (gapRatio <= 0.25) gapRisk += 0.035;
+      else if (gapRatio >= 0.6 && gapRatio <= 1.1) gapRisk -= 0.015;
+      if (cv > 0.9 && currentGap <= avgGap) gapRisk += 0.015;
+
+      rows.push({
+        n,
+        features: {
+          freq10,
+          freq20,
+          freq50,
+          freq100,
+          longFreq,
+          currentGap,
+          avgGap,
+          gapRatio,
+          cv,
+          markov: markov[n] || 0,
+          markov2: markov2[n] || 0,
+          knn: knn[n] || 0,
+          bayesAppear: 1 - (bayesKill[n] || this.randomKillProb),
+          gapRisk,
+        },
+      });
+    }
+
+    return rows;
+  }
+
+  private scoreAppearRows(rows: Array<{ n: number; features: Record<string, number> }>, weights: AppearWeights): AppearScore[] {
+    const scores = rows.map(row => {
+      const f = row.features;
+      const modelAppear =
+        weights.freq10 * f.freq10 +
+        weights.freq20 * f.freq20 +
+        weights.freq50 * f.freq50 +
+        weights.freq100 * f.freq100 +
+        weights.longFreq * f.longFreq +
+        weights.markov * (f.markov || this.randomAppearProb) +
+        weights.markov2 * (f.markov2 || this.randomAppearProb) +
+        weights.knn * (f.knn || this.randomAppearProb) +
+        weights.bayesAppear * (f.bayesAppear || this.randomAppearProb) +
+        weights.gapRisk * f.gapRisk;
+      const appearProb = Math.max(0.02, Math.min(0.45, modelAppear));
+      return {
+        n: row.n,
+        appearProb,
+        killConfidence: 1 - appearProb,
+        features: f,
+      };
+    });
+
+    scores.sort((a, b) => a.appearProb - b.appearProb);
+    return scores;
+  }
+
+  private getAppearProbabilityScores(hist: number[][]): AppearScore[] {
+    const trained = this.getTrainedAppearWeights(hist);
+    return this.scoreAppearRows(this.getAppearFeatureRows(hist), trained.weights);
+  }
+
+  private getProbabilityKillPredictionsWithWeights(hist: number[][], weights: AppearWeights, count = 10) {
+    const protectedNums = this.getFailurePatternProtection(hist);
+    const scores = this.scoreAppearRows(this.getAppearFeatureRows(hist), weights);
+    return scores
+      .filter(s => !protectedNums.has(s.n))
+      .slice(0, count)
+      .map((s, i) => ({
+        n: s.n,
+        tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
+        score: Math.round(s.killConfidence * 1000) / 1000,
+        appearProb: Math.round(s.appearProb * 1000) / 1000,
+        experts: '出现概率',
+        repulsionScore: 0,
+        aprioriScore: 0,
+        features: s.features,
+      }));
+  }
+
+  private getProbabilityKillPredictions(hist: number[][], count = 10) {
+    const trained = this.getTrainedAppearWeights(hist);
+    return this.getProbabilityKillPredictionsWithWeights(hist, trained.weights, count);
+  }
+
   // --- FAILURE PATTERN PROTECTION ---
   private getFailurePatternProtection(hist: number[][]): Set<number> {
     const protectedNums = new Set<number>();
@@ -765,8 +1066,8 @@ export class PredictorService {
     const rules: any[] = [];
     if (hist.length < 10) return { scores, rules };
 
-    const MIN_SUPPORT = 3;
-    const MIN_CONFIDENCE = 0.85;
+    const MIN_SUPPORT = 4;
+    const MIN_LIFT_ABOVE_RANDOM = 0.03;
     const lastRow = hist[hist.length - 1];
     const lastRowSet = new Set(lastRow);
 
@@ -813,16 +1114,18 @@ export class PredictorService {
         const appeared = nextAppearCount[c] || 0;
         const notAppeared = totalNextPeriods - appeared;
         const confidence = notAppeared / totalNextPeriods;
+        const liftAboveRandom = confidence - this.randomKillProb;
 
-        if (confidence >= MIN_CONFIDENCE) {
+        if (liftAboveRandom >= MIN_LIFT_ABOVE_RANDOM) {
           rules.push({
             pair: [a, b],
             target: c,
             support: totalNextPeriods,
-            confidence: Math.round(confidence * 1000) / 1000
+            confidence: Math.round(confidence * 1000) / 1000,
+            lift: Math.round(liftAboveRandom * 1000) / 1000
           });
           // Accumulate score: higher confidence & support = stronger kill signal
-          scores[c] += confidence * Math.log2(totalNextPeriods + 1);
+          scores[c] += liftAboveRandom * confidence * Math.log2(totalNextPeriods + 1);
         }
       }
     }
@@ -868,10 +1171,11 @@ export class PredictorService {
       expertScores.frequency[c.n] = 1 - (c.w / maxW);
     });
 
-    const repulsionKill = this.kill10WithRepulsionMemo(hist, opts);
-    const maxRepW = Math.max(...repulsionKill.map(c => Math.abs(c.w)), 1);
-    const minRepW = Math.min(...repulsionKill.map(c => c.w));
-    repulsionKill.forEach(c => {
+    const repulsionCandidates = this.getRepulsionAdjustedCandidates(hist, opts);
+    const repWs = repulsionCandidates.map(c => c.w);
+    const maxRepW = Math.max(...repWs, 1);
+    const minRepW = Math.min(...repWs);
+    repulsionCandidates.forEach(c => {
       // Use normalized score (lower w = higher kill prob)
       expertScores.repulsion[c.n] = (maxRepW - c.w) / (maxRepW - minRepW || 1);
     });
@@ -904,10 +1208,11 @@ export class PredictorService {
     const repulsionThreshold = opts.repulsionThreshold || 0.10;
     const repulsionScores = this.getCrossPerioRepulsionScores(hist, repulsionThreshold);
     const aprioriResult = this.getAprioriRepulsionRules(hist);
+    const trainedAppear = this.getTrainedAppearWeights(hist);
 
     let allCandidates = Array.from({ length: 49 }, (_, i) => ({
       n: i + 1,
-      score: finalScores[i + 1],
+      score: finalScores[i + 1] + ((repulsionScores[i + 1] || 0) * 0.015) + ((aprioriResult.scores[i + 1] || 0) * 0.02),
       experts: expertNames[i + 1],
       isProtected: protectedNums.has(i + 1),
       repulsionScore: repulsionScores[i + 1] || 0,
@@ -919,7 +1224,7 @@ export class PredictorService {
       .filter(c => !c.isProtected)
       .sort((a, b) => b.score - a.score);
 
-    const finalNums = selected.slice(0, 10).map((c, i) => ({
+    const ensembleNums = selected.slice(0, 10).map((c, i) => ({
       n: c.n,
       tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
       score: Math.round(c.score * 100) / 100,
@@ -927,6 +1232,7 @@ export class PredictorService {
       repulsionScore: Math.round(c.repulsionScore * 100) / 100,
       aprioriScore: Math.round(c.aprioriScore * 100) / 100,
     }));
+    const probabilityNums = this.getProbabilityKillPredictions(hist, 10);
 
     // Build repulsionInfo for frontend
     const repulsionInfo = {
@@ -946,10 +1252,21 @@ export class PredictorService {
         })),
       aprioriRules: aprioriResult.rules,
       protectedCount: protectedNums.size,
+      probabilityModel: {
+        topLowestAppear: probabilityNums.map(p => ({
+          n: p.n,
+          appearProb: p.appearProb,
+          killConfidence: p.score,
+        })),
+        trainedWeights: trainedAppear.weights,
+        trainingScore: trainedAppear.score,
+        leaderboard: trainedAppear.leaderboard,
+      },
+      ensemblePreview: ensembleNums,
     };
 
     return {
-      predictions: finalNums,
+      predictions: probabilityNums,
       repulsionInfo,
     };
   }
@@ -997,8 +1314,7 @@ export class PredictorService {
       };
 
       for (const expert of experts) {
-        const correct = kills[expert].filter((n: number) => !nextRow.has(n)).length;
-        performance[expert] += correct / 10;
+        performance[expert] += this.scoreKillSelection(kills[expert], nextRow);
       }
       totalEval++;
     }
@@ -1006,15 +1322,14 @@ export class PredictorService {
     const weights: any = {};
     let sum = 0;
     for (const expert of experts) {
-      const avgAcc = totalEval > 0 ? performance[expert] / totalEval : 0.85; // Default 85%
-      // Use square of accuracy to penalize low performance more heavily
-      weights[expert] = Math.pow(avgAcc, 2);
+      const avgScore = totalEval > 0 ? performance[expert] / totalEval : 0;
+      weights[expert] = Math.pow(Math.max(0, avgScore), 2);
       sum += weights[expert];
     }
 
     // Normalize weights
     for (const expert of experts) {
-      weights[expert] = weights[expert] / sum;
+      weights[expert] = sum > 0 ? weights[expert] / sum : 1 / experts.length;
     }
 
     this.memoExpertWeights.set(key, weights);
@@ -1054,5 +1369,84 @@ export class PredictorService {
     results.reverse();
     const overallAccuracy = totalPredicted > 0 ? (totalCorrect / totalPredicted) * 100 : 0;
     return { details: results, overallAccuracy, totalCorrect, totalPredicted, calcPeriods: actualCalcPeriods };
+  }
+
+  private runProbabilityBacktest(hist: number[][], displayPeriods = 10, startIndex = 80) {
+    if (hist.length <= startIndex) return null;
+
+    const results = [];
+    let totalCorrect = 0;
+    let totalPredicted = 0;
+    let allCorrectPeriods = 0;
+    let ninePlusPeriods = 0;
+    const actualStartIndex = Math.max(10, Math.min(startIndex, hist.length - 1));
+    let trained = this.getTrainedAppearWeights(hist.slice(0, actualStartIndex));
+
+    for (let i = actualStartIndex; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      if (i === actualStartIndex || (i - actualStartIndex) % 20 === 0) {
+        trained = this.getTrainedAppearWeights(subHist);
+      }
+      const actualRow = hist[i];
+      const actualSet = new Set(actualRow);
+      const killNumsObj = this.getProbabilityKillPredictionsWithWeights(subHist, trained.weights, 10);
+      const killNums = killNumsObj.map(k => k.n);
+      const failed = killNums.filter(n => actualSet.has(n));
+      const correctCount = killNums.length - failed.length;
+      totalCorrect += correctCount;
+      totalPredicted += killNums.length;
+      if (failed.length === 0) allCorrectPeriods++;
+      if (failed.length <= 1) ninePlusPeriods++;
+      
+      if (i >= hist.length - displayPeriods) {
+        results.push({
+          periodOffset: hist.length - i,
+          predicted: killNums,
+          actual: actualRow,
+          failed,
+          correctCount,
+          accuracy: (correctCount / killNums.length) * 100,
+        });
+      }
+    }
+
+    results.reverse();
+    const calcPeriods = hist.length - actualStartIndex;
+    const overallAccuracy = totalPredicted > 0 ? (totalCorrect / totalPredicted) * 100 : 0;
+    const allCorrectRate = calcPeriods > 0 ? (allCorrectPeriods / calcPeriods) * 100 : 0;
+    const ninePlusRate = calcPeriods > 0 ? (ninePlusPeriods / calcPeriods) * 100 : 0;
+    const randomAllCorrectRate = this.getRandomAllKillRate(10) * 100;
+
+    return {
+      details: results,
+      overallAccuracy,
+      allCorrectPeriods,
+      allCorrectRate,
+      ninePlusPeriods,
+      ninePlusRate,
+      totalCorrect,
+      totalPredicted,
+      calcPeriods,
+      startIndex: actualStartIndex,
+      training: {
+        retrainEvery: 20,
+        latestWeights: trained.weights,
+        latestScore: trained.score,
+        latestLeaderboard: trained.leaderboard,
+      },
+      randomBaseline: {
+        singleKillAccuracy: this.randomKillProb * 100,
+        allCorrectRate: randomAllCorrectRate,
+        lift: allCorrectRate - randomAllCorrectRate,
+      },
+    };
+  }
+
+  private getRandomAllKillRate(killCount: number) {
+    let p = 1;
+    for (let i = 0; i < killCount; i++) {
+      p *= (42 - i) / (49 - i);
+    }
+    return p;
   }
 }

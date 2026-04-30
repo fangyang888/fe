@@ -25,7 +25,7 @@ export default function NewKillPredictor() {
         
         if (data && data.predictions) {
           setPredictions(data.predictions);
-          setBacktestStats(data.backtestStats);
+          setBacktestStats(data.probabilityBacktestStats || data.backtestStats);
           setLoading(false);
         } else {
           throw new Error('Invalid data format');
@@ -396,11 +396,11 @@ export default function NewKillPredictor() {
                     {p.n || p}
                   </div>
                   <div className="confidence">
-                    极冷杀码
+                    {p.appearProb ? `出现率≈${(p.appearProb * 100).toFixed(1)}%` : '极冷杀码'}
                   </div>
                   {p.tier && (
                     <div className="tier-label">
-                      {p.tier === 'S1' ? '极高置信' : p.tier === 'S2' ? '高置信' : p.tier === 'C2' ? '低波动率' : '常规杀码'}
+                      {p.tier === 'S1' ? '低出现率' : p.tier === 'S2' ? '较低出现率' : p.tier === 'C2' ? '低波动率' : '常规杀码'}
                     </div>
                   )}
                 </div>
@@ -417,10 +417,28 @@ export default function NewKillPredictor() {
                 <div className="stat-value">{backtestStats.overallAccuracy.toFixed(1)}%</div>
                 <div className="stat-label">综合准确率</div>
               </div>
+              {typeof backtestStats.allCorrectRate === 'number' && (
+                <div className="stat-box">
+                  <div className="stat-value">{backtestStats.allCorrectRate.toFixed(1)}%</div>
+                  <div className="stat-label">10杀全中率</div>
+                </div>
+              )}
               <div className="stat-box">
                 <div className="stat-value">{backtestStats.totalCorrect} / {backtestStats.totalPredicted}</div>
                 <div className="stat-label">杀码成功数</div>
               </div>
+              {backtestStats.randomBaseline && (
+                <div className="stat-box">
+                  <div className="stat-value">{backtestStats.randomBaseline.lift.toFixed(1)}%</div>
+                  <div className="stat-label">相对随机提升</div>
+                </div>
+              )}
+              {backtestStats.training?.latestLeaderboard?.[0] && (
+                <div className="stat-box">
+                  <div className="stat-value">{backtestStats.training.latestLeaderboard[0].name}</div>
+                  <div className="stat-label">自动权重方案</div>
+                </div>
+              )}
             </div>
             
             <h3 style={{ textAlign: 'center', color: '#94a3b8', marginBottom: '20px', fontSize: '1rem' }}>近 10 期详情</h3>

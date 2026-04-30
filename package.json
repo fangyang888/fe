@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "all": "export NVM_DIR=\"$HOME/.nvm\" && . \"$NVM_DIR/nvm.sh\" && nvm use v20.19.5 && (pnpm run dev & pnpm --dir server start:dev)"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^4.22.0",

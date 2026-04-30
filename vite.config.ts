@@ -15,7 +15,7 @@ export default defineConfig({
     cors: true, // 允许所有来源访问（开发环境）
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000',
         changeOrigin: true,
       }
     },

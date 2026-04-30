@@ -17,7 +17,10 @@ export default function NewKillPredictor() {
     const fetchData = async () => {
       try {
         const res = await fetch('/api/predictor/kill');
-        if (!res.ok) throw new Error('Network response was not ok');
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
+        }
         const data = await res.json();
         
         if (data && data.predictions) {
@@ -29,7 +32,7 @@ export default function NewKillPredictor() {
         }
       } catch (err) {
         console.error(err);
-        setError('连接服务端 AI 预测引擎失败，请检查后端服务是否运行。');
+        setError(`连接服务端 AI 预测引擎失败，请检查后端服务是否运行。${err.message ? `（${err.message}）` : ''}`);
         setLoading(false);
       }
     };

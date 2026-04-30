@@ -25,7 +25,7 @@ class BoundedCache<K, V> {
   set(key: K, value: V) {
     if (this.map.size >= this.maxSize && !this.map.has(key)) {
       const firstKey = this.map.keys().next().value;
-      this.map.delete(firstKey);
+     firstKey && this.map.delete(firstKey);
     }
     this.map.set(key, value);
   }
@@ -44,6 +44,10 @@ export class PredictorService {
   private memoStrategy = new BoundedCache<number, any>(500);
   private memoApriori = new BoundedCache<number, any>(500);
   private memoCrossRepulsion = new BoundedCache<string, any>(500);
+  private memoKnn = new BoundedCache<number, any>(500);
+  private memoNB = new BoundedCache<number, any>(500);
+  private memoMarkov2 = new BoundedCache<number, any>(500);
+  private memoExpertWeights = new BoundedCache<number, any>(500);
   private lastHistLength = 0;
 
   private checkAndClearCache(currentHistLength: number) {
@@ -55,6 +59,10 @@ export class PredictorService {
       this.memoStrategy.clear();
       this.memoApriori.clear();
       this.memoCrossRepulsion.clear();
+      this.memoKnn.clear();
+      this.memoNB.clear();
+      this.memoMarkov2.clear();
+      this.memoExpertWeights.clear();
     }
     this.lastHistLength = currentHistLength;
   }
@@ -68,7 +76,7 @@ export class PredictorService {
     ]);
     
     const { predictions, repulsionInfo } = this.strategyServerSide(hist);
-    const backtestStats = this.runBacktest(hist, 10, 50);
+    const backtestStats = this.runBacktest(hist, 10, 100);
     
     return {
       predictions,
@@ -406,6 +414,276 @@ export class PredictorService {
     return nextProbs;
   }
 
+  // --- KNN HISTORY PATTERN MATCHING ---
+  private getKnnPredictionsMemo(hist: number[][], k = 30): number[] {
+    const key = hist.length;
+    if (this.memoKnn.has(key)) return this.memoKnn.get(key);
+    const res = this.getKnnPredictions(hist, k);
+    this.memoKnn.set(key, res);
+    return res;
+  }
+
+  private getKnnPredictions(hist: number[][], k = 30): number[] {
+    if (hist.length < 10) return new Array(50).fill(0);
+    
+    // Pattern is the last 3 periods
+    const pattern = [
+      new Set(hist[hist.length - 3]),
+      new Set(hist[hist.length - 2]),
+      new Set(hist[hist.length - 1])
+    ];
+
+    const similarities = [];
+    // We can only check up to hist.length - 4 (because we need a "next" period to check)
+    for (let i = 2; i < hist.length - 1; i++) {
+      // Avoid matching with the exact recent pattern itself
+      if (i >= hist.length - 3) continue;
+
+      let sim = 0;
+      for (let j = 0; j < 3; j++) {
+        const histSet = hist[i - 2 + j];
+        const patSet = pattern[j];
+        let intersection = 0;
+        for (const num of histSet) {
+          if (patSet.has(num)) intersection++;
+        }
+        // Time-decayed similarity: more recent periods have higher weight
+        // j=0 (3 ago): weight 0.2, j=1 (2 ago): weight 0.3, j=2 (1 ago): weight 0.5
+        const weights = [0.2, 0.3, 0.5];
+        sim += intersection * weights[j];
+      }
+      similarities.push({ index: i, sim });
+    }
+
+    similarities.sort((a, b) => b.sim - a.sim);
+    const topK = similarities.slice(0, k);
+
+    // Calculate frequency of next numbers in the top K most similar historical patterns
+    const nextFrequencies = new Array(50).fill(0);
+    for (const neighbor of topK) {
+      const nextRow = hist[neighbor.index + 1];
+      for (const num of nextRow) {
+        nextFrequencies[num]++;
+      }
+    }
+    
+    // Normalize to 0-1 probability
+    const knnProbs = new Array(50).fill(0);
+    for (let i = 1; i <= 49; i++) {
+      knnProbs[i] = nextFrequencies[i] / k;
+    }
+    
+    return knnProbs;
+  }
+
+  // --- PURE TYPESCRIPT MACHINE LEARNING (NAIVE BAYES) ---
+  private getNaiveBayesKillProbMemo(hist: number[][]): number[] {
+    const key = hist.length;
+    if (this.memoNB.has(key)) return this.memoNB.get(key);
+    const res = this.getNaiveBayesKillProb(hist);
+    this.memoNB.set(key, res);
+    return res;
+  }
+
+  private getNaiveBayesKillProb(hist: number[][]): number[] {
+    if (hist.length < 50) return new Array(50).fill(0);
+    
+    // Classes: 0 = Appeared (Not Killed), 1 = Not Appeared (Killed)
+    let classKill = 0;
+    let classNotKill = 0;
+    
+    // P(Feature | Class) with Laplace smoothing
+    const countF1 = { kill: new Array(5).fill(0.1), notKill: new Array(5).fill(0.1) }; 
+    const countF2 = { kill: new Array(4).fill(0.1), notKill: new Array(4).fill(0.1) };
+    const countF3 = { kill: new Array(10).fill(0.1), notKill: new Array(10).fill(0.1) }; // Tail Digit (0-9)
+    const countF4 = { kill: new Array(2).fill(0.1), notKill: new Array(2).fill(0.1) };  // Odd/Even (0, 1)
+
+    const getF1Category = (gap: number) => gap === 0 ? 0 : gap <= 2 ? 1 : gap <= 5 ? 2 : gap <= 10 ? 3 : 4;
+    const getF2Category = (freq: number) => freq === 0 ? 0 : freq === 1 ? 1 : freq === 2 ? 2 : 3;
+    const getF3Category = (n: number) => n % 10;
+    const getF4Category = (n: number) => n % 2;
+
+    const lastSeen = new Array(50).fill(-1);
+    
+    for (let i = 0; i < hist.length - 1; i++) {
+      const row = hist[i];
+      for (let n = 1; n <= 49; n++) {
+        let freq = 0;
+        for (let j = Math.max(0, i - 9); j <= i; j++) {
+           if (hist[j].includes(n)) freq++;
+        }
+        
+        const gap = lastSeen[n] === -1 ? 10 : i - lastSeen[n];
+        const f1 = getF1Category(gap);
+        const f2 = getF2Category(freq);
+        const f3 = getF3Category(n);
+        const f4 = getF4Category(n);
+        
+        const isKilled = !hist[i+1].includes(n);
+        if (isKilled) {
+          classKill++;
+          countF1.kill[f1]++;
+          countF2.kill[f2]++;
+          countF3.kill[f3]++;
+          countF4.kill[f4]++;
+        } else {
+          classNotKill++;
+          countF1.notKill[f1]++;
+          countF2.notKill[f2]++;
+          countF3.notKill[f3]++;
+          countF4.notKill[f4]++;
+        }
+      }
+      for (const num of row) lastSeen[num] = i;
+    }
+
+    const currentGap = new Array(50).fill(10);
+    const currentFreq = new Array(50).fill(0);
+    for (let n = 1; n <= 49; n++) {
+       let freq = 0;
+       for (let j = Math.max(0, hist.length - 10); j < hist.length; j++) {
+          if (hist[j].includes(n)) freq++;
+       }
+       currentFreq[n] = freq;
+       
+       let ls = -1;
+       for (let j = hist.length - 1; j >= 0; j--) {
+         if (hist[j].includes(n)) { ls = j; break; }
+       }
+       currentGap[n] = ls === -1 ? 10 : (hist.length - 1) - ls;
+    }
+
+    const pKill = classKill / (classKill + classNotKill);
+    const pNotKill = classNotKill / (classKill + classNotKill);
+    const mlProbs = new Array(50).fill(0);
+    
+    for (let n = 1; n <= 49; n++) {
+      const f1 = getF1Category(currentGap[n]);
+      const f2 = getF2Category(currentFreq[n]);
+      const f3 = getF3Category(n);
+      const f4 = getF4Category(n);
+
+      const pF1_Kill = countF1.kill[f1] / classKill;
+      const pF2_Kill = countF2.kill[f2] / classKill;
+      const pF3_Kill = countF3.kill[f3] / classKill;
+      const pF4_Kill = countF4.kill[f4] / classKill;
+      
+      const pF1_NotKill = countF1.notKill[f1] / classNotKill;
+      const pF2_NotKill = countF2.notKill[f2] / classNotKill;
+      const pF3_NotKill = countF3.notKill[f3] / classNotKill;
+      const pF4_NotKill = countF4.notKill[f4] / classNotKill;
+
+      const scoreKill = pKill * pF1_Kill * pF2_Kill * pF3_Kill * pF4_Kill;
+      const scoreNotKill = pNotKill * pF1_NotKill * pF2_NotKill * pF3_NotKill * pF4_NotKill;
+
+      mlProbs[n] = scoreKill / (scoreKill + scoreNotKill);
+    }
+
+    return mlProbs;
+  }
+
+  // --- SECOND-ORDER MARKOV CHAIN ---
+  private getMarkov2PredictionsMemo(hist: number[][]): number[] {
+    const key = hist.length;
+    if (this.memoMarkov2.has(key)) return this.memoMarkov2.get(key);
+    const res = this.getMarkov2Predictions(hist);
+    this.memoMarkov2.set(key, res);
+    return res;
+  }
+
+  private getMarkov2Predictions(hist: number[][]): number[] {
+    if (hist.length < 4) return new Array(50).fill(7 / 49);
+    const pairTrans: Map<string, number[]> = new Map();
+    const pairCounts: Map<string, number> = new Map();
+
+    for (let i = 1; i < hist.length - 1; i++) {
+      const prev = hist[i - 1];
+      const curr = hist[i];
+      const next = hist[i + 1];
+      for (const a of prev) {
+        for (const b of curr) {
+          const key = `${a},${b}`;
+          if (!pairTrans.has(key)) {
+            pairTrans.set(key, new Array(50).fill(0));
+            pairCounts.set(key, 0);
+          }
+          pairCounts.set(key, pairCounts.get(key)! + 1);
+          for (const c of next) pairTrans.get(key)![c]++;
+        }
+      }
+    }
+
+    const prev = hist[hist.length - 2];
+    const curr = hist[hist.length - 1];
+    const nextProbs = new Array(50).fill(0);
+    let totalWeight = 0;
+
+    for (const a of prev) {
+      for (const b of curr) {
+        const key = `${a},${b}`;
+        const count = pairCounts.get(key) || 0;
+        if (count < 2) continue;
+        const trans = pairTrans.get(key);
+        if (!trans) continue;
+        for (let j = 1; j <= 49; j++) nextProbs[j] += trans[j] / count;
+        totalWeight++;
+      }
+    }
+
+    if (totalWeight > 0) {
+      for (let j = 1; j <= 49; j++) nextProbs[j] /= totalWeight;
+    }
+    return nextProbs;
+  }
+
+  // --- FAILURE PATTERN PROTECTION ---
+  private getFailurePatternProtection(hist: number[][]): Set<number> {
+    const protectedNums = new Set<number>();
+    if (hist.length < 30) return protectedNums;
+
+    const hn = hist.length;
+    const lastRow = new Set(hist[hn - 1]);
+    const prevRow = new Set(hist[hn - 2]);
+    const prevPrevRow = hn >= 3 ? new Set(hist[hn - 3]) : new Set<number>();
+
+    // Build appearance index once
+    const allApps = Array.from({ length: 50 }, () => [] as number[]);
+    for (let i = 0; i < hn; i++) {
+      for (const num of hist[i]) allApps[num].push(i);
+    }
+
+    for (let n = 1; n <= 49; n++) {
+      // Pattern 1: Bounce-back (appeared 2 ago, missing last 2, historically >20% bounce rate)
+      if (prevPrevRow.has(n) && !prevRow.has(n) && !lastRow.has(n)) {
+        let bounceCount = 0, patternCount = 0;
+        for (let i = 2; i < hn - 1; i++) {
+          if (hist[i - 2].includes(n) && !hist[i - 1].includes(n) && !hist[i].includes(n)) {
+            patternCount++;
+            if (hist[i + 1].includes(n)) bounceCount++;
+          }
+        }
+        if (patternCount >= 5 && bounceCount / patternCount > 0.20) {
+          protectedNums.add(n);
+        }
+      }
+
+      // Pattern 2: Regular-cycle numbers that are "due"
+      const apps = allApps[n];
+      if (apps.length >= 5) {
+        const gaps: number[] = [];
+        for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i - 1]);
+        const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+        const stdDev = Math.sqrt(gaps.reduce((s, g) => s + (g - avgGap) ** 2, 0) / gaps.length);
+        const cv = avgGap > 0 ? stdDev / avgGap : 1;
+        const currentGap = (hn - 1) - apps[apps.length - 1];
+        if (cv < 0.4 && currentGap >= avgGap * 0.8 && currentGap <= avgGap * 1.3) {
+          protectedNums.add(n);
+        }
+      }
+    }
+    return protectedNums;
+  }
+
   // --- CROSS-PERIOD REPULSION MATRIX ---
   // Builds a 49x49 cross-period co-occurrence matrix (period T numbers → period T+1 numbers).
   // Returns a score array [0..49] where higher score = stronger repulsion from last row.
@@ -513,7 +791,7 @@ export class PredictorService {
     }
 
     // Step 2: For each frequent pair, compute conf({A,B} → ¬C) for each target C
-    for (const [pairKey, indices] of pairOccurrences.entries()) {
+    for (const [pairKey, indices] of Array.from(pairOccurrences.entries())) {
       if (indices.length < MIN_SUPPORT) continue;
 
       const [a, b] = pairKey.split(',').map(Number);
@@ -570,50 +848,85 @@ export class PredictorService {
 
   private strategyServerSideInternal(hist: number[][]): { predictions: any[]; repulsionInfo: any } {
     const opts = this.getAdaptiveKill10Opts(hist);
-    let baseNums = this.kill10WithRepulsionMemo(hist, opts);
-    
-    // Server Extra: Markov Penalty Filtering
-    // We heavily penalize numbers that have a high markov transition probability.
-    const markovProbs = this.getMarkovPredictions(hist);
-    baseNums = baseNums.filter((c: any) => {
-      // average prob is around 7/49 = 0.142
-      // If a number has > 0.25 probability to appear from markov chain, it's dangerous to kill
-      if (markovProbs[c.n] > 0.22) return false;
-      return true;
+    const weights = this.getDynamicExpertWeights(hist, opts);
+
+    // ========== PHASE 1: Each expert independently provides kill probabilities ==========
+    const expertScores: Record<string, number[]> = {
+      frequency: new Array(50).fill(0),
+      repulsion: new Array(50).fill(0),
+      knn: this.getKnnPredictionsMemo(hist, 30),
+      markov: this.getMarkovPredictions(hist),
+      markov2: this.getMarkov2PredictionsMemo(hist),
+      bayes: this.getNaiveBayesKillProbMemo(hist),
+    };
+
+    // Convert frequency & repulsion into "kill probabilities"
+    // For frequency, lower weight = higher kill probability
+    const { candidates: baseCandidates } = this.buildScoreEngineWithOpts(hist, opts);
+    const maxW = Math.max(...baseCandidates.map(c => c.w), 1);
+    baseCandidates.forEach(c => {
+      expertScores.frequency[c.n] = 1 - (c.w / maxW);
     });
 
-    // Gather repulsion info for response
+    const repulsionKill = this.kill10WithRepulsionMemo(hist, opts);
+    const maxRepW = Math.max(...repulsionKill.map(c => Math.abs(c.w)), 1);
+    const minRepW = Math.min(...repulsionKill.map(c => c.w));
+    repulsionKill.forEach(c => {
+      // Use normalized score (lower w = higher kill prob)
+      expertScores.repulsion[c.n] = (maxRepW - c.w) / (maxRepW - minRepW || 1);
+    });
+
+    // ========== PHASE 2: Ensemble Scoring (Soft Voting) ==========
+    const finalScores = new Array(50).fill(0);
+    const expertNames: Record<number, string[]> = {};
+    for (let i = 1; i <= 49; i++) expertNames[i] = [];
+
+    for (let n = 1; n <= 49; n++) {
+      for (const [expert, weight] of Object.entries(weights)) {
+        const score = expertScores[expert][n];
+        // For Markov/KNN, high prob means "likely to appear", so kill prob is 1 - prob
+        const killProb = (expert === 'knn' || expert === 'markov' || expert === 'markov2') 
+          ? (1 - score) 
+          : score;
+        
+        finalScores[n] += killProb * (weight as number);
+        
+        if (killProb > 0.7) { // Threshold for display
+           expertNames[n].push(this.getExpertDisplayName(expert));
+        }
+      }
+    }
+
+    // ========== PHASE 3: Failure pattern protection ==========
+    const protectedNums = this.getFailurePatternProtection(hist);
+
+    // ========== PHASE 4: Ranking & Selection ==========
     const repulsionThreshold = opts.repulsionThreshold || 0.10;
     const repulsionScores = this.getCrossPerioRepulsionScores(hist, repulsionThreshold);
     const aprioriResult = this.getAprioriRepulsionRules(hist);
 
-    const lowCVPicks = this.pickLowCVFromLastRow(hist, 2);
-    const top8 = baseNums.slice(0, 8);
-    const top8Nums = top8.map((c: any) => c.n);
-    
-    const validPicks = lowCVPicks.filter((p: any) => !top8Nums.includes(p.n)).map((p: any) => ({ n: p.n, reason: "上期低CV", tier: "C2" }));
-    const finalNums = [...top8.map((c: any, i: number) => ({
+    let allCandidates = Array.from({ length: 49 }, (_, i) => ({
+      n: i + 1,
+      score: finalScores[i + 1],
+      experts: expertNames[i + 1],
+      isProtected: protectedNums.has(i + 1),
+      repulsionScore: repulsionScores[i + 1] || 0,
+      aprioriScore: aprioriResult.scores[i + 1] || 0,
+    }));
+
+    // Sort by final ensemble score
+    let selected = allCandidates
+      .filter(c => !c.isProtected)
+      .sort((a, b) => b.score - a.score);
+
+    const finalNums = selected.slice(0, 10).map((c, i) => ({
       n: c.n,
       tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
-      repulsionScore: Math.round((repulsionScores[c.n] || 0) * 100) / 100,
-      aprioriScore: Math.round((aprioriResult.scores[c.n] || 0) * 100) / 100,
-    })), ...validPicks];
-    
-    if (finalNums.length < 10) {
-      const extras = baseNums.slice(8).filter((c: any) => !finalNums.find((f: any) => f.n === c.n));
-      extras.forEach((e: any) => finalNums.push({ n: e.n, tier: 'S3', repulsionScore: 0, aprioriScore: 0 }));
-    }
-    
-    // Fill if still < 10 (due to markov filter dropping too many)
-    if (finalNums.length < 10) {
-      const fallback = this.kill10WithOpts(hist, opts);
-      for (const f of fallback) {
-        if (!finalNums.find(fn => fn.n === f.n)) {
-          finalNums.push({ n: f.n, tier: 'S3', repulsionScore: 0, aprioriScore: 0 });
-        }
-        if (finalNums.length >= 10) break;
-      }
-    }
+      score: Math.round(c.score * 100) / 100,
+      experts: c.experts.length > 0 ? c.experts.join('+') : '综合',
+      repulsionScore: Math.round(c.repulsionScore * 100) / 100,
+      aprioriScore: Math.round(c.aprioriScore * 100) / 100,
+    }));
 
     // Build repulsionInfo for frontend
     const repulsionInfo = {
@@ -622,21 +935,90 @@ export class PredictorService {
         aprioriWeight: opts.aprioriWeight,
         repulsionThreshold: opts.repulsionThreshold,
       },
-      topRepulsedNumbers: Array.from({ length: 49 }, (_, i) => ({
-        n: i + 1,
-        repulsionScore: Math.round((repulsionScores[i + 1] || 0) * 100) / 100,
-        aprioriScore: Math.round((aprioriResult.scores[i + 1] || 0) * 100) / 100,
-      }))
-        .filter(x => x.repulsionScore > 0 || x.aprioriScore > 0)
-        .sort((a, b) => (b.repulsionScore + b.aprioriScore) - (a.repulsionScore + a.aprioriScore))
-        .slice(0, 15),
+      expertWeights: weights,
+      topRepulsedNumbers: allCandidates
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 15)
+        .map(x => ({
+          n: x.n,
+          score: Math.round(x.score * 100) / 100,
+          experts: x.experts.join('+'),
+        })),
       aprioriRules: aprioriResult.rules,
+      protectedCount: protectedNums.size,
     };
-    
+
     return {
-      predictions: finalNums.slice(0, 10),
+      predictions: finalNums,
       repulsionInfo,
     };
+  }
+
+  private getExpertDisplayName(name: string): string {
+    const map: any = {
+      frequency: '频率',
+      repulsion: '排斥',
+      knn: 'KNN',
+      markov: '马尔可夫',
+      markov2: '马2',
+      bayes: '贝叶斯'
+    };
+    return map[name] || name;
+  }
+
+  private getDynamicExpertWeights(hist: number[][], opts: PredictorOpts) {
+    const key = hist.length;
+    if (this.memoExpertWeights.has(key)) return this.memoExpertWeights.get(key);
+
+    const evalWindow = 30; // Evaluate last 30 periods
+    const experts = ['frequency', 'repulsion', 'knn', 'markov', 'markov2', 'bayes'];
+    const performance: any = {};
+    experts.forEach(e => performance[e] = 0);
+
+    const start = Math.max(50, hist.length - evalWindow);
+    let totalEval = 0;
+
+    for (let i = start; i < hist.length - 1; i++) {
+      const subHist = hist.slice(0, i + 1);
+      const nextRow = new Set(hist[i + 1]);
+      
+      // Get each expert's top 10 kill suggestions
+      const kills: any = {
+        frequency: this.kill10WithOptsMemo(subHist, opts).map(c => c.n),
+        repulsion: this.kill10WithRepulsionMemo(subHist, opts).map(c => c.n),
+        knn: Array.from({length: 49}, (_, k) => ({n: k+1, p: this.getKnnPredictionsMemo(subHist, 30)[k+1]}))
+              .sort((a,b) => a.p - b.p).slice(0, 10).map(c => c.n),
+        markov: Array.from({length: 49}, (_, k) => ({n: k+1, p: this.getMarkovPredictions(subHist)[k+1]}))
+                .sort((a,b) => a.p - b.p).slice(0, 10).map(c => c.n),
+        markov2: Array.from({length: 49}, (_, k) => ({n: k+1, p: this.getMarkov2PredictionsMemo(subHist)[k+1]}))
+                 .sort((a,b) => a.p - b.p).slice(0, 10).map(c => c.n),
+        bayes: Array.from({length: 49}, (_, k) => ({n: k+1, p: this.getNaiveBayesKillProbMemo(subHist)[k+1]}))
+               .sort((a,b) => b.p - a.p).slice(0, 10).map(c => c.n),
+      };
+
+      for (const expert of experts) {
+        const correct = kills[expert].filter((n: number) => !nextRow.has(n)).length;
+        performance[expert] += correct / 10;
+      }
+      totalEval++;
+    }
+
+    const weights: any = {};
+    let sum = 0;
+    for (const expert of experts) {
+      const avgAcc = totalEval > 0 ? performance[expert] / totalEval : 0.85; // Default 85%
+      // Use square of accuracy to penalize low performance more heavily
+      weights[expert] = Math.pow(avgAcc, 2);
+      sum += weights[expert];
+    }
+
+    // Normalize weights
+    for (const expert of experts) {
+      weights[expert] = weights[expert] / sum;
+    }
+
+    this.memoExpertWeights.set(key, weights);
+    return weights;
   }
 
   private runBacktest(hist: number[][], displayPeriods = 10, calcPeriods = 50) {

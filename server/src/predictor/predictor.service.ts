@@ -152,6 +152,8 @@ export class PredictorService {
   private memoAppearWeights = new BoundedCache<number, any>(500);
   private memoHybridKill10 = new BoundedCache<string, any>(100);
   private memoCoreKillOne = new BoundedCache<string, any>(100);
+  private memoHistoricalLearning = new BoundedCache<number, any>(500);
+  private memoKillPredictionResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
 
   private checkAndClearCache(currentHistLength: number) {
@@ -171,13 +173,43 @@ export class PredictorService {
       this.memoAppearWeights.clear();
       this.memoHybridKill10.clear();
       this.memoCoreKillOne.clear();
+      this.memoHistoricalLearning.clear();
+      this.memoKillPredictionResponse.clear();
     }
     this.lastHistLength = currentHistLength;
+  }
+
+  private getHistoryCacheKey(rawHist: any[]) {
+    const last = rawHist[rawHist.length - 1];
+    if (!last) return 'empty';
+    const period = last.period ?? last.No ?? last.id ?? rawHist.length;
+    const nums = [last.n1, last.n2, last.n3, last.n4, last.n5, last.n6, last.n7].join(',');
+    return `${rawHist.length}:${period}:${nums}`;
+  }
+
+  private getHistoryMeta(rawHist: any[]) {
+    const last = rawHist[rawHist.length - 1];
+    return {
+      source: 'database:history',
+      count: rawHist.length,
+      latest: last
+        ? {
+            id: last.id,
+            year: last.year ?? null,
+            No: last.No ?? null,
+            numbers: [last.n1, last.n2, last.n3, last.n4, last.n5, last.n6, last.n7],
+          }
+        : null,
+    };
   }
 
   async getKillPredictions() {
     const rawHist = await this.historyService.findAll();
     this.checkAndClearCache(rawHist.length); // 检查是否需要清理缓存
+    const responseCacheKey = this.getHistoryCacheKey(rawHist);
+    if (this.memoKillPredictionResponse.has(responseCacheKey)) {
+      return this.memoKillPredictionResponse.get(responseCacheKey);
+    }
 
     const hist = rawHist.map((item) => [
       item.n1,
@@ -220,9 +252,10 @@ export class PredictorService {
     const finalPredictions = hybridResult.predictions;
     const backtestStats = null;
 
-    return {
+    const response = {
       predictions: finalPredictions,
       coreKill,
+      historyMeta: this.getHistoryMeta(rawHist),
       specialCode: this.getSpecialCodePrediction(hist, 25, 15),
       repulsionInfo: {
         ...repulsionInfo,
@@ -251,6 +284,8 @@ export class PredictorService {
         engineResult.stats ||
         (useLowRisk ? lowRiskBacktestStats : probabilityBacktestStats),
     };
+    this.memoKillPredictionResponse.set(responseCacheKey, response);
+    return response;
   }
 
   // --- SERVER-SIDE PREDICTION ENGINE ---
@@ -1379,6 +1414,213 @@ export class PredictorService {
       }));
   }
 
+  private buildFastLearningFeatures(hist: number[][], end: number, n: number) {
+    const countInWindow = (window: number) => {
+      let count = 0;
+      for (let i = Math.max(0, end - window); i < end; i++) {
+        if (hist[i].includes(n)) count++;
+      }
+      return count;
+    };
+
+    let lastSeen = -1;
+    const gaps: number[] = [];
+    let previousSeen = -1;
+    let totalSeen = 0;
+    for (let i = 0; i < end; i++) {
+      if (!hist[i].includes(n)) continue;
+      totalSeen++;
+      if (previousSeen >= 0) gaps.push(i - previousSeen);
+      previousSeen = i;
+      lastSeen = i;
+    }
+
+    const avgGap =
+      gaps.length > 0
+        ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length
+        : 49 / 7;
+    const currentGap = lastSeen >= 0 ? end - 1 - lastSeen : end;
+    const gapRatio = avgGap > 0 ? currentGap / avgGap : 1;
+
+    return {
+      freq5: countInWindow(5) / Math.min(5, end),
+      freq10: countInWindow(10) / Math.min(10, end),
+      freq20: countInWindow(20) / Math.min(20, end),
+      freq50: countInWindow(50) / Math.min(50, end),
+      freq100: countInWindow(100) / Math.min(100, end),
+      longFreq: totalSeen / Math.max(1, end),
+      currentGap,
+      avgGap,
+      gapRatio,
+      recent1: countInWindow(1),
+      recent3: countInWindow(3),
+      recent5: countInWindow(5),
+    };
+  }
+
+  private bucketLearningFeatures(features: Record<string, number>) {
+    const gapBucket =
+      features.gapRatio < 0.25
+        ? 0
+        : features.gapRatio < 0.65
+          ? 1
+          : features.gapRatio < 1.15
+            ? 2
+            : features.gapRatio < 1.8
+              ? 3
+              : 4;
+    const freq20Bucket =
+      features.freq20 <= 0.05
+        ? 0
+        : features.freq20 <= 0.1
+          ? 1
+          : features.freq20 <= 0.2
+            ? 2
+            : 3;
+    const freq50Bucket =
+      features.freq50 <= 0.08
+        ? 0
+        : features.freq50 <= 0.14
+          ? 1
+          : features.freq50 <= 0.22
+            ? 2
+            : 3;
+    const recentBucket =
+      features.recent1 > 0 ? 3 : features.recent3 > 0 ? 2 : features.recent5 > 0 ? 1 : 0;
+
+    return {
+      gapBucket,
+      freq20Bucket,
+      freq50Bucket,
+      recentBucket,
+      composite: `${gapBucket}|${freq20Bucket}|${freq50Bucket}|${recentBucket}`,
+    };
+  }
+
+  private getHistoricalLearningScores(hist: number[][]): AppearScore[] {
+    const key = hist.length;
+    if (this.memoHistoricalLearning.has(key)) {
+      return this.memoHistoricalLearning.get(key);
+    }
+
+    const protectedNums = this.getFailurePatternProtection(hist);
+    const minStart = Math.max(40, Math.min(120, Math.floor(hist.length * 0.12)));
+    const trainStart = Math.max(minStart, hist.length - 520);
+    const currentFeatures = new Map<number, Record<string, number>>();
+    const currentBuckets = new Map<number, ReturnType<PredictorService['bucketLearningFeatures']>>();
+
+    for (let n = 1; n <= 49; n++) {
+      const f = this.buildFastLearningFeatures(hist, hist.length, n);
+      currentFeatures.set(n, f);
+      currentBuckets.set(n, this.bucketLearningFeatures(f));
+    }
+
+    const rows = [];
+    for (let n = 1; n <= 49; n++) {
+      if (protectedNums.has(n)) continue;
+
+      const current = currentFeatures.get(n)!;
+      const bucket = currentBuckets.get(n)!;
+      let exactTrials = 0;
+      let exactAppears = 0;
+      let softTrials = 0;
+      let softAppears = 0;
+      let weightedTrials = 0;
+      let weightedAppears = 0;
+
+      for (let i = trainStart; i < hist.length; i++) {
+        const f = this.buildFastLearningFeatures(hist, i, n);
+        const b = this.bucketLearningFeatures(f);
+        const appeared = hist[i].includes(n) ? 1 : 0;
+
+        if (b.composite === bucket.composite) {
+          exactTrials++;
+          exactAppears += appeared;
+        }
+
+        const bucketDistance =
+          Math.abs(b.gapBucket - bucket.gapBucket) +
+          Math.abs(b.freq20Bucket - bucket.freq20Bucket) +
+          Math.abs(b.freq50Bucket - bucket.freq50Bucket) +
+          Math.abs(b.recentBucket - bucket.recentBucket);
+        if (bucketDistance <= 2) {
+          softTrials++;
+          softAppears += appeared;
+        }
+
+        const featureDistance =
+          Math.abs(f.gapRatio - current.gapRatio) * 0.9 +
+          Math.abs(f.freq20 - current.freq20) * 3.2 +
+          Math.abs(f.freq50 - current.freq50) * 2.2 +
+          Math.abs(f.freq100 - current.freq100) * 1.4 +
+          Math.abs(f.recent5 - current.recent5) * 0.22;
+        const weight = 1 / (1 + featureDistance);
+        weightedTrials += weight;
+        weightedAppears += appeared * weight;
+      }
+
+      const exactRate =
+        exactTrials >= 8 ? exactAppears / exactTrials : this.randomAppearProb;
+      const softRate =
+        softTrials >= 18 ? softAppears / softTrials : this.randomAppearProb;
+      const weightedRate =
+        weightedTrials > 0 ? weightedAppears / weightedTrials : this.randomAppearProb;
+      const longRate = current.longFreq || this.randomAppearProb;
+      const appearProb = Math.max(
+        0.025,
+        Math.min(
+          0.42,
+          exactRate * 0.28 + softRate * 0.27 + weightedRate * 0.3 + longRate * 0.15,
+        ),
+      );
+
+      rows.push({
+        n,
+        appearProb,
+        killConfidence: 1 - appearProb,
+        features: {
+          ...current,
+          exactTrials,
+          exactRate,
+          softTrials,
+          softRate,
+          weightedRate,
+          historicalLearningProb: appearProb,
+        },
+      });
+    }
+
+    rows.sort(
+      (a, b) =>
+        a.appearProb - b.appearProb ||
+        b.features.exactTrials - a.features.exactTrials ||
+        a.n - b.n,
+    );
+    this.memoHistoricalLearning.set(key, rows);
+    return rows;
+  }
+
+  private getHistoricalLearningKillPredictions(hist: number[][], count = 10) {
+    return this.getHistoricalLearningScores(hist)
+      .slice(0, count)
+      .map((s, i) => ({
+        n: s.n,
+        tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
+        score: Math.round(s.killConfidence * 1000) / 1000,
+        appearProb: Math.round(s.appearProb * 1000) / 1000,
+        experts: '历史学习',
+        repulsionScore: 0,
+        aprioriScore: 0,
+        risk: s.appearProb <= 0.1 ? 'low' : s.appearProb <= 0.14 ? 'mid' : 'watch',
+        reasons: [
+          '相似历史场景',
+          `精确样本${s.features.exactTrials}期`,
+          `学习出现率${Math.round(s.appearProb * 100)}%`,
+        ],
+        features: s.features,
+      }));
+  }
+
   private normalizeCandidates(
     name: string,
     displayName: string,
@@ -2279,9 +2521,12 @@ export class PredictorService {
 
   private getHybridBasePredictions(
     hist: number[][],
-    baseModel: 'probability' | 'low-risk',
+    baseModel: 'probability' | 'low-risk' | 'historical-learning',
     count = 14,
   ) {
+    if (baseModel === 'historical-learning') {
+      return this.getHistoricalLearningKillPredictions(hist, count);
+    }
     return baseModel === 'low-risk'
       ? this.getLowRiskKillPredictions(hist, count)
       : this.getProbabilityKillPredictions(hist, count);
@@ -2291,14 +2536,22 @@ export class PredictorService {
     hist: number[][],
     window: number,
     historyCount: number,
-    baseModel: 'probability' | 'low-risk',
+    baseModel: 'probability' | 'low-risk' | 'historical-learning',
+    useRecentRiskGuard = false,
   ) {
     const displayPeriods = 10;
     const evalWindow = Math.min(160, Math.max(50, Math.floor(hist.length * 0.2)));
     const start = Math.max(40, hist.length - evalWindow);
-    const baseLabel = baseModel === 'low-risk' ? '低风险' : '概率';
+    const baseLabel =
+      baseModel === 'historical-learning'
+        ? '历史学习'
+        : baseModel === 'low-risk'
+          ? '低风险'
+          : '概率';
     const tracker = this.createVariantTracker(
-      `混合10杀 近${window}期/${historyCount}+${10 - historyCount} ${baseLabel}补位`,
+      `混合10杀 近${window}期/${historyCount}+${10 - historyCount} ${baseLabel}补位${
+        useRecentRiskGuard ? ' 风险过滤' : ''
+      }`,
     );
 
     for (let i = start; i < hist.length; i++) {
@@ -2315,9 +2568,18 @@ export class PredictorService {
         historyCount,
         10,
       );
+      const finalPredictions = useRecentRiskGuard
+        ? this.applyRecentRiskGuard(
+            subHist,
+            predictions,
+            window,
+            historyCount,
+            baseModel,
+          )
+        : predictions;
       this.addVariantResult(
         tracker,
-        this.scoreKillPrediction(predictions, new Set(hist[i])),
+        this.scoreKillPrediction(finalPredictions, new Set(hist[i])),
         hist[i],
         hist.length - i,
         i >= hist.length - displayPeriods,
@@ -2325,11 +2587,172 @@ export class PredictorService {
     }
 
     return this.summarizeVariantTracker(
-      `hybrid-history-${window}-${historyCount}-${baseModel}`,
+      `hybrid-history-${window}-${historyCount}-${baseModel}${
+        useRecentRiskGuard ? '-guarded' : ''
+      }`,
       tracker,
       hist.length - start,
       10,
     );
+  }
+
+  private getRecentSelectionRisk(
+    hist: number[][],
+    window: number,
+    historyCount: number,
+    baseModel: 'probability' | 'low-risk' | 'historical-learning',
+    lookback = 50,
+  ) {
+    const start = Math.max(40, hist.length - lookback);
+    const risks = new Map<number, { appear: number; fail: number; rankSum: number }>();
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const modelPredictions = this.getHybridBasePredictions(subHist, baseModel, 20);
+      const predictions = this.combineHybridKillPredictions(
+        subHist,
+        modelPredictions,
+        window,
+        historyCount,
+        10,
+      );
+      const actualSet = new Set(hist[i]);
+
+      predictions.forEach((prediction, idx) => {
+        const current =
+          risks.get(prediction.n) || { appear: 0, fail: 0, rankSum: 0 };
+        current.appear++;
+        current.rankSum += idx + 1;
+        if (actualSet.has(prediction.n)) current.fail++;
+        risks.set(prediction.n, current);
+      });
+    }
+
+    return risks;
+  }
+
+  private applyRecentRiskGuard(
+    hist: number[][],
+    predictions: any[],
+    window: number,
+    historyCount: number,
+    baseModel: 'probability' | 'low-risk' | 'historical-learning',
+  ) {
+    const totalCount = 10;
+    const risks = this.getRecentSelectionRisk(hist, window, historyCount, baseModel, 50);
+    const selected: any[] = [];
+    const selectedSet = new Set<number>();
+
+    const isHighRisk = (n: number) => {
+      const risk = risks.get(n);
+      if (!risk || risk.appear < 1) return false;
+      const failRate = risk.fail / risk.appear;
+      return risk.fail >= 3 || failRate >= 0.34;
+    };
+
+    const riskScore = (candidate: any) => {
+      const risk = risks.get(candidate.n);
+      if (!risk) return 0;
+      const failRate = risk.appear > 0 ? risk.fail / risk.appear : 0;
+      const avgRank = risk.appear > 0 ? risk.rankSum / risk.appear : 99;
+      return failRate * 100 + risk.fail * 4 - risk.appear * 0.3 + (avgRank <= 3 ? 5 : 0);
+    };
+
+    for (const prediction of predictions) {
+      if (isHighRisk(prediction.n)) continue;
+      selected.push({
+        ...prediction,
+        guard: risks.get(prediction.n) || null,
+      });
+      selectedSet.add(prediction.n);
+    }
+
+    const pool = [
+      ...predictions,
+      ...this.getHybridBasePredictions(hist, 'probability', 30),
+      ...this.getHybridBasePredictions(hist, 'low-risk', 30),
+      ...this.getHistoricalLearningKillPredictions(hist, 30),
+    ]
+      .filter((candidate) => !selectedSet.has(candidate.n))
+      .sort(
+        (a, b) =>
+          riskScore(a) - riskScore(b) ||
+          (a.appearProb || this.randomAppearProb) -
+            (b.appearProb || this.randomAppearProb),
+      );
+
+    for (const candidate of pool) {
+      if (selected.length >= totalCount) break;
+      selected.push({
+        ...candidate,
+        source: candidate.source || 'guard-fill',
+        reasons:
+          candidate.reasons?.length > 0
+            ? [...candidate.reasons, '近期风险过滤补位'].slice(0, 5)
+            : ['近期风险过滤补位'],
+        guard: risks.get(candidate.n) || null,
+      });
+      selectedSet.add(candidate.n);
+    }
+
+    return selected.slice(0, totalCount).map((item, i) => ({
+      ...item,
+      tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
+      guarded: true,
+    }));
+  }
+
+  private getRecentBacktestStability(stats: { details?: any[] }) {
+    const details = [...(stats.details || [])];
+    if (details.length === 0) {
+      return {
+        recentAvg: 0,
+        below90: 0,
+        below80: 0,
+        minAccuracy: 0,
+        maxBelow90Streak: 0,
+        stabilityScore: 0,
+      };
+    }
+
+    details.sort((a, b) => b.periodOffset - a.periodOffset);
+    let below90 = 0;
+    let below80 = 0;
+    let streak = 0;
+    let maxBelow90Streak = 0;
+    let total = 0;
+    let minAccuracy = 100;
+
+    for (const item of details) {
+      const accuracy = item.accuracy || 0;
+      total += accuracy;
+      minAccuracy = Math.min(minAccuracy, accuracy);
+      if (accuracy < 90) {
+        below90++;
+        streak++;
+        maxBelow90Streak = Math.max(maxBelow90Streak, streak);
+      } else {
+        streak = 0;
+      }
+      if (accuracy < 80) below80++;
+    }
+
+    const recentAvg = total / details.length;
+    const stabilityScore =
+      recentAvg -
+      below90 * 7 -
+      below80 * 14 -
+      maxBelow90Streak * 8 -
+      Math.max(0, 90 - minAccuracy) * 0.65;
+
+    return {
+      recentAvg,
+      below90,
+      below80,
+      minAccuracy,
+      maxBelow90Streak,
+      stabilityScore,
+    };
   }
 
   private buildAdaptiveHybridKill10(hist: number[][], modelPredictions: any[]) {
@@ -2355,13 +2778,14 @@ export class PredictorService {
     }
 
     const variants = [];
-    for (const baseModel of ['probability', 'low-risk'] as const) {
+    for (const baseModel of ['probability', 'low-risk', 'historical-learning'] as const) {
       for (const window of [1, 2, 3, 4, 5, 6]) {
         for (const historyCount of [2, 3, 4, 5, 6, 7]) {
           variants.push({
             baseModel,
             window,
             historyCount,
+            guarded: false,
             stats: this.backtestHybridKill10(
               hist,
               window,
@@ -2372,28 +2796,51 @@ export class PredictorService {
         }
       }
     }
+    variants.push({
+      baseModel: 'probability' as const,
+      window: 1,
+      historyCount: 7,
+      guarded: true,
+      stats: this.backtestHybridKill10(hist, 1, 7, 'probability', true),
+    });
+
+    const variantsWithStability = variants.map((variant) => ({
+      ...variant,
+      stability: this.getRecentBacktestStability(variant.stats),
+    }));
 
     variants.sort(
       (a, b) =>
+        this.getRecentBacktestStability(b.stats).stabilityScore -
+          this.getRecentBacktestStability(a.stats).stabilityScore ||
         b.stats.overallAccuracy - a.stats.overallAccuracy ||
         b.stats.ninePlusRate - a.stats.ninePlusRate ||
-        b.stats.allCorrectRate - a.stats.allCorrectRate ||
-        b.stats.selectorScore - a.stats.selectorScore,
+        b.stats.allCorrectRate - a.stats.allCorrectRate,
     );
 
     const best = variants[0];
+    const bestStability = this.getRecentBacktestStability(best.stats);
     const selectedModelPredictions = this.getHybridBasePredictions(
       hist,
       best.baseModel,
       14,
     );
-    const predictions = this.combineHybridKillPredictions(
+    const rawPredictions = this.combineHybridKillPredictions(
       hist,
       selectedModelPredictions.length > 0 ? selectedModelPredictions : modelPredictions,
       best.window,
       best.historyCount,
       10,
     );
+    const predictions = best.guarded
+      ? this.applyRecentRiskGuard(
+          hist,
+          rawPredictions,
+          best.window,
+          best.historyCount,
+          best.baseModel,
+        )
+      : rawPredictions;
     const historyPicked = predictions.filter((p) =>
       String(p.source || '').includes('history'),
     ).length;
@@ -2409,17 +2856,32 @@ export class PredictorService {
         actualHistoryPicked: historyPicked,
         predictionCount: 10 - historyPicked,
         baseModel: best.baseModel,
+        guarded: best.guarded,
         selectedVariant: best.stats.name,
         selectedLabel: best.stats.displayName,
         selectorScore: Math.round(best.stats.selectorScore * 10) / 10,
+        stabilityScore: Math.round(bestStability.stabilityScore * 10) / 10,
+        recentAvgAccuracy: Math.round(bestStability.recentAvg * 10) / 10,
+        recentBelow90: bestStability.below90,
+        recentBelow80: bestStability.below80,
+        recentMinAccuracy: bestStability.minAccuracy,
+        recentMaxBelow90Streak: bestStability.maxBelow90Streak,
         overallAccuracy: Math.round(best.stats.overallAccuracy * 10) / 10,
         allCorrectRate: Math.round(best.stats.allCorrectRate * 10) / 10,
-        variants: variants.slice(0, 8).map((variant) => ({
+        variants: variantsWithStability
+          .sort((a, b) => b.stability.stabilityScore - a.stability.stabilityScore)
+          .slice(0, 8)
+          .map((variant) => ({
           window: variant.window,
           baseModel: variant.baseModel,
+          guarded: variant.guarded,
           historyCount: variant.historyCount,
           predictionCount: 10 - variant.historyCount,
           selectorScore: Math.round(variant.stats.selectorScore * 10) / 10,
+          stabilityScore: Math.round(variant.stability.stabilityScore * 10) / 10,
+          recentAvgAccuracy: Math.round(variant.stability.recentAvg * 10) / 10,
+          recentBelow90: variant.stability.below90,
+          recentMinAccuracy: variant.stability.minAccuracy,
           overallAccuracy: Math.round(variant.stats.overallAccuracy * 10) / 10,
           allCorrectRate: Math.round(variant.stats.allCorrectRate * 10) / 10,
           ninePlusRate: Math.round(variant.stats.ninePlusRate * 10) / 10,

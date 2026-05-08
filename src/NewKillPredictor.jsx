@@ -15,13 +15,14 @@ export default function NewKillPredictor() {
   const [backtestStats, setBacktestStats] = useState(null);
   const [engineInfo, setEngineInfo] = useState(null);
   const [hybridInfo, setHybridInfo] = useState(null);
+  const [historyMeta, setHistoryMeta] = useState(null);
   const [modelComparison, setModelComparison] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch('/api/predictor/kill');
+        const res = await fetch('/api/predictor/kill', { cache: 'no-store' });
         if (!res.ok) {
           const message = await res.text();
           throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
@@ -31,6 +32,7 @@ export default function NewKillPredictor() {
         if (data && data.predictions) {
           setPredictions(data.predictions);
           setCoreKill(data.coreKill || null);
+          setHistoryMeta(data.historyMeta || null);
           setSpecialCode(data.specialCode || null);
           setBacktestStats(data.engineBacktestStats || data.probabilityBacktestStats || data.backtestStats);
           setEngineInfo(data.repulsionInfo?.engine || null);
@@ -78,6 +80,9 @@ export default function NewKillPredictor() {
     };
     return names[name] || name;
   };
+
+  const isRiskGuardEnabled =
+    hybridInfo?.guarded === true || String(hybridInfo?.selectedLabel || '').includes('风险过滤');
 
   return (
     <div className="new-kill-predictor-container">
@@ -769,6 +774,11 @@ export default function NewKillPredictor() {
                     <div className="engine-title">Ensemble 回测驱动引擎</div>
                     <div className="engine-subtitle">
                       最近 {engineInfo.evalPeriods || '--'} 期滚动评估 · 当前模式 {engineInfo.selectedModeLabel || formatModelName(engineInfo.selectedMode)} · 主模型 {formatModelName(engineInfo.topModel)} · 自动保护 {engineInfo.guardrails?.protectedCount ?? '--'} 个高误杀风险号
+                      {historyMeta?.latest && (
+                        <>
+                          {' '}· 数据库 {historyMeta.count} 条 · 最新 {historyMeta.latest.year || '--'}-{historyMeta.latest.No || historyMeta.latest.id}
+                        </>
+                      )}
                     </div>
                   </div>
                   <div className="engine-badge">{engineInfo.selectedMode || engineInfo.mode || 'ensemble'}</div>
@@ -789,9 +799,31 @@ export default function NewKillPredictor() {
                       </div>
                       <div className="engine-metric">
                         <div className="engine-metric-value">
-                          {hybridInfo.baseModel === 'low-risk' ? '低风险' : '概率'}
+                          {hybridInfo.baseModel === 'historical-learning'
+                            ? '历史学习'
+                            : hybridInfo.baseModel === 'low-risk'
+                              ? '低风险'
+                              : '概率'}
                         </div>
                         <div className="engine-metric-label">补位模型</div>
+                      </div>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">
+                          {formatPercent(hybridInfo.recentAvgAccuracy)}
+                        </div>
+                        <div className="engine-metric-label">近10期平均</div>
+                      </div>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">
+                          {hybridInfo.recentBelow90 ?? '--'} 次
+                        </div>
+                        <div className="engine-metric-label">近10期低于90%</div>
+                      </div>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">
+                          {isRiskGuardEnabled ? '已启用' : '未启用'}
+                        </div>
+                        <div className="engine-metric-label">近期风险过滤</div>
                       </div>
                     </>
                   )}
@@ -957,7 +989,7 @@ export default function NewKillPredictor() {
         {backtestStats && (
           <div className="backtest-section">
             <h2 className="section-title">
-              {engineInfo?.selectedModeLabel || formatModelName(backtestStats.name)} 回测结果
+              {hybridInfo?.selectedLabel || engineInfo?.selectedModeLabel || formatModelName(backtestStats.name)} 回测结果
               <span style={{ display: 'block', color: '#94a3b8', fontSize: '0.9rem', marginTop: '8px', fontWeight: 500 }}>
                 近 {backtestStats.calcPeriods} 期滚动验证
               </span>

@@ -10,9 +10,11 @@ export default function NewKillPredictor() {
   const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [predictions, setPredictions] = useState([]);
+  const [coreKill, setCoreKill] = useState(null);
   const [specialCode, setSpecialCode] = useState(null);
   const [backtestStats, setBacktestStats] = useState(null);
   const [engineInfo, setEngineInfo] = useState(null);
+  const [hybridInfo, setHybridInfo] = useState(null);
   const [modelComparison, setModelComparison] = useState([]);
   const [error, setError] = useState(null);
 
@@ -28,9 +30,11 @@ export default function NewKillPredictor() {
         
         if (data && data.predictions) {
           setPredictions(data.predictions);
+          setCoreKill(data.coreKill || null);
           setSpecialCode(data.specialCode || null);
           setBacktestStats(data.engineBacktestStats || data.probabilityBacktestStats || data.backtestStats);
           setEngineInfo(data.repulsionInfo?.engine || null);
+          setHybridInfo(data.repulsionInfo?.hybrid || null);
           setModelComparison(data.repulsionInfo?.modelComparison || []);
           setLoading(false);
         } else {
@@ -143,6 +147,63 @@ export default function NewKillPredictor() {
           border: 1px solid rgba(148, 163, 184, 0.16);
           border-radius: 18px;
           padding: 22px;
+        }
+
+        .core-kill-panel {
+          width: 100%;
+          margin-bottom: 28px;
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 22px;
+          align-items: center;
+          background: rgba(127, 29, 29, 0.18);
+          border: 1px solid rgba(248, 113, 113, 0.26);
+          border-radius: 18px;
+          padding: 24px;
+        }
+
+        .core-ball {
+          width: 92px;
+          height: 92px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 2.25rem;
+          font-weight: 900;
+          color: #fff;
+          background: linear-gradient(135deg, #ef4444, #f97316);
+          box-shadow: 0 18px 35px rgba(239, 68, 68, 0.28);
+        }
+
+        .core-title {
+          color: #fee2e2;
+          font-size: 1.18rem;
+          font-weight: 900;
+          margin-bottom: 8px;
+        }
+
+        .core-subtitle {
+          color: #fecaca;
+          font-size: 0.86rem;
+          line-height: 1.6;
+          margin-bottom: 12px;
+        }
+
+        .core-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .core-pill {
+          color: #fee2e2;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(254, 202, 202, 0.16);
+          border-radius: 999px;
+          padding: 5px 10px;
+          font-size: 0.76rem;
+          font-weight: 800;
         }
 
         .engine-header {
@@ -437,6 +498,16 @@ export default function NewKillPredictor() {
           color: #7dd3fc;
         }
 
+        .source-chip {
+          font-size: 0.72rem;
+          padding: 4px 9px;
+          border-radius: 999px;
+          margin-top: 8px;
+          font-weight: 800;
+          background: rgba(168, 85, 247, 0.14);
+          color: #d8b4fe;
+        }
+
         .prediction-details {
           width: 100%;
           margin-top: 14px;
@@ -704,6 +775,26 @@ export default function NewKillPredictor() {
                 </div>
 
                 <div className="engine-metrics">
+                  {hybridInfo && (
+                    <>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">近 {hybridInfo.historyWindow || '--'} 期</div>
+                        <div className="engine-metric-label">历史筛选窗口</div>
+                      </div>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">
+                          {hybridInfo.actualHistoryPicked ?? hybridInfo.historyCount ?? '--'} + {hybridInfo.predictionCount ?? '--'}
+                        </div>
+                        <div className="engine-metric-label">历史筛选 + 模型补位</div>
+                      </div>
+                      <div className="engine-metric">
+                        <div className="engine-metric-value">
+                          {hybridInfo.baseModel === 'low-risk' ? '低风险' : '概率'}
+                        </div>
+                        <div className="engine-metric-label">补位模型</div>
+                      </div>
+                    </>
+                  )}
                   <div className="engine-metric">
                     <div className="engine-metric-value">{formatPercent(engineInfo.backtestSummary?.overallAccuracy)}</div>
                     <div className="engine-metric-label">Ensemble 回测准确率</div>
@@ -775,6 +866,29 @@ export default function NewKillPredictor() {
               </div>
             )}
 
+            {coreKill?.prediction && (
+              <div className="core-kill-panel">
+                <div className="core-ball">{coreKill.prediction.n}</div>
+                <div>
+                  <div className="core-title">核心一杀</div>
+                  <div className="core-subtitle">
+                    {coreKill.debug?.selectedLabel || '自适应核心杀码'} · 近 {coreKill.stats?.calcPeriods || coreKill.debug?.samples || '--'} 期回测准确率 {formatPercent(coreKill.stats?.overallAccuracy ?? coreKill.debug?.accuracy)}
+                  </div>
+                  <div className="core-meta">
+                    <span className="core-pill">
+                      {coreKill.prediction.source === 'core-history' ? '历史筛选' : '模型筛选'}
+                    </span>
+                    {coreKill.debug?.historyWindow && (
+                      <span className="core-pill">近 {coreKill.debug.historyWindow} 期窗口</span>
+                    )}
+                    {coreKill.prediction.reasons?.slice(0, 3).map((reason) => (
+                      <span key={reason} className="core-pill">{reason}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="predictions-grid">
               {predictions.map((p, idx) => {
                 const tierClass = p.tier ? `tier-${p.tier.toLowerCase()}` : 'tier-s3';
@@ -797,6 +911,15 @@ export default function NewKillPredictor() {
                     <div className={`risk-chip ${riskClass}`}>
                       {formatRisk(p.risk)}
                     </div>
+                    {p.source && (
+                      <div className="source-chip">
+                        {p.source === 'history'
+                          ? '历史筛选'
+                          : p.source === 'history+prediction'
+                            ? '历史+模型'
+                            : '模型补位'}
+                      </div>
+                    )}
 
                     <div className="prediction-details">
                       <div className="detail-row">

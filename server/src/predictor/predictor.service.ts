@@ -133,7 +133,7 @@ class BoundedCache<K, V> {
 export class PredictorService {
   constructor(private readonly historyService: HistoryService) {}
 
-  private readonly highConfidenceKillCount = 5;
+  private readonly highConfidenceKillCount = 10;
   private readonly randomKillProb = 42 / 49;
   private readonly randomAppearProb = 7 / 49;
 
@@ -150,6 +150,8 @@ export class PredictorService {
   private memoExpertWeights = new BoundedCache<number, any>(500);
   private memoAppearScores = new BoundedCache<number, AppearScore[]>(500);
   private memoAppearWeights = new BoundedCache<number, any>(500);
+  private memoHybridKill10 = new BoundedCache<string, any>(100);
+  private memoCoreKillOne = new BoundedCache<string, any>(100);
   private lastHistLength = 0;
 
   private checkAndClearCache(currentHistLength: number) {
@@ -167,6 +169,8 @@ export class PredictorService {
       this.memoExpertWeights.clear();
       this.memoAppearScores.clear();
       this.memoAppearWeights.clear();
+      this.memoHybridKill10.clear();
+      this.memoCoreKillOne.clear();
     }
     this.lastHistLength = currentHistLength;
   }
@@ -205,16 +209,20 @@ export class PredictorService {
       lowRiskBacktestStats.overallAccuracy >=
         probabilityBacktestStats.overallAccuracy;
     const engineResult = this.runKillEngine(hist, killCount);
-    const finalPredictions =
+    const modelPredictions =
       engineResult.predictions.length > 0
         ? engineResult.predictions
         : useLowRisk
           ? this.getLowRiskKillPredictions(hist, killCount)
           : this.getProbabilityKillPredictions(hist, killCount);
+    const hybridResult = this.buildAdaptiveHybridKill10(hist, modelPredictions);
+    const coreKill = this.buildAdaptiveCoreKillOne(hist);
+    const finalPredictions = hybridResult.predictions;
     const backtestStats = null;
 
     return {
       predictions: finalPredictions,
+      coreKill,
       specialCode: this.getSpecialCodePrediction(hist, 25, 15),
       repulsionInfo: {
         ...repulsionInfo,
@@ -222,6 +230,7 @@ export class PredictorService {
           engineResult.debug?.selectedMode || engineResult.debug?.mode || 'ensemble',
         legacySelectedModel: useLowRisk ? 'low-risk' : 'probability',
         engine: engineResult.debug,
+        hybrid: hybridResult.debug,
         modelComparison:
           engineResult.debug?.variantComparison ||
           [engineResult.stats, probabilityBacktestStats, lowRiskBacktestStats]
@@ -236,8 +245,9 @@ export class PredictorService {
             })),
       },
       backtestStats,
-      engineBacktestStats: engineResult.stats,
+      engineBacktestStats: hybridResult.stats || engineResult.stats,
       probabilityBacktestStats:
+        hybridResult.stats ||
         engineResult.stats ||
         (useLowRisk ? lowRiskBacktestStats : probabilityBacktestStats),
     };
@@ -2125,6 +2135,460 @@ export class PredictorService {
         },
       },
     };
+  }
+
+  private getRecentHistoryKillCandidates(
+    hist: number[][],
+    window: number,
+    limit = 10,
+  ) {
+    const protectedNums = this.getFailurePatternProtection(hist);
+    const recentRows = hist.slice(Math.max(0, hist.length - window));
+    const recentSet = new Set<number>();
+    const lastSeenDistance: Record<number, number> = {};
+    const recentHits: Record<number, number> = {};
+
+    recentRows.forEach((row, rowIndex) => {
+      const distance = recentRows.length - rowIndex;
+      row.forEach((n) => {
+        recentSet.add(n);
+        recentHits[n] = (recentHits[n] || 0) + 1;
+        lastSeenDistance[n] = Math.min(lastSeenDistance[n] || 99, distance);
+      });
+    });
+
+    const rows = Array.from(recentSet)
+      .filter((n) => !protectedNums.has(n))
+      .map((n) => {
+        let trials = 0;
+        let success = 0;
+        for (let i = window; i < hist.length; i++) {
+          const prior = hist.slice(i - window, i);
+          if (!prior.some((row) => row.includes(n))) continue;
+          trials++;
+          if (!hist[i].includes(n)) success++;
+        }
+
+        const successRate = trials > 0 ? success / trials : this.randomKillProb;
+        const sampleStrength = Math.min(1, trials / 24);
+        const recencyBonus = 1 / (lastSeenDistance[n] || window);
+        const repeatPenalty = Math.max(0, (recentHits[n] || 1) - 1) * 0.035;
+        const score =
+          successRate * 0.72 +
+          sampleStrength * 0.12 +
+          recencyBonus * 0.12 -
+          repeatPenalty;
+
+        return {
+          n,
+          score,
+          successRate,
+          trials,
+          lastSeenDistance: lastSeenDistance[n] || window,
+          recentHits: recentHits[n] || 1,
+        };
+      });
+
+    rows.sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.successRate - a.successRate ||
+        a.lastSeenDistance - b.lastSeenDistance ||
+        a.n - b.n,
+    );
+
+    return rows.slice(0, limit).map((row, i) => ({
+      n: row.n,
+      tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
+      score: Math.round(row.score * 1000) / 1000,
+      appearProb: Math.round((1 - row.successRate) * 1000) / 1000,
+      experts: `近${window}期筛选`,
+      repulsionScore: 0,
+      aprioriScore: 0,
+      risk: row.successRate >= 0.9 ? 'low' : row.successRate >= 0.84 ? 'mid' : 'watch',
+      source: 'history',
+      reasons: [
+        `近${window}期出现`,
+        `历史杀中${Math.round(row.successRate * 100)}%`,
+        `样本${row.trials}期`,
+      ],
+      features: {
+        historyWindow: window,
+        historySuccessRate: row.successRate,
+        historyTrials: row.trials,
+        lastSeenDistance: row.lastSeenDistance,
+        recentHits: row.recentHits,
+      },
+    }));
+  }
+
+  private combineHybridKillPredictions(
+    hist: number[][],
+    modelPredictions: any[],
+    window: number,
+    historyCount: number,
+    totalCount = 10,
+  ) {
+    const historyCandidates = this.getRecentHistoryKillCandidates(
+      hist,
+      window,
+      historyCount,
+    );
+    const selected: any[] = [];
+    const selectedSet = new Set<number>();
+
+    const pushCandidate = (candidate: any, source: 'history' | 'prediction') => {
+      if (!candidate || selectedSet.has(candidate.n)) {
+        const existing = selected.find((item) => item.n === candidate?.n);
+        if (existing && source === 'prediction') {
+          existing.source = 'history+prediction';
+          existing.experts = `${existing.experts}+模型`;
+          existing.reasons = [...(existing.reasons || []), '模型同时入选'].slice(0, 5);
+        }
+        return;
+      }
+      selectedSet.add(candidate.n);
+      selected.push({
+        ...candidate,
+        source,
+        reasons:
+          candidate.reasons?.length > 0
+            ? candidate.reasons
+            : [source === 'history' ? `近${window}期筛选` : '模型预测补位'],
+      });
+    };
+
+    historyCandidates.forEach((candidate) => pushCandidate(candidate, 'history'));
+    modelPredictions.forEach((candidate) => {
+      if (selected.length < totalCount) pushCandidate(candidate, 'prediction');
+    });
+
+    if (selected.length < totalCount) {
+      const fallbacks = this.getProbabilityKillPredictions(hist, totalCount * 2);
+      fallbacks.forEach((candidate) => {
+        if (selected.length < totalCount) pushCandidate(candidate, 'prediction');
+      });
+    }
+
+    return selected.slice(0, totalCount).map((item, i) => ({
+      ...item,
+      tier: i < 3 ? 'S1' : i < 6 ? 'S2' : 'S3',
+      blendRank: i + 1,
+    }));
+  }
+
+  private getHybridBasePredictions(
+    hist: number[][],
+    baseModel: 'probability' | 'low-risk',
+    count = 14,
+  ) {
+    return baseModel === 'low-risk'
+      ? this.getLowRiskKillPredictions(hist, count)
+      : this.getProbabilityKillPredictions(hist, count);
+  }
+
+  private backtestHybridKill10(
+    hist: number[][],
+    window: number,
+    historyCount: number,
+    baseModel: 'probability' | 'low-risk',
+  ) {
+    const displayPeriods = 10;
+    const evalWindow = Math.min(160, Math.max(50, Math.floor(hist.length * 0.2)));
+    const start = Math.max(40, hist.length - evalWindow);
+    const baseLabel = baseModel === 'low-risk' ? '低风险' : '概率';
+    const tracker = this.createVariantTracker(
+      `混合10杀 近${window}期/${historyCount}+${10 - historyCount} ${baseLabel}补位`,
+    );
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const modelPredictions = this.getHybridBasePredictions(
+        subHist,
+        baseModel,
+        14,
+      );
+      const predictions = this.combineHybridKillPredictions(
+        subHist,
+        modelPredictions,
+        window,
+        historyCount,
+        10,
+      );
+      this.addVariantResult(
+        tracker,
+        this.scoreKillPrediction(predictions, new Set(hist[i])),
+        hist[i],
+        hist.length - i,
+        i >= hist.length - displayPeriods,
+      );
+    }
+
+    return this.summarizeVariantTracker(
+      `hybrid-history-${window}-${historyCount}-${baseModel}`,
+      tracker,
+      hist.length - start,
+      10,
+    );
+  }
+
+  private buildAdaptiveHybridKill10(hist: number[][], modelPredictions: any[]) {
+    const cacheKey = `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
+    if (this.memoHybridKill10.has(cacheKey)) {
+      return this.memoHybridKill10.get(cacheKey);
+    }
+
+    if (hist.length < 60) {
+      const fallback = {
+        predictions: modelPredictions.slice(0, 10),
+        stats: null,
+        debug: {
+          mode: 'model-only',
+          reason: 'history-too-short',
+          totalCount: 10,
+          historyCount: 0,
+          predictionCount: 10,
+        },
+      };
+      this.memoHybridKill10.set(cacheKey, fallback);
+      return fallback;
+    }
+
+    const variants = [];
+    for (const baseModel of ['probability', 'low-risk'] as const) {
+      for (const window of [1, 2, 3, 4, 5, 6]) {
+        for (const historyCount of [2, 3, 4, 5, 6, 7]) {
+          variants.push({
+            baseModel,
+            window,
+            historyCount,
+            stats: this.backtestHybridKill10(
+              hist,
+              window,
+              historyCount,
+              baseModel,
+            ),
+          });
+        }
+      }
+    }
+
+    variants.sort(
+      (a, b) =>
+        b.stats.overallAccuracy - a.stats.overallAccuracy ||
+        b.stats.ninePlusRate - a.stats.ninePlusRate ||
+        b.stats.allCorrectRate - a.stats.allCorrectRate ||
+        b.stats.selectorScore - a.stats.selectorScore,
+    );
+
+    const best = variants[0];
+    const selectedModelPredictions = this.getHybridBasePredictions(
+      hist,
+      best.baseModel,
+      14,
+    );
+    const predictions = this.combineHybridKillPredictions(
+      hist,
+      selectedModelPredictions.length > 0 ? selectedModelPredictions : modelPredictions,
+      best.window,
+      best.historyCount,
+      10,
+    );
+    const historyPicked = predictions.filter((p) =>
+      String(p.source || '').includes('history'),
+    ).length;
+
+    const result = {
+      predictions,
+      stats: best.stats,
+      debug: {
+        mode: 'adaptive-hybrid-10',
+        totalCount: 10,
+        historyWindow: best.window,
+        historyCount: best.historyCount,
+        actualHistoryPicked: historyPicked,
+        predictionCount: 10 - historyPicked,
+        baseModel: best.baseModel,
+        selectedVariant: best.stats.name,
+        selectedLabel: best.stats.displayName,
+        selectorScore: Math.round(best.stats.selectorScore * 10) / 10,
+        overallAccuracy: Math.round(best.stats.overallAccuracy * 10) / 10,
+        allCorrectRate: Math.round(best.stats.allCorrectRate * 10) / 10,
+        variants: variants.slice(0, 8).map((variant) => ({
+          window: variant.window,
+          baseModel: variant.baseModel,
+          historyCount: variant.historyCount,
+          predictionCount: 10 - variant.historyCount,
+          selectorScore: Math.round(variant.stats.selectorScore * 10) / 10,
+          overallAccuracy: Math.round(variant.stats.overallAccuracy * 10) / 10,
+          allCorrectRate: Math.round(variant.stats.allCorrectRate * 10) / 10,
+          ninePlusRate: Math.round(variant.stats.ninePlusRate * 10) / 10,
+        })),
+      },
+    };
+    this.memoHybridKill10.set(cacheKey, result);
+    return result;
+  }
+
+  private getCoreKillPredictionForVariant(
+    hist: number[][],
+    variant: {
+      kind: 'history' | 'model';
+      window?: number;
+      baseModel?: 'probability' | 'low-risk';
+    },
+  ) {
+    if (variant.kind === 'history') {
+      return this.getRecentHistoryKillCandidates(hist, variant.window || 1, 1)[0];
+    }
+
+    const modelPredictions = this.getHybridBasePredictions(
+      hist,
+      variant.baseModel || 'probability',
+      1,
+    );
+    return modelPredictions[0]
+      ? {
+          ...modelPredictions[0],
+          source: 'core-model',
+          reasons: [
+            variant.baseModel === 'low-risk' ? '低风险模型首位' : '概率模型首位',
+          ],
+        }
+      : null;
+  }
+
+  private backtestCoreKillOne(
+    hist: number[][],
+    variant: {
+      kind: 'history' | 'model';
+      window?: number;
+      baseModel?: 'probability' | 'low-risk';
+      name: string;
+      label: string;
+    },
+  ) {
+    const displayPeriods = 10;
+    const evalWindow = Math.min(50, Math.max(30, hist.length - 30));
+    const start = Math.max(30, hist.length - evalWindow);
+    const tracker = this.createVariantTracker(variant.label);
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const prediction = this.getCoreKillPredictionForVariant(subHist, variant);
+      const predictions = prediction ? [prediction] : [];
+      this.addVariantResult(
+        tracker,
+        this.scoreKillPrediction(predictions, new Set(hist[i])),
+        hist[i],
+        hist.length - i,
+        i >= hist.length - displayPeriods,
+      );
+    }
+
+    return this.summarizeVariantTracker(
+      variant.name,
+      tracker,
+      hist.length - start,
+      1,
+    );
+  }
+
+  private buildAdaptiveCoreKillOne(hist: number[][]) {
+    const cacheKey = `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
+    if (this.memoCoreKillOne.has(cacheKey)) {
+      return this.memoCoreKillOne.get(cacheKey);
+    }
+
+    if (hist.length < 40) {
+      const fallbackPrediction = this.getProbabilityKillPredictions(hist, 1)[0] || null;
+      const fallback = {
+        prediction: fallbackPrediction,
+        stats: null,
+        debug: {
+          mode: 'core-model-only',
+          reason: 'history-too-short',
+        },
+      };
+      this.memoCoreKillOne.set(cacheKey, fallback);
+      return fallback;
+    }
+
+    const variants: Array<{
+      kind: 'history' | 'model';
+      window?: number;
+      baseModel?: 'probability' | 'low-risk';
+      name: string;
+      label: string;
+      stats?: any;
+    }> = [];
+
+    for (const window of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12]) {
+      variants.push({
+        kind: 'history',
+        window,
+        name: `core-history-${window}`,
+        label: `核心一杀 近${window}期历史筛选`,
+      });
+    }
+
+    variants.push(
+      {
+        kind: 'model',
+        baseModel: 'probability',
+        name: 'core-probability',
+        label: '核心一杀 概率模型',
+      },
+      {
+        kind: 'model',
+        baseModel: 'low-risk',
+        name: 'core-low-risk',
+        label: '核心一杀 低风险模型',
+      },
+    );
+
+    const scoredVariants = variants.map((variant) => ({
+      ...variant,
+      stats: this.backtestCoreKillOne(hist, variant),
+    }));
+
+    scoredVariants.sort(
+      (a, b) =>
+        b.stats.overallAccuracy - a.stats.overallAccuracy ||
+        b.stats.allCorrectRate - a.stats.allCorrectRate ||
+        b.stats.selectorScore - a.stats.selectorScore,
+    );
+
+    const best = scoredVariants[0];
+    const prediction = this.getCoreKillPredictionForVariant(hist, best);
+    const result = {
+      prediction: prediction
+        ? {
+            ...prediction,
+            tier: 'CORE',
+            source: best.kind === 'history' ? 'core-history' : 'core-model',
+          }
+        : null,
+      stats: best.stats,
+      debug: {
+        mode: 'adaptive-core-one',
+        selectedVariant: best.name,
+        selectedLabel: best.label,
+        historyWindow: best.window || null,
+        baseModel: best.baseModel || null,
+        accuracy: Math.round(best.stats.overallAccuracy * 10) / 10,
+        samples: best.stats.calcPeriods,
+        variants: scoredVariants.slice(0, 6).map((variant) => ({
+          name: variant.name,
+          label: variant.label,
+          accuracy: Math.round(variant.stats.overallAccuracy * 10) / 10,
+          samples: variant.stats.calcPeriods,
+        })),
+      },
+    };
+
+    this.memoCoreKillOne.set(cacheKey, result);
+    return result;
   }
 
   private getSpecialWeightCandidates(): SpecialWeights[] {

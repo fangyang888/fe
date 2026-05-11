@@ -9,4 +9,9 @@ export class PredictorController {
   async getKillPredictions() {
     return this.predictorService.getKillPredictions();
   }
+
+  @Get('hot-pick')
+  async getHotPickPredictions() {
+    return this.predictorService.getHotPickPredictionResponse();
+  }
 }

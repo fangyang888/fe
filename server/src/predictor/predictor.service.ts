@@ -152,6 +152,7 @@ export class PredictorService {
   private memoAppearWeights = new BoundedCache<number, any>(500);
   private memoHybridKill10 = new BoundedCache<string, any>(100);
   private memoCoreKillOne = new BoundedCache<string, any>(100);
+  private memoHotPick = new BoundedCache<string, any>(100);
   private memoHistoricalLearning = new BoundedCache<number, any>(500);
   private memoKillPredictionResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
@@ -173,6 +174,7 @@ export class PredictorService {
       this.memoAppearWeights.clear();
       this.memoHybridKill10.clear();
       this.memoCoreKillOne.clear();
+      this.memoHotPick.clear();
       this.memoHistoricalLearning.clear();
       this.memoKillPredictionResponse.clear();
     }
@@ -286,6 +288,25 @@ export class PredictorService {
     };
     this.memoKillPredictionResponse.set(responseCacheKey, response);
     return response;
+  }
+
+  async getHotPickPredictionResponse() {
+    const rawHist = await this.historyService.findAll();
+    this.checkAndClearCache(rawHist.length);
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+
+    return {
+      hotPick: this.buildAdaptiveHotPick(hist),
+      historyMeta: this.getHistoryMeta(rawHist),
+    };
   }
 
   // --- SERVER-SIDE PREDICTION ENGINE ---
@@ -1619,6 +1640,392 @@ export class PredictorService {
         ],
         features: s.features,
       }));
+  }
+
+  private normalizeMetric(value: number, floor: number, ceiling: number) {
+    if (ceiling <= floor) return 0;
+    return Math.max(0, Math.min(1, (value - floor) / (ceiling - floor)));
+  }
+
+  private getHotPickFeatureRows(hist: number[][]) {
+    const hn = hist.length;
+    const lastRow = new Set(hist[hn - 1] || []);
+    const rows = [];
+
+    for (let n = 1; n <= 49; n++) {
+      const apps = [];
+      for (let i = 0; i < hn; i++) {
+        if (hist[i].includes(n)) apps.push(i);
+      }
+
+      const countInWindow = (window: number) => {
+        let count = 0;
+        for (let i = Math.max(0, hn - window); i < hn; i++) {
+          if (hist[i].includes(n)) count++;
+        }
+        return count / Math.min(window, hn);
+      };
+
+      const gaps = [];
+      for (let i = 1; i < apps.length; i++) gaps.push(apps[i] - apps[i - 1]);
+      const avgGap =
+        gaps.length > 0
+          ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length
+          : 49 / 7;
+      const currentGap = apps.length > 0 ? hn - 1 - apps[apps.length - 1] : hn;
+
+      rows.push({
+        n,
+        features: {
+          freq3: countInWindow(3),
+          freq5: countInWindow(5),
+          freq10: countInWindow(10),
+          freq20: countInWindow(20),
+          freq50: countInWindow(50),
+          longFreq: apps.length / Math.max(1, hn),
+          currentGap,
+          avgGap,
+          gapRatio: avgGap > 0 ? currentGap / avgGap : 1,
+          lastHit: lastRow.has(n) ? 1 : 0,
+          tail: n % 10,
+          zone: Math.floor((n - 1) / 10),
+        },
+      });
+    }
+
+    return rows;
+  }
+
+  private getHotPickTransitionScores(hist: number[][]) {
+    const markov = new Array(50).fill(this.randomAppearProb);
+    const markov2 = new Array(50).fill(this.randomAppearProb);
+    if (hist.length < 3) return { markov, markov2 };
+
+    const matrix = Array.from({ length: 50 }, () => new Array(50).fill(0));
+    const counts = new Array(50).fill(0);
+    const pairMap = new Map<string, number[]>();
+
+    for (let i = 0; i < hist.length - 1; i++) {
+      for (const a of hist[i]) {
+        counts[a]++;
+        for (const b of hist[i + 1]) matrix[a][b]++;
+      }
+
+      if (i === 0) continue;
+      for (const a of hist[i - 1]) {
+        for (const b of hist[i]) {
+          const key = `${a},${b}`;
+          if (!pairMap.has(key)) pairMap.set(key, new Array(50).fill(0));
+          const row = pairMap.get(key)!;
+          for (const n of hist[i + 1]) row[n]++;
+        }
+      }
+    }
+
+    const last = hist[hist.length - 1] || [];
+    const prev = hist[hist.length - 2] || [];
+    for (let n = 1; n <= 49; n++) {
+      let markovSum = 0;
+      for (const a of last) {
+        markovSum += counts[a] > 0 ? matrix[a][n] / counts[a] : this.randomAppearProb;
+      }
+      markov[n] = last.length > 0 ? markovSum / last.length : this.randomAppearProb;
+
+      let pairSum = 0;
+      let pairCount = 0;
+      for (const a of prev) {
+        for (const b of last) {
+          const row = pairMap.get(`${a},${b}`);
+          if (!row) continue;
+          const total = row.reduce((sum, value) => sum + value, 0);
+          if (total <= 0) continue;
+          pairSum += row[n] / Math.max(1, total / 7);
+          pairCount++;
+        }
+      }
+      if (pairCount > 0) markov2[n] = pairSum / pairCount;
+    }
+
+    return { markov, markov2 };
+  }
+
+  private getHotPickCandidates(hist: number[][], strategy = 'balanced') {
+    const featureRows = this.getHotPickFeatureRows(hist);
+    const transitions = this.getHotPickTransitionScores(hist);
+
+    const rows = featureRows.map((row) => {
+      const f = row.features;
+      const hotBlend =
+        f.freq5 * 0.28 +
+        f.freq10 * 0.25 +
+        f.freq20 * 0.2 +
+        f.freq50 * 0.14 +
+        f.longFreq * 0.13;
+      const gapDue = this.normalizeMetric(f.gapRatio, 0.6, 2.6);
+      const overDuePenalty = this.normalizeMetric(f.gapRatio, 2.8, 4.8) * 0.08;
+      const markov = transitions.markov[row.n] || this.randomAppearProb;
+      const markov2 = transitions.markov2[row.n] || this.randomAppearProb;
+
+      const scoreByStrategy: Record<string, number> = {
+        balanced:
+          hotBlend * 0.24 +
+          markov * 0.24 +
+          markov2 * 0.16 +
+          gapDue * 0.14 +
+          f.lastHit * 0.1 +
+          f.freq3 * 0.08 -
+          overDuePenalty,
+        repeat:
+          f.lastHit * 0.18 +
+          hotBlend * 0.26 +
+          markov * 0.25 +
+          markov2 * 0.14 +
+          gapDue * 0.08 -
+          overDuePenalty,
+        transition: markov * 0.55 + markov2 * 0.25 + hotBlend * 0.12 + gapDue * 0.08,
+        hot: hotBlend * 0.5 + f.freq10 * 0.22 + markov * 0.14 + f.lastHit * 0.08,
+        due: gapDue * 0.42 + markov * 0.2 + f.freq20 * 0.18 + hotBlend * 0.16,
+      };
+      const score = scoreByStrategy[strategy] ?? scoreByStrategy.balanced;
+      const appearProb = Math.max(
+        0.02,
+        Math.min(0.58, scoreByStrategy.balanced + hotBlend * 0.18),
+      );
+
+      return {
+        n: row.n,
+        score,
+        appearProb,
+        reasons: [
+          `热度${Math.round(hotBlend * 100)}%`,
+          `转移${Math.round(markov * 100)}%`,
+          `间隔${f.currentGap}期`,
+        ],
+        features: {
+          ...f,
+          hotBlend,
+          markov,
+          markov2,
+          gapDue,
+        },
+      };
+    });
+
+    rows.sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.appearProb - a.appearProb ||
+        a.n - b.n,
+    );
+    return rows;
+  }
+
+  private diversifyHotPickCandidates(candidates: any[], count: number) {
+    const selected = [];
+    const tails = new Map<number, number>();
+    const zones = new Map<number, number>();
+
+    for (const candidate of candidates) {
+      const tail = candidate.n % 10;
+      const zone = Math.floor((candidate.n - 1) / 10);
+      if ((tails.get(tail) || 0) >= 2) continue;
+      if ((zones.get(zone) || 0) >= 3) continue;
+      selected.push(candidate);
+      tails.set(tail, (tails.get(tail) || 0) + 1);
+      zones.set(zone, (zones.get(zone) || 0) + 1);
+      if (selected.length >= count) break;
+    }
+
+    for (const candidate of candidates) {
+      if (selected.length >= count) break;
+      if (selected.some((item) => item.n === candidate.n)) continue;
+      selected.push(candidate);
+    }
+
+    return selected;
+  }
+
+  private getHotPickPredictions(
+    hist: number[][],
+    count: number,
+    strategy = 'balanced',
+    diversified = false,
+  ) {
+    const candidates = this.getHotPickCandidates(hist, strategy);
+    const selected = diversified
+      ? this.diversifyHotPickCandidates(candidates, count)
+      : candidates.slice(0, count);
+
+    return selected
+      .map((row, i) => ({
+        n: row.n,
+        rank: i + 1,
+        score: Math.round(row.score * 1000) / 1000,
+        appearProb: Math.round(row.appearProb * 1000) / 1000,
+        reasons: row.reasons,
+      }));
+  }
+
+  private backtestHotPick(
+    hist: number[][],
+    count: number,
+    displayPeriods = 10,
+    strategy = 'balanced',
+    diversified = false,
+  ) {
+    const start = Math.max(50, hist.length - displayPeriods);
+    const details = [];
+    let totalHit = 0;
+    let successPeriods = 0;
+    let maxHit = 0;
+    let minHit = count;
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const predicted = this.getHotPickPredictions(
+        subHist,
+        count,
+        strategy,
+        diversified,
+      ).map((p) => p.n);
+      const actualSet = new Set(hist[i]);
+      const hitNums = predicted.filter((n) => actualSet.has(n));
+      const hitCount = hitNums.length;
+      totalHit += hitCount;
+      if (hitCount >= 3) successPeriods++;
+      maxHit = Math.max(maxHit, hitCount);
+      minHit = Math.min(minHit, hitCount);
+      details.push({
+        periodOffset: hist.length - i,
+        predicted,
+        actual: hist[i],
+        hitNums,
+        hitCount,
+        success: hitCount >= 3,
+        accuracy: (hitCount / count) * 100,
+      });
+    }
+
+    const calcPeriods = hist.length - start;
+    return {
+      count,
+      strategy,
+      diversified,
+      targetHit: 3,
+      calcPeriods,
+      details: details.reverse(),
+      totalHit,
+      avgHit: calcPeriods > 0 ? totalHit / calcPeriods : 0,
+      successPeriods,
+      successRate: calcPeriods > 0 ? (successPeriods / calcPeriods) * 100 : 0,
+      maxHit,
+      minHit: calcPeriods > 0 ? minHit : 0,
+      randomBaseline: this.getRandomHotPickHitAtLeastRate(count, 3) * 100,
+    };
+  }
+
+  private getRandomHotPickHitAtLeastRate(count: number, targetHit: number) {
+    const combination = (n: number, k: number) => {
+      if (k < 0 || k > n) return 0;
+      let result = 1;
+      for (let i = 1; i <= k; i++) {
+        result = (result * (n - k + i)) / i;
+      }
+      return result;
+    };
+
+    const total = combination(49, count);
+    let matched = 0;
+    for (let hit = targetHit; hit <= Math.min(count, 7); hit++) {
+      matched += combination(7, hit) * combination(42, count - hit);
+    }
+    return total > 0 ? matched / total : 0;
+  }
+
+  private buildAdaptiveHotPick(hist: number[][]) {
+    const cacheKey = `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
+    if (this.memoHotPick.has(cacheKey)) {
+      return this.memoHotPick.get(cacheKey);
+    }
+
+    if (hist.length < 60) {
+      const fallback = {
+        mode: 'hot-pick-fallback',
+        selectedCount: 12,
+        targetHit: 3,
+        selectedStrategy: 'balanced',
+        diversified: true,
+        predictions: this.getHotPickPredictions(hist, 12, 'balanced', true),
+        selectedStats: null,
+        options: [],
+        reason: 'history-too-short',
+      };
+      this.memoHotPick.set(cacheKey, fallback);
+      return fallback;
+    }
+
+    const strategies = ['balanced', 'repeat', 'transition', 'hot', 'due'];
+    const counts = [6, 8, 10, 12];
+    const variants = strategies.flatMap((strategy) =>
+      counts.flatMap((count) => [
+        this.backtestHotPick(hist, count, 10, strategy, false),
+        this.backtestHotPick(hist, count, 10, strategy, true),
+      ]),
+    );
+    const sixStats = variants
+      .filter((stats) => stats.count === 6)
+      .sort(
+        (a, b) =>
+          b.successRate - a.successRate ||
+          b.avgHit - a.avgHit ||
+          b.maxHit - a.maxHit,
+      )[0];
+    const shouldUseSix = sixStats.successRate >= 60 && sixStats.avgHit >= 3;
+    const scoreVariant = (stats: any) =>
+      stats.successRate * 1.2 +
+      stats.avgHit * 12 +
+      Math.max(0, stats.successRate - stats.randomBaseline) * 0.35 -
+      stats.count * 0.8;
+    const selectedStats = shouldUseSix
+      ? sixStats
+      : [...variants].sort(
+          (a, b) =>
+            scoreVariant(b) - scoreVariant(a) ||
+            b.successRate - a.successRate ||
+            b.avgHit - a.avgHit ||
+            a.count - b.count,
+        )[0];
+    const selectedCount = selectedStats.count;
+    const result = {
+      mode: 'adaptive-hot-pick',
+      selectedCount,
+      selectedStrategy: selectedStats.strategy,
+      targetHit: 3,
+      predictions: this.getHotPickPredictions(
+        hist,
+        selectedCount,
+        selectedStats.strategy,
+        selectedStats.diversified,
+      ),
+      selectedStats,
+      options: variants
+        .sort(
+          (a, b) =>
+            scoreVariant(b) - scoreVariant(a) ||
+            b.successRate - a.successRate ||
+            b.avgHit - a.avgHit ||
+            a.count - b.count,
+        )
+        .slice(0, 6),
+      reason: shouldUseSix
+        ? 'six-count-passed-recent-backtest'
+        : selectedStats.count > 8
+          ? 'eight-count-not-stable-use-expanded'
+          : 'six-count-not-stable-use-eight',
+      diversified: selectedStats.diversified,
+    };
+    this.memoHotPick.set(cacheKey, result);
+    return result;
   }
 
   private normalizeCandidates(

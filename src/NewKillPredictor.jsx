@@ -48,7 +48,7 @@ export default function NewKillPredictor() {
         setLoading(false);
       }
     };
-    
+
     fetchData();
   }, []);
 
@@ -983,6 +983,7 @@ export default function NewKillPredictor() {
                 );
               })}
             </div>
+
           </>
         )}
         

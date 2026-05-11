@@ -1866,6 +1866,231 @@ export class PredictorService {
       }));
   }
 
+  private getPoissonBinomialAtLeast(probs: number[], targetHit: number) {
+    const dp = new Array(probs.length + 1).fill(0);
+    dp[0] = 1;
+
+    for (const rawProb of probs) {
+      const prob = Math.max(0, Math.min(1, rawProb));
+      for (let hit = probs.length; hit >= 1; hit--) {
+        dp[hit] = dp[hit] * (1 - prob) + dp[hit - 1] * prob;
+      }
+      dp[0] *= 1 - prob;
+    }
+
+    return dp.slice(targetHit).reduce((sum, value) => sum + value, 0);
+  }
+
+  private getHotPickRollingContributions(
+    hist: number[][],
+    count: number,
+    strategy = 'balanced',
+    diversified = false,
+    poolSize = 20,
+    evalPeriods = 30,
+  ) {
+    const candidates = this.getHotPickCandidates(hist, strategy).slice(0, poolSize);
+    const stats = new Map<
+      number,
+      {
+        n: number;
+        samples: number;
+        hits: number;
+        baseSuccesses: number;
+        withSuccesses: number;
+        gain: number;
+        avgHitGain: number;
+      }
+    >();
+
+    for (const candidate of candidates) {
+      stats.set(candidate.n, {
+        n: candidate.n,
+        samples: 0,
+        hits: 0,
+        baseSuccesses: 0,
+        withSuccesses: 0,
+        gain: 0,
+        avgHitGain: 0,
+      });
+    }
+
+    const start = Math.max(50, hist.length - evalPeriods);
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const actualSet = new Set(hist[i]);
+      const basePredicted = this.getHotPickPredictions(
+        subHist,
+        count,
+        strategy,
+        diversified,
+      ).map((p) => p.n);
+      const baseHitCount = basePredicted.filter((n) => actualSet.has(n)).length;
+      const baseSuccess = baseHitCount >= 3 ? 1 : 0;
+      const subCandidates = this.getHotPickCandidates(subHist, strategy).slice(0, poolSize);
+
+      for (const candidate of subCandidates) {
+        const stat = stats.get(candidate.n);
+        if (!stat) continue;
+        const withPredicted = basePredicted.includes(candidate.n)
+          ? basePredicted
+          : [...basePredicted.slice(0, Math.max(0, count - 1)), candidate.n];
+        const withHitCount = withPredicted.filter((n) => actualSet.has(n)).length;
+        const withSuccess = withHitCount >= 3 ? 1 : 0;
+
+        stat.samples++;
+        stat.hits += actualSet.has(candidate.n) ? 1 : 0;
+        stat.baseSuccesses += baseSuccess;
+        stat.withSuccesses += withSuccess;
+        stat.gain += withSuccess - baseSuccess;
+        stat.avgHitGain += withHitCount - baseHitCount;
+      }
+    }
+
+    return candidates.map((candidate) => {
+      const stat = stats.get(candidate.n);
+      const samples = stat?.samples || 0;
+      const successLift = samples > 0 ? ((stat?.gain || 0) / samples) * 100 : 0;
+      const hitRate = samples > 0 ? ((stat?.hits || 0) / samples) * 100 : 0;
+      const avgHitLift = samples > 0 ? (stat?.avgHitGain || 0) / samples : 0;
+
+      return {
+        n: candidate.n,
+        samples,
+        hitRate: Math.round(hitRate * 10) / 10,
+        successLift: Math.round(successLift * 10) / 10,
+        avgHitLift: Math.round(avgHitLift * 1000) / 1000,
+        contributionScore:
+          candidate.score +
+          Math.max(-0.08, Math.min(0.12, successLift / 100)) +
+          Math.max(-0.04, Math.min(0.08, avgHitLift * 0.08)),
+      };
+    });
+  }
+
+  private getOptimizedHotPickPredictions(
+    hist: number[][],
+    count: number,
+    strategy = 'balanced',
+    diversified = false,
+  ) {
+    const candidates = this.getHotPickCandidates(hist, strategy).slice(0, 20);
+    const contributionMap = new Map(
+      this.getHotPickRollingContributions(hist, count, strategy, diversified).map((item) => [
+        item.n,
+        item,
+      ]),
+    );
+    const ranked = candidates
+      .map((candidate) => {
+        const contribution = contributionMap.get(candidate.n);
+        return {
+          ...candidate,
+          contribution,
+          optimizedScore: contribution?.contributionScore ?? candidate.score,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.optimizedScore - a.optimizedScore ||
+          b.appearProb - a.appearProb ||
+          a.n - b.n,
+      );
+    const selected = diversified
+      ? this.diversifyHotPickCandidates(ranked, count)
+      : ranked.slice(0, count);
+
+    return selected.map((row, i) => ({
+      n: row.n,
+      rank: i + 1,
+      score: Math.round(row.score * 1000) / 1000,
+      optimizedScore: Math.round(row.optimizedScore * 1000) / 1000,
+      appearProb: Math.round(row.appearProb * 1000) / 1000,
+      contribution: row.contribution,
+      reasons: row.reasons,
+    }));
+  }
+
+  private backtestOptimizedHotPick(
+    hist: number[][],
+    count: number,
+    displayPeriods = 10,
+    strategy = 'balanced',
+    diversified = false,
+  ) {
+    const start = Math.max(60, hist.length - displayPeriods);
+    const details = [];
+    let totalHit = 0;
+    let successPeriods = 0;
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const predicted = this.getOptimizedHotPickPredictions(
+        subHist,
+        count,
+        strategy,
+        diversified,
+      ).map((p) => p.n);
+      const actualSet = new Set(hist[i]);
+      const hitNums = predicted.filter((n) => actualSet.has(n));
+      const hitCount = hitNums.length;
+      totalHit += hitCount;
+      if (hitCount >= 3) successPeriods++;
+      details.push({
+        periodOffset: hist.length - i,
+        predicted,
+        actual: hist[i],
+        hitNums,
+        hitCount,
+        success: hitCount >= 3,
+        accuracy: (hitCount / count) * 100,
+      });
+    }
+
+    const calcPeriods = hist.length - start;
+    return {
+      count,
+      strategy,
+      diversified,
+      targetHit: 3,
+      calcPeriods,
+      details: details.reverse(),
+      totalHit,
+      avgHit: calcPeriods > 0 ? totalHit / calcPeriods : 0,
+      successPeriods,
+      successRate: calcPeriods > 0 ? (successPeriods / calcPeriods) * 100 : 0,
+      randomBaseline: this.getRandomHotPickHitAtLeastRate(count, 3) * 100,
+    };
+  }
+
+  private getHotPickGroupProbability(predictions: any[], stats: any, targetHit = 3) {
+    const modelRate =
+      this.getPoissonBinomialAtLeast(
+        predictions.map((prediction) => prediction.appearProb || this.randomAppearProb),
+        targetHit,
+      ) * 100;
+    const randomBaseline =
+      this.getRandomHotPickHitAtLeastRate(predictions.length, targetHit) * 100;
+    const recentBacktestRate =
+      typeof stats?.successRate === 'number' ? stats.successRate : modelRate;
+    const reliability = Math.min(0.7, Math.max(0.25, (stats?.calcPeriods || 0) / 30));
+    const estimatedRate = recentBacktestRate * reliability + modelRate * (1 - reliability);
+
+    return {
+      targetHit,
+      count: predictions.length,
+      estimatedRate: Math.round(estimatedRate * 10) / 10,
+      modelRate: Math.round(modelRate * 10) / 10,
+      recentBacktestRate: Math.round(recentBacktestRate * 10) / 10,
+      randomBaseline: Math.round(randomBaseline * 10) / 10,
+      lift: Math.round((estimatedRate - randomBaseline) * 10) / 10,
+      liftRatio:
+        randomBaseline > 0
+          ? Math.round((estimatedRate / randomBaseline) * 100) / 100
+          : null,
+    };
+  }
+
   private backtestHotPick(
     hist: number[][],
     count: number,
@@ -1949,14 +2174,20 @@ export class PredictorService {
     }
 
     if (hist.length < 60) {
+      const predictions = this.getOptimizedHotPickPredictions(hist, 10, 'balanced', true);
       const fallback = {
         mode: 'hot-pick-fallback',
-        selectedCount: 12,
+        selectedCount: 10,
         targetHit: 3,
         selectedStrategy: 'balanced',
         diversified: true,
-        predictions: this.getHotPickPredictions(hist, 12, 'balanced', true),
+        predictions,
         selectedStats: null,
+        optimizedStats: null,
+        groupProbability: this.getHotPickGroupProbability(predictions, null, 3),
+        contributionRanking: this.getHotPickRollingContributions(hist, 10, 'balanced', true)
+          .sort((a, b) => b.contributionScore - a.contributionScore)
+          .slice(0, 10),
         options: [],
         reason: 'history-too-short',
       };
@@ -1965,7 +2196,7 @@ export class PredictorService {
     }
 
     const strategies = ['balanced', 'repeat', 'transition', 'hot', 'due'];
-    const counts = [6, 8, 10, 12];
+    const counts = [10];
     const variants = strategies.flatMap((strategy) =>
       counts.flatMap((count) => [
         this.backtestHotPick(hist, count, 10, strategy, false),
@@ -1980,7 +2211,7 @@ export class PredictorService {
           b.avgHit - a.avgHit ||
           b.maxHit - a.maxHit,
       )[0];
-    const shouldUseSix = sixStats.successRate >= 60 && sixStats.avgHit >= 3;
+    const shouldUseSix = false;
     const scoreVariant = (stats: any) =>
       stats.successRate * 1.2 +
       stats.avgHit * 12 +
@@ -1996,18 +2227,38 @@ export class PredictorService {
             a.count - b.count,
         )[0];
     const selectedCount = selectedStats.count;
+    const predictions = this.getOptimizedHotPickPredictions(
+      hist,
+      selectedCount,
+      selectedStats.strategy,
+      selectedStats.diversified,
+    );
+    const optimizedStats = this.backtestOptimizedHotPick(
+      hist,
+      selectedCount,
+      10,
+      selectedStats.strategy,
+      selectedStats.diversified,
+    );
+    const contributionRanking = this.getHotPickRollingContributions(
+      hist,
+      selectedCount,
+      selectedStats.strategy,
+      selectedStats.diversified,
+    )
+      .sort((a, b) => b.contributionScore - a.contributionScore)
+      .slice(0, 10);
     const result = {
       mode: 'adaptive-hot-pick',
       selectedCount,
       selectedStrategy: selectedStats.strategy,
       targetHit: 3,
-      predictions: this.getHotPickPredictions(
-        hist,
-        selectedCount,
-        selectedStats.strategy,
-        selectedStats.diversified,
-      ),
-      selectedStats,
+      predictions,
+      selectedStats: optimizedStats,
+      rawSelectedStats: selectedStats,
+      optimizedStats,
+      groupProbability: this.getHotPickGroupProbability(predictions, optimizedStats, 3),
+      contributionRanking,
       options: variants
         .sort(
           (a, b) =>
@@ -2019,9 +2270,7 @@ export class PredictorService {
         .slice(0, 6),
       reason: shouldUseSix
         ? 'six-count-passed-recent-backtest'
-        : selectedStats.count > 8
-          ? 'eight-count-not-stable-use-expanded'
-          : 'six-count-not-stable-use-eight',
+        : 'ten-count-group-probability',
       diversified: selectedStats.diversified,
     };
     this.memoHotPick.set(cacheKey, result);

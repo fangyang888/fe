@@ -33,8 +33,18 @@ export default function HotPickPredictor() {
     return `${value.toFixed(digits)}%`;
   };
 
+  const formatProbability = (value) => (
+    typeof value === 'number' ? formatPercent(value * 100) : '--'
+  );
+
   const reasonText = () => {
     if (!hotPick) return '';
+    if (hotPick.reason === 'history-too-short') {
+      return '历史样本偏少，先使用10码均衡方案。';
+    }
+    if (hotPick.reason === 'ten-count-group-probability') {
+      return '固定10码方案，按整组3+概率和滚动贡献筛选。';
+    }
     if (hotPick.reason === 'six-count-passed-recent-backtest') {
       return '近10期6码回测达标，保持6码方案。';
     }
@@ -125,17 +135,71 @@ export default function HotPickPredictor() {
         }
 
         .hot-pick-num {
-          width: 58px;
-          height: 58px;
+          width: 64px;
+          height: 64px;
           border-radius: 50%;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           color: #fff;
-          font-size: 1.3rem;
           font-weight: 900;
           background: linear-gradient(135deg, #0284c7, #22c55e);
           box-shadow: 0 14px 26px rgba(14, 165, 233, 0.22);
+        }
+
+        .hot-pick-num-main {
+          font-size: 1.25rem;
+          line-height: 1;
+        }
+
+        .hot-pick-num-prob {
+          margin-top: 4px;
+          color: #dcfce7;
+          font-size: 0.64rem;
+          line-height: 1;
+          font-weight: 900;
+        }
+
+        .hot-pick-prob-panel {
+          display: grid;
+          grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(120px, 1fr));
+          gap: 12px;
+          margin: 22px 0;
+        }
+
+        .hot-pick-prob-main,
+        .hot-pick-prob-item {
+          background: rgba(255, 255, 255, 0.055);
+          border: 1px solid rgba(186, 230, 253, 0.14);
+          border-radius: 12px;
+          padding: 15px;
+        }
+
+        .hot-pick-prob-main {
+          background: rgba(34, 197, 94, 0.12);
+          border-color: rgba(134, 239, 172, 0.22);
+        }
+
+        .hot-pick-prob-value {
+          color: #f0fdf4;
+          font-size: 1.45rem;
+          font-weight: 900;
+          margin-bottom: 5px;
+        }
+
+        .hot-pick-prob-label {
+          color: #bae6fd;
+          font-size: 0.77rem;
+          line-height: 1.45;
+        }
+
+        .hot-pick-lift {
+          color: #86efac;
+        }
+
+        .hot-pick-lift.negative {
+          color: #fcd34d;
         }
 
         .hot-pick-stats {
@@ -227,6 +291,48 @@ export default function HotPickPredictor() {
           background: #86efac;
         }
 
+        .hot-pick-contrib-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+          gap: 10px;
+        }
+
+        .hot-pick-contrib {
+          background: rgba(255, 255, 255, 0.035);
+          border: 1px solid rgba(255, 255, 255, 0.07);
+          border-radius: 12px;
+          padding: 12px;
+        }
+
+        .hot-pick-contrib-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          color: #e0f2fe;
+          font-size: 0.86rem;
+          font-weight: 900;
+          margin-bottom: 8px;
+        }
+
+        .hot-pick-contrib-num {
+          width: 30px;
+          height: 30px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #052e16;
+          background: #86efac;
+          font-weight: 900;
+        }
+
+        .hot-pick-contrib-meta {
+          color: #bae6fd;
+          font-size: 0.74rem;
+          line-height: 1.55;
+        }
+
         .error-message {
           color: #fecaca;
           background: rgba(239, 68, 68, 0.12);
@@ -269,6 +375,7 @@ export default function HotPickPredictor() {
           .hot-pick-card { padding: 24px; }
           .hot-pick-header { flex-direction: column; }
           .hot-pick-title { font-size: 1.8rem; }
+          .hot-pick-prob-panel { grid-template-columns: 1fr; }
         }
       ` }} />
 
@@ -298,10 +405,57 @@ export default function HotPickPredictor() {
               <div className="hot-pick-badge">{hotPick.selectedCount}码搏3中</div>
             </div>
 
+            {hotPick.groupProbability && (
+              <div className="hot-pick-prob-panel">
+                <div className="hot-pick-prob-main">
+                  <div className="hot-pick-prob-value">
+                    {formatPercent(hotPick.groupProbability.estimatedRate)}
+                  </div>
+                  <div className="hot-pick-prob-label">
+                    整组 {hotPick.groupProbability.count} 码命中
+                    {hotPick.groupProbability.targetHit}+ 估算概率
+                  </div>
+                </div>
+                <div className="hot-pick-prob-item">
+                  <div className="hot-pick-prob-value">
+                    {formatPercent(hotPick.groupProbability.randomBaseline)}
+                  </div>
+                  <div className="hot-pick-prob-label">随机10码基线</div>
+                </div>
+                <div className="hot-pick-prob-item">
+                  <div
+                    className={`hot-pick-prob-value hot-pick-lift ${
+                      hotPick.groupProbability.lift < 0 ? 'negative' : ''
+                    }`}
+                  >
+                    {hotPick.groupProbability.lift > 0 ? '+' : ''}
+                    {formatPercent(hotPick.groupProbability.lift)}
+                  </div>
+                  <div className="hot-pick-prob-label">相对随机提升</div>
+                </div>
+                <div className="hot-pick-prob-item">
+                  <div className="hot-pick-prob-value">
+                    {formatPercent(hotPick.groupProbability.recentBacktestRate)}
+                  </div>
+                  <div className="hot-pick-prob-label">滚动回测3+占比</div>
+                </div>
+              </div>
+            )}
+
             <div className="hot-pick-nums">
               {hotPick.predictions.map((p) => (
-                <div key={p.n} className="hot-pick-num" title={p.reasons?.join(' · ') || ''}>
-                  {p.n}
+                <div
+                  key={p.n}
+                  className="hot-pick-num"
+                  title={[
+                    `出现概率 ${formatProbability(p.appearProb)}`,
+                    ...(p.reasons || []),
+                  ].join(' · ')}
+                >
+                  <span className="hot-pick-num-main">{p.n}</span>
+                  <span className="hot-pick-num-prob">
+                    {formatProbability(p.appearProb)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -354,6 +508,30 @@ export default function HotPickPredictor() {
                             {n}
                           </span>
                         ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {hotPick.contributionRanking?.length > 0 && (
+              <>
+                <div className="hot-pick-section-title">滚动贡献筛选 Top 10</div>
+                <div className="hot-pick-contrib-list">
+                  {hotPick.contributionRanking.map((item) => (
+                    <div key={item.n} className="hot-pick-contrib">
+                      <div className="hot-pick-contrib-top">
+                        <span className="hot-pick-contrib-num">{item.n}</span>
+                        <span>
+                          {item.successLift > 0 ? '+' : ''}
+                          {formatPercent(item.successLift)}
+                        </span>
+                      </div>
+                      <div className="hot-pick-contrib-meta">
+                        样本 {item.samples} 期 · 单号命中 {formatPercent(item.hitRate)} · 平均命中贡献{' '}
+                        {item.avgHitLift > 0 ? '+' : ''}
+                        {item.avgHitLift.toFixed(3)}
                       </div>
                     </div>
                   ))}

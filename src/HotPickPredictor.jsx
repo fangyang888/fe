@@ -4,6 +4,7 @@ export default function HotPickPredictor() {
   const [hotPick, setHotPick] = useState(null);
   const [historyMeta, setHistoryMeta] = useState(null);
   const [recentOccurrenceStats, setRecentOccurrenceStats] = useState(null);
+  const [hotPickKill5, setHotPickKill5] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -19,6 +20,7 @@ export default function HotPickPredictor() {
         setHotPick(data.hotPick || null);
         setHistoryMeta(data.historyMeta || null);
         setRecentOccurrenceStats(data.recentOccurrenceStats || null);
+        setHotPickKill5(data.hotPickKill5 || null);
       } catch (err) {
         console.error(err);
         setError(`命中模块加载失败。${err.message ? `（${err.message}）` : ''}`);
@@ -337,6 +339,204 @@ export default function HotPickPredictor() {
           line-height: 1.55;
         }
 
+        .hot-pick-kill-panel {
+          background: rgba(127, 29, 29, 0.16);
+          border: 1px solid rgba(248, 113, 113, 0.24);
+          border-radius: 14px;
+          padding: 18px;
+        }
+
+        .hot-pick-kill-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 14px;
+          margin-bottom: 14px;
+        }
+
+        .hot-pick-kill-title {
+          color: #fee2e2;
+          font-size: 1rem;
+          font-weight: 900;
+          margin-bottom: 6px;
+        }
+
+        .hot-pick-kill-note {
+          color: #fecaca;
+          font-size: 0.78rem;
+          line-height: 1.5;
+        }
+
+        .hot-pick-kill-badge {
+          flex-shrink: 0;
+          color: #450a0a;
+          background: #fca5a5;
+          border-radius: 999px;
+          padding: 7px 11px;
+          font-size: 0.76rem;
+          font-weight: 900;
+        }
+
+        .hot-pick-kill-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 10px;
+        }
+
+        .hot-pick-kill-card {
+          background: rgba(255, 255, 255, 0.045);
+          border: 1px solid rgba(254, 202, 202, 0.12);
+          border-radius: 12px;
+          padding: 13px;
+        }
+
+        .hot-pick-kill-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 9px;
+        }
+
+        .hot-pick-kill-num {
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          background: linear-gradient(135deg, #ef4444, #f97316);
+          font-weight: 900;
+        }
+
+        .hot-pick-kill-prob {
+          color: #fecaca;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .hot-pick-kill-meta {
+          color: #fee2e2;
+          font-size: 0.72rem;
+          line-height: 1.55;
+        }
+
+        .hot-pick-kill-reasons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+          margin-top: 9px;
+        }
+
+        .hot-pick-kill-reason {
+          color: #fecaca;
+          background: rgba(248, 113, 113, 0.12);
+          border: 1px solid rgba(248, 113, 113, 0.16);
+          border-radius: 999px;
+          padding: 3px 7px;
+          font-size: 0.66rem;
+          font-weight: 800;
+        }
+
+        .hot-pick-kill-backtest-summary {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+          gap: 10px;
+          margin: 16px 0 12px;
+          padding-top: 14px;
+          border-top: 1px solid rgba(254, 202, 202, 0.13);
+        }
+
+        .hot-pick-kill-backtest-stat {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(254, 202, 202, 0.1);
+          border-radius: 10px;
+          padding: 11px;
+        }
+
+        .hot-pick-kill-backtest-value {
+          color: #fee2e2;
+          font-size: 1rem;
+          font-weight: 900;
+          margin-bottom: 4px;
+        }
+
+        .hot-pick-kill-backtest-label {
+          color: #fecaca;
+          font-size: 0.7rem;
+        }
+
+        .hot-pick-kill-backtest-list {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+          gap: 10px;
+        }
+
+        .hot-pick-kill-backtest-row {
+          background: rgba(255, 255, 255, 0.035);
+          border: 1px solid rgba(254, 202, 202, 0.1);
+          border-radius: 12px;
+          padding: 12px;
+        }
+
+        .hot-pick-kill-backtest-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          color: #fee2e2;
+          font-size: 0.76rem;
+          font-weight: 900;
+          margin-bottom: 9px;
+        }
+
+        .hot-pick-kill-backtest-ok {
+          color: #86efac;
+        }
+
+        .hot-pick-kill-backtest-bad {
+          color: #fca5a5;
+        }
+
+        .hot-pick-kill-backtest-nums {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 8px;
+        }
+
+        .hot-pick-kill-backtest-num {
+          min-width: 38px;
+          min-height: 30px;
+          border-radius: 9px;
+          padding: 4px 7px;
+          display: inline-flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: #fee2e2;
+          background: rgba(248, 113, 113, 0.12);
+          font-size: 0.7rem;
+          font-weight: 900;
+        }
+
+        .hot-pick-kill-backtest-num.failed {
+          color: #450a0a;
+          background: #fca5a5;
+        }
+
+        .hot-pick-kill-backtest-prob {
+          font-size: 0.58rem;
+          opacity: 0.85;
+          margin-top: 2px;
+        }
+
+        .hot-pick-kill-backtest-meta {
+          color: #fecaca;
+          font-size: 0.7rem;
+          line-height: 1.5;
+        }
+
         .hot-pick-occurrence-summary {
           display: flex;
           flex-wrap: wrap;
@@ -605,6 +805,119 @@ export default function HotPickPredictor() {
                       </div>
                     </div>
                   ))}
+                </div>
+              </>
+            )}
+
+            {hotPickKill5 && (
+              <>
+                <div className="hot-pick-section-title">94%+ 高置信 5杀</div>
+                <div className="hot-pick-kill-panel">
+                  <div className="hot-pick-kill-head">
+                    <div>
+                      <div className="hot-pick-kill-title">
+                        基于近30期热度 + NewKill 多模型算法
+                      </div>
+                      <div className="hot-pick-kill-note">{hotPickKill5.note}</div>
+                    </div>
+                    <div className="hot-pick-kill-badge">
+                      {hotPickKill5.selectedCount}/{hotPickKill5.targetCount} 达标
+                    </div>
+                  </div>
+
+                  <div className="hot-pick-kill-grid">
+                    {(hotPickKill5.predictions?.length > 0
+                      ? hotPickKill5.predictions
+                      : hotPickKill5.candidates?.slice(0, 5) || []
+                    ).map((item) => (
+                      <div key={item.n} className="hot-pick-kill-card">
+                        <div className="hot-pick-kill-top">
+                          <span className="hot-pick-kill-num">{item.n}</span>
+                          <span className="hot-pick-kill-prob">
+                            {formatPercent(item.killProbability)}
+                          </span>
+                        </div>
+                        <div className="hot-pick-kill-meta">
+                          近30期 {item.recentCount} 期 · 出现率 {formatPercent(item.recentRate)}
+                          <br />
+                          热度排名 #{item.heatRank} · 滚动杀码 {formatPercent(item.rollingKillRate)}
+                        </div>
+                        <div className="hot-pick-kill-reasons">
+                          {item.reasons?.slice(0, 4).map((reason) => (
+                            <span key={reason} className="hot-pick-kill-reason">
+                              {reason}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {hotPickKill5.backtest?.details?.length > 0 && (
+                    <>
+                      <div className="hot-pick-kill-backtest-summary">
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {formatPercent(hotPickKill5.backtest.overallAccuracy)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">近10期单号杀码准确率</div>
+                        </div>
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {hotPickKill5.backtest.allCorrectPeriods}/{hotPickKill5.backtest.calcPeriods}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">5杀全中期数</div>
+                        </div>
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {formatPercent(hotPickKill5.backtest.allCorrectRate)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">5杀全中率</div>
+                        </div>
+                      </div>
+
+                      <div className="hot-pick-kill-backtest-list">
+                        {hotPickKill5.backtest.details.map((item) => (
+                          <div key={item.periodOffset} className="hot-pick-kill-backtest-row">
+                            <div className="hot-pick-kill-backtest-top">
+                              <span>倒数第 {item.periodOffset} 期</span>
+                              <span
+                                className={
+                                  item.failed.length === 0
+                                    ? 'hot-pick-kill-backtest-ok'
+                                    : 'hot-pick-kill-backtest-bad'
+                                }
+                              >
+                                {item.correctCount}/{item.predicted.length} · {formatPercent(item.accuracy)}
+                              </span>
+                            </div>
+                            <div className="hot-pick-kill-backtest-nums">
+                              {item.predicted.map((prediction) => (
+                                <span
+                                  key={prediction.n}
+                                  className={`hot-pick-kill-backtest-num ${
+                                    item.failed.includes(prediction.n) ? 'failed' : ''
+                                  }`}
+                                >
+                                  {prediction.n}
+                                  <span className="hot-pick-kill-backtest-prob">
+                                    {formatPercent(prediction.killProbability)}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="hot-pick-kill-backtest-meta">
+                              平均概率 {formatPercent(item.avgKillProbability)} · 整组全杀估算{' '}
+                              {formatPercent(item.groupAllKillProbability)} · 达标数 {item.qualifiedCount}/5
+                              <br />
+                              实际开出 {item.actual.join(', ')}
+                              {item.failed.length > 0 && ` · 误杀 ${item.failed.join(', ')}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}

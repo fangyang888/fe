@@ -302,11 +302,13 @@ export class PredictorService {
       item.n6,
       item.n7,
     ]);
+    const recentOccurrenceStats = this.getRecentOccurrenceStats(rawHist, 30);
 
     return {
       hotPick: this.buildAdaptiveHotPick(hist),
       historyMeta: this.getHistoryMeta(rawHist),
-      recentOccurrenceStats: this.getRecentOccurrenceStats(rawHist, 30),
+      recentOccurrenceStats,
+      hotPickKill5: this.buildHotPickKill5(hist, recentOccurrenceStats),
     };
   }
 
@@ -345,6 +347,255 @@ export class PredictorService {
           rank: ranked[n],
         };
       }),
+    };
+  }
+
+  private getRecentOccurrenceStatsFromHist(hist: number[][], windowSize = 30) {
+    return this.getRecentOccurrenceStats(
+      hist.map((row) => ({
+        n1: row[0],
+        n2: row[1],
+        n3: row[2],
+        n4: row[3],
+        n5: row[4],
+        n6: row[5],
+        n7: row[6],
+      })),
+      windowSize,
+    );
+  }
+
+  private getRecentModelKillRates(hist: number[][], evalPeriods = 30) {
+    const start = Math.max(60, hist.length - evalPeriods);
+    const stats = new Map<
+      number,
+      {
+        samples: number;
+        successes: number;
+      }
+    >();
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const actualSet = new Set(hist[i]);
+      const modelNums = new Set<number>();
+
+      for (const prediction of this.getProbabilityKillPredictions(subHist, 10)) {
+        modelNums.add(prediction.n);
+      }
+      for (const prediction of this.getLowRiskKillPredictions(subHist, 10)) {
+        modelNums.add(prediction.n);
+      }
+
+      for (const n of modelNums) {
+        const stat = stats.get(n) || { samples: 0, successes: 0 };
+        stat.samples++;
+        if (!actualSet.has(n)) stat.successes++;
+        stats.set(n, stat);
+      }
+    }
+
+    return stats;
+  }
+
+  private getHotPickKill5Candidates(hist: number[][], occurrenceStats: any): any {
+    const threshold = 94;
+    const probabilityPreds = this.getProbabilityKillPredictions(hist, 49);
+    const lowRiskPreds = this.getLowRiskKillPredictions(hist, 49);
+    const enginePreds = this.runKillEngine(hist, 10).predictions || [];
+    const hybridPreds = this.buildAdaptiveHybridKill10(hist, enginePreds).predictions || [];
+    const rollingRates = this.getRecentModelKillRates(hist, 30);
+    const occurrenceByNum = new Map(
+      (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
+    );
+    const probabilityByNum = new Map(probabilityPreds.map((item, i) => [item.n, { ...item, rank: i + 1 }]));
+    const lowRiskByNum = new Map(lowRiskPreds.map((item, i) => [item.n, { ...item, rank: i + 1 }]));
+    const engineByNum = new Map(enginePreds.map((item: any, i: number) => [item.n, { ...item, rank: i + 1 }]));
+    const hybridByNum = new Map(hybridPreds.map((item: any, i: number) => [item.n, { ...item, rank: i + 1 }]));
+
+    const candidates = Array.from({ length: 49 }, (_, i) => {
+      const n = i + 1;
+      const occurrence = occurrenceByNum.get(n) as any;
+      const probability = probabilityByNum.get(n) as any;
+      const lowRisk = lowRiskByNum.get(n) as any;
+      const engine = engineByNum.get(n) as any;
+      const hybrid = hybridByNum.get(n) as any;
+      const rolling = rollingRates.get(n);
+      const recentRate = occurrence?.rate || 0;
+      const recentCount = occurrence?.count || 0;
+      const heatRank = occurrence?.rank || 49;
+      const probabilityAppear = probability?.appearProb ?? this.randomAppearProb;
+      const lowRiskAppear = lowRisk?.appearProb ?? this.randomAppearProb;
+      const hybridAppear = hybrid?.appearProb ?? engine?.appearProb ?? Math.min(probabilityAppear, lowRiskAppear);
+      const modelKillProbability =
+        (1 - (probabilityAppear * 0.25 + lowRiskAppear * 0.45 + hybridAppear * 0.3)) * 100;
+      const recentColdProbability = Math.max(0, 100 - recentRate);
+      const rankColdProbability = ((heatRank - 1) / 48) * 100;
+      const rollingKillRate =
+        rolling && rolling.samples >= 3
+          ? (rolling.successes / rolling.samples) * 100
+          : recentColdProbability;
+      const consensus =
+        (probability?.rank && probability.rank <= 10 ? 1 : 0) +
+        (lowRisk?.rank && lowRisk.rank <= 10 ? 1 : 0) +
+        (engine?.rank && engine.rank <= 10 ? 1 : 0) +
+        (hybrid?.rank && hybrid.rank <= 10 ? 1 : 0);
+      const consensusBonus = consensus * 0.7;
+      const killProbability = Math.min(
+        98.5,
+        modelKillProbability * 0.44 +
+          recentColdProbability * 0.22 +
+          rankColdProbability * 0.1 +
+          rollingKillRate * 0.24 +
+          consensusBonus,
+      );
+
+      const reasons = [
+        `近30期${recentCount}期`,
+        `热度排名#${heatRank}`,
+        `模型杀码${modelKillProbability.toFixed(1)}%`,
+      ];
+      if (rolling?.samples) {
+        reasons.push(`滚动${rolling.successes}/${rolling.samples}`);
+      }
+      if (consensus > 0) {
+        reasons.push(`模型共识${consensus}`);
+      }
+
+      return {
+        n,
+        killProbability: Math.round(killProbability * 10) / 10,
+        modelKillProbability: Math.round(modelKillProbability * 10) / 10,
+        recentColdProbability: Math.round(recentColdProbability * 10) / 10,
+        rollingKillRate: Math.round(rollingKillRate * 10) / 10,
+        recentCount,
+        recentRate,
+        heatRank,
+        consensus,
+        sources: {
+          probabilityRank: probability?.rank || null,
+          lowRiskRank: lowRisk?.rank || null,
+          engineRank: engine?.rank || null,
+          hybridRank: hybrid?.rank || null,
+        },
+        reasons,
+      };
+    }).sort(
+      (a, b) =>
+        b.killProbability - a.killProbability ||
+        b.consensus - a.consensus ||
+        a.recentCount - b.recentCount ||
+        b.heatRank - a.heatRank,
+    );
+
+    const qualified = candidates.filter((candidate) => candidate.killProbability >= threshold);
+    return {
+      candidates,
+      qualified,
+    };
+  }
+
+  private getHotPickKill5Displayed(result: any): any[] {
+    return result.predictions?.length > 0
+      ? result.predictions
+      : result.candidates?.slice(0, 5) || [];
+  }
+
+  private backtestHotPickKill5(hist: number[][], displayPeriods = 10): any {
+    const start = Math.max(60, hist.length - displayPeriods);
+    const details = [];
+    let totalCorrect = 0;
+    let totalPredicted = 0;
+    let allCorrectPeriods = 0;
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
+      const result: any = this.buildHotPickKill5(subHist, occurrenceStats, false);
+      const displayed: any[] = this.getHotPickKill5Displayed(result).slice(0, 5);
+      const actualSet = new Set(hist[i]);
+      const failed = displayed.filter((item: any) => actualSet.has(item.n));
+      const correctCount = displayed.length - failed.length;
+      const avgKillProbability =
+        displayed.length > 0
+          ? displayed.reduce((sum: number, item: any) => sum + item.killProbability, 0) /
+            displayed.length
+          : 0;
+      const groupAllKillProbability =
+        displayed.reduce(
+          (product: number, item: any) => product * (item.killProbability / 100),
+          1,
+        ) * 100;
+
+      totalCorrect += correctCount;
+      totalPredicted += displayed.length;
+      if (displayed.length > 0 && failed.length === 0) allCorrectPeriods++;
+
+      details.push({
+        periodOffset: hist.length - i,
+        predicted: displayed.map((item: any) => ({
+          n: item.n,
+          killProbability: item.killProbability,
+        })),
+        actual: hist[i],
+        failed: failed.map((item: any) => item.n),
+        correctCount,
+        accuracy: displayed.length > 0 ? (correctCount / displayed.length) * 100 : 0,
+        avgKillProbability: Math.round(avgKillProbability * 10) / 10,
+        groupAllKillProbability: Math.round(groupAllKillProbability * 10) / 10,
+        qualifiedCount: result.selectedCount,
+      });
+    }
+
+    const calcPeriods: number = details.length;
+    return {
+      calcPeriods,
+      details: details.reverse(),
+      totalCorrect,
+      totalPredicted,
+      overallAccuracy:
+        totalPredicted > 0 ? Math.round((totalCorrect / totalPredicted) * 1000) / 10 : 0,
+      allCorrectPeriods,
+      allCorrectRate:
+        calcPeriods > 0 ? Math.round((allCorrectPeriods / calcPeriods) * 1000) / 10 : 0,
+    };
+  }
+
+  private buildHotPickKill5(
+    hist: number[][],
+    occurrenceStats: any,
+    includeBacktest = true,
+  ): any {
+    if (hist.length < 30) {
+      return {
+        threshold: 94,
+        selectedCount: 0,
+        targetCount: 5,
+        predictions: [],
+        candidates: [],
+        backtest: null,
+        note: '历史不足30期，暂不生成94%高置信5杀。',
+      };
+    }
+
+    const threshold = 94;
+    const { candidates, qualified } = this.getHotPickKill5Candidates(
+      hist,
+      occurrenceStats,
+    );
+    const predictions = qualified.slice(0, 5);
+
+    return {
+      threshold,
+      selectedCount: predictions.length,
+      targetCount: 5,
+      predictions,
+      candidates: candidates.slice(0, 12),
+      backtest: includeBacktest ? this.backtestHotPickKill5(hist, 10) : null,
+      note:
+        predictions.length >= 5
+          ? '已筛出5个94%+高置信杀码。'
+          : `当前只有${predictions.length}个号码达到94%阈值，未硬凑。`,
     };
   }
 

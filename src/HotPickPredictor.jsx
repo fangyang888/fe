@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 export default function HotPickPredictor() {
   const [hotPick, setHotPick] = useState(null);
   const [historyMeta, setHistoryMeta] = useState(null);
+  const [recentOccurrenceStats, setRecentOccurrenceStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -17,6 +18,7 @@ export default function HotPickPredictor() {
         const data = await res.json();
         setHotPick(data.hotPick || null);
         setHistoryMeta(data.historyMeta || null);
+        setRecentOccurrenceStats(data.recentOccurrenceStats || null);
       } catch (err) {
         console.error(err);
         setError(`命中模块加载失败。${err.message ? `（${err.message}）` : ''}`);
@@ -36,6 +38,8 @@ export default function HotPickPredictor() {
   const formatProbability = (value) => (
     typeof value === 'number' ? formatPercent(value * 100) : '--'
   );
+
+  const selectedNumbers = new Set((hotPick?.predictions || []).map((p) => p.n));
 
   const reasonText = () => {
     if (!hotPick) return '';
@@ -333,6 +337,72 @@ export default function HotPickPredictor() {
           line-height: 1.55;
         }
 
+        .hot-pick-occurrence-summary {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .hot-pick-occurrence-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+          gap: 8px;
+        }
+
+        .hot-pick-occurrence-cell {
+          min-height: 64px;
+          border-radius: 10px;
+          padding: 9px;
+          background: rgba(255, 255, 255, 0.035);
+          border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        .hot-pick-occurrence-cell.selected {
+          background: rgba(34, 197, 94, 0.13);
+          border-color: rgba(134, 239, 172, 0.28);
+        }
+
+        .hot-pick-occurrence-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+          margin-bottom: 7px;
+        }
+
+        .hot-pick-occurrence-num {
+          color: #f0f9ff;
+          font-size: 0.96rem;
+          font-weight: 900;
+        }
+
+        .hot-pick-occurrence-rank {
+          color: #86efac;
+          font-size: 0.68rem;
+          font-weight: 900;
+        }
+
+        .hot-pick-occurrence-count {
+          color: #bae6fd;
+          font-size: 0.72rem;
+          font-weight: 800;
+          margin-bottom: 6px;
+        }
+
+        .hot-pick-occurrence-bar {
+          height: 5px;
+          overflow: hidden;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        .hot-pick-occurrence-fill {
+          height: 100%;
+          border-radius: inherit;
+          background: linear-gradient(90deg, #38bdf8, #86efac);
+        }
+
         .error-message {
           color: #fecaca;
           background: rgba(239, 68, 68, 0.12);
@@ -532,6 +602,53 @@ export default function HotPickPredictor() {
                         样本 {item.samples} 期 · 单号命中 {formatPercent(item.hitRate)} · 平均命中贡献{' '}
                         {item.avgHitLift > 0 ? '+' : ''}
                         {item.avgHitLift.toFixed(3)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {recentOccurrenceStats?.numbers?.length > 0 && (
+              <>
+                <div className="hot-pick-section-title">近 30 期 1-49 出现期数</div>
+                <div className="hot-pick-occurrence-summary">
+                  <span className="hot-pick-pill">
+                    统计 {recentOccurrenceStats.actualPeriods}/{recentOccurrenceStats.windowSize} 期
+                  </span>
+                  {recentOccurrenceStats.earliest?.No && (
+                    <span className="hot-pick-pill">
+                      起始第 {recentOccurrenceStats.earliest.No} 期
+                    </span>
+                  )}
+                  {recentOccurrenceStats.latest?.No && (
+                    <span className="hot-pick-pill">
+                      截止第 {recentOccurrenceStats.latest.No} 期
+                    </span>
+                  )}
+                  <span className="hot-pick-pill">绿色边框=当前10码</span>
+                </div>
+                <div className="hot-pick-occurrence-grid">
+                  {recentOccurrenceStats.numbers.map((item) => (
+                    <div
+                      key={item.n}
+                      className={`hot-pick-occurrence-cell ${
+                        selectedNumbers.has(item.n) ? 'selected' : ''
+                      }`}
+                      title={`近30期出现 ${item.count} 期，频率 ${formatPercent(item.rate)}，排名 #${item.rank}`}
+                    >
+                      <div className="hot-pick-occurrence-top">
+                        <span className="hot-pick-occurrence-num">{item.n}</span>
+                        <span className="hot-pick-occurrence-rank">#{item.rank}</span>
+                      </div>
+                      <div className="hot-pick-occurrence-count">
+                        {item.count}期 · {formatPercent(item.rate)}
+                      </div>
+                      <div className="hot-pick-occurrence-bar">
+                        <div
+                          className="hot-pick-occurrence-fill"
+                          style={{ width: `${Math.min(100, item.rate)}%` }}
+                        />
                       </div>
                     </div>
                   ))}

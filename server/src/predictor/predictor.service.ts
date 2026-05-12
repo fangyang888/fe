@@ -306,6 +306,45 @@ export class PredictorService {
     return {
       hotPick: this.buildAdaptiveHotPick(hist),
       historyMeta: this.getHistoryMeta(rawHist),
+      recentOccurrenceStats: this.getRecentOccurrenceStats(rawHist, 30),
+    };
+  }
+
+  private getRecentOccurrenceStats(rawHist: any[], windowSize = 30) {
+    const recentRows = rawHist.slice(-windowSize);
+    const counts = new Array(50).fill(0);
+
+    for (const row of recentRows) {
+      const nums = [row.n1, row.n2, row.n3, row.n4, row.n5, row.n6, row.n7];
+      for (const n of new Set(nums)) {
+        if (n >= 1 && n <= 49) counts[n]++;
+      }
+    }
+
+    const ranked = Array.from({ length: 49 }, (_, i) => i + 1)
+      .sort((a, b) => counts[b] - counts[a] || a - b)
+      .reduce<Record<number, number>>((acc, n, index) => {
+        acc[n] = index + 1;
+        return acc;
+      }, {});
+
+    return {
+      windowSize,
+      actualPeriods: recentRows.length,
+      latest: recentRows[recentRows.length - 1] || null,
+      earliest: recentRows[0] || null,
+      numbers: Array.from({ length: 49 }, (_, i) => {
+        const n = i + 1;
+        return {
+          n,
+          count: counts[n],
+          rate:
+            recentRows.length > 0
+              ? Math.round((counts[n] / recentRows.length) * 1000) / 10
+              : 0,
+          rank: ranked[n],
+        };
+      }),
     };
   }
 

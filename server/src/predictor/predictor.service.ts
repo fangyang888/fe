@@ -1926,7 +1926,7 @@ export class PredictorService {
   private getHotPickFeatureRows(hist: number[][]) {
     const hn = hist.length;
     const lastRow = new Set(hist[hn - 1] || []);
-    const rows = [];
+    const rows: any[] = [];
 
     for (let n = 1; n <= 49; n++) {
       const apps = [];
@@ -1957,6 +1957,7 @@ export class PredictorService {
           freq5: countInWindow(5),
           freq10: countInWindow(10),
           freq20: countInWindow(20),
+          freq30: countInWindow(30),
           freq50: countInWindow(50),
           longFreq: apps.length / Math.max(1, hn),
           currentGap,
@@ -1965,9 +1966,19 @@ export class PredictorService {
           lastHit: lastRow.has(n) ? 1 : 0,
           tail: n % 10,
           zone: Math.floor((n - 1) / 10),
+          recent30Rank: 49,
+          recent30Heat: 0,
         },
       });
     }
+
+    const recent30Ranked = [...rows].sort(
+      (a, b) => b.features.freq30 - a.features.freq30 || a.n - b.n,
+    );
+    recent30Ranked.forEach((row, index) => {
+      row.features.recent30Rank = index + 1;
+      row.features.recent30Heat = this.normalizeMetric(row.features.freq30, 0.04, 0.28);
+    });
 
     return rows;
   }
@@ -2026,6 +2037,7 @@ export class PredictorService {
   }
 
   private getHotPickCandidates(hist: number[][], strategy = 'balanced') {
+    const hn = hist.length;
     const featureRows = this.getHotPickFeatureRows(hist);
     const transitions = this.getHotPickTransitionScores(hist);
 
@@ -2033,10 +2045,12 @@ export class PredictorService {
       const f = row.features;
       const hotBlend =
         f.freq5 * 0.28 +
-        f.freq10 * 0.25 +
-        f.freq20 * 0.2 +
-        f.freq50 * 0.14 +
-        f.longFreq * 0.13;
+        f.freq10 * 0.22 +
+        f.freq20 * 0.17 +
+        f.freq30 * 0.15 +
+        f.freq50 * 0.1 +
+        f.longFreq * 0.08;
+      const recent30Signal = f.freq30 * 0.72 + f.recent30Heat * 0.28;
       const gapDue = this.normalizeMetric(f.gapRatio, 0.6, 2.6);
       const overDuePenalty = this.normalizeMetric(f.gapRatio, 2.8, 4.8) * 0.08;
       const markov = transitions.markov[row.n] || this.randomAppearProb;
@@ -2061,11 +2075,19 @@ export class PredictorService {
         transition: markov * 0.55 + markov2 * 0.25 + hotBlend * 0.12 + gapDue * 0.08,
         hot: hotBlend * 0.5 + f.freq10 * 0.22 + markov * 0.14 + f.lastHit * 0.08,
         due: gapDue * 0.42 + markov * 0.2 + f.freq20 * 0.18 + hotBlend * 0.16,
+        recent30:
+          recent30Signal * 0.36 +
+          hotBlend * 0.2 +
+          markov * 0.18 +
+          markov2 * 0.12 +
+          gapDue * 0.08 +
+          f.lastHit * 0.04 -
+          overDuePenalty,
       };
       const score = scoreByStrategy[strategy] ?? scoreByStrategy.balanced;
       const appearProb = Math.max(
         0.02,
-        Math.min(0.58, scoreByStrategy.balanced + hotBlend * 0.18),
+        Math.min(0.58, scoreByStrategy.balanced + hotBlend * 0.14 + f.freq30 * 0.08),
       );
 
       return {
@@ -2074,12 +2096,14 @@ export class PredictorService {
         appearProb,
         reasons: [
           `热度${Math.round(hotBlend * 100)}%`,
+          `近30期${Math.round(f.freq30 * Math.min(30, hn))}期/#${f.recent30Rank}`,
           `转移${Math.round(markov * 100)}%`,
           `间隔${f.currentGap}期`,
         ],
         features: {
           ...f,
           hotBlend,
+          recent30Signal,
           markov,
           markov2,
           gapDue,
@@ -2471,14 +2495,24 @@ export class PredictorService {
       return fallback;
     }
 
-    const strategies = ['balanced', 'repeat', 'transition', 'hot', 'due'];
+    const strategies = ['balanced', 'repeat', 'transition', 'hot', 'due', 'recent30'];
     const counts = [10];
-    const variants = strategies.flatMap((strategy) =>
+    const rawVariants = strategies.flatMap((strategy) =>
       counts.flatMap((count) => [
         this.backtestHotPick(hist, count, 10, strategy, false),
         this.backtestHotPick(hist, count, 10, strategy, true),
       ]),
     );
+    const variants: any[] = rawVariants.map((stats: any) => ({
+      ...this.backtestOptimizedHotPick(
+        hist,
+        stats.count,
+        10,
+        stats.strategy,
+        stats.diversified,
+      ),
+      rawStats: stats,
+    }));
     const sixStats = variants
       .filter((stats) => stats.count === 6)
       .sort(
@@ -2531,7 +2565,7 @@ export class PredictorService {
       targetHit: 3,
       predictions,
       selectedStats: optimizedStats,
-      rawSelectedStats: selectedStats,
+      rawSelectedStats: selectedStats.rawStats || selectedStats,
       optimizedStats,
       groupProbability: this.getHotPickGroupProbability(predictions, optimizedStats, 3),
       contributionRanking,

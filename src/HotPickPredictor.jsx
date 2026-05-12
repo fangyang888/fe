@@ -41,6 +41,18 @@ export default function HotPickPredictor() {
     typeof value === 'number' ? formatPercent(value * 100) : '--'
   );
 
+  const formatStrategy = (strategy) => {
+    const labels = {
+      balanced: '均衡',
+      repeat: '连热',
+      transition: '转移',
+      hot: '热度',
+      due: '间隔',
+      recent30: '近30联合',
+    };
+    return labels[strategy] || strategy || '--';
+  };
+
   const selectedNumbers = new Set((hotPick?.predictions || []).map((p) => p.n));
 
   const reasonText = () => {
@@ -49,6 +61,9 @@ export default function HotPickPredictor() {
       return '历史样本偏少，先使用10码均衡方案。';
     }
     if (hotPick.reason === 'ten-count-group-probability') {
+      if (hotPick.selectedStrategy === 'recent30') {
+        return '固定10码方案，已结合近30期出现期数/排名与滚动贡献筛选。';
+      }
       return '固定10码方案，按整组3+概率和滚动贡献筛选。';
     }
     if (hotPick.reason === 'six-count-passed-recent-backtest') {
@@ -662,7 +677,7 @@ export default function HotPickPredictor() {
                   目标：一期 7 个开奖中，当前选择 {hotPick.selectedCount} 个号，争取命中至少 3 个。{reasonText()}
                 </div>
                 <div className="hot-pick-meta">
-                  <span className="hot-pick-pill">策略 {hotPick.selectedStrategy || '--'}</span>
+                  <span className="hot-pick-pill">策略 {formatStrategy(hotPick.selectedStrategy)}</span>
                   {hotPick.diversified && <span className="hot-pick-pill">尾数/区间分散</span>}
                   {historyMeta?.latest?.No && (
                     <span className="hot-pick-pill">最新第 {historyMeta.latest.No} 期</span>

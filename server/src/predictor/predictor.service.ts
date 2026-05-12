@@ -150,6 +150,7 @@ export class PredictorService {
   private memoExpertWeights = new BoundedCache<number, any>(500);
   private memoAppearScores = new BoundedCache<number, AppearScore[]>(500);
   private memoAppearWeights = new BoundedCache<number, any>(500);
+  private memoKillEngine = new BoundedCache<string, KillEngineResult>(120);
   private memoHybridKill10 = new BoundedCache<string, any>(100);
   private memoCoreKillOne = new BoundedCache<string, any>(100);
   private memoHotPick = new BoundedCache<string, any>(100);
@@ -172,6 +173,7 @@ export class PredictorService {
       this.memoExpertWeights.clear();
       this.memoAppearScores.clear();
       this.memoAppearWeights.clear();
+      this.memoKillEngine.clear();
       this.memoHybridKill10.clear();
       this.memoCoreKillOne.clear();
       this.memoHotPick.clear();
@@ -187,6 +189,10 @@ export class PredictorService {
     const period = last.period ?? last.No ?? last.id ?? rawHist.length;
     const nums = [last.n1, last.n2, last.n3, last.n4, last.n5, last.n6, last.n7].join(',');
     return `${rawHist.length}:${period}:${nums}`;
+  }
+
+  private getHistArrayCacheKey(hist: number[][]) {
+    return `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
   }
 
   private getHistoryMeta(rawHist: any[]) {
@@ -225,30 +231,11 @@ export class PredictorService {
 
     const { repulsionInfo } = this.strategyServerSide(hist);
     const killCount = this.highConfidenceKillCount;
-    const probabilityBacktestStats = this.runProbabilityBacktest(
-      hist,
-      10,
-      Math.max(0, hist.length - 160),
-      killCount,
-    );
-    const lowRiskBacktestStats = this.runLowRiskBacktest(
-      hist,
-      10,
-      Math.max(0, hist.length - 160),
-      killCount,
-    );
-    const useLowRisk =
-      lowRiskBacktestStats &&
-      probabilityBacktestStats &&
-      lowRiskBacktestStats.overallAccuracy >=
-        probabilityBacktestStats.overallAccuracy;
     const engineResult = this.runKillEngine(hist, killCount);
     const modelPredictions =
       engineResult.predictions.length > 0
         ? engineResult.predictions
-        : useLowRisk
-          ? this.getLowRiskKillPredictions(hist, killCount)
-          : this.getProbabilityKillPredictions(hist, killCount);
+        : this.getProbabilityKillPredictions(hist, killCount);
     const hybridResult = this.buildAdaptiveHybridKill10(hist, modelPredictions);
     const coreKill = this.buildAdaptiveCoreKillOne(hist);
     const finalPredictions = hybridResult.predictions;
@@ -263,12 +250,12 @@ export class PredictorService {
         ...repulsionInfo,
         selectedModel:
           engineResult.debug?.selectedMode || engineResult.debug?.mode || 'ensemble',
-        legacySelectedModel: useLowRisk ? 'low-risk' : 'probability',
+        legacySelectedModel: engineResult.debug?.selectedMode || 'probability',
         engine: engineResult.debug,
         hybrid: hybridResult.debug,
         modelComparison:
           engineResult.debug?.variantComparison ||
-          [engineResult.stats, probabilityBacktestStats, lowRiskBacktestStats]
+          [engineResult.stats]
             .filter((stats): stats is KillBacktestSummary => Boolean(stats))
             .map((stats) => ({
               name: stats.name,
@@ -283,8 +270,7 @@ export class PredictorService {
       engineBacktestStats: hybridResult.stats || engineResult.stats,
       probabilityBacktestStats:
         hybridResult.stats ||
-        engineResult.stats ||
-        (useLowRisk ? lowRiskBacktestStats : probabilityBacktestStats),
+        engineResult.stats,
     };
     this.memoKillPredictionResponse.set(responseCacheKey, response);
     return response;
@@ -3219,6 +3205,11 @@ export class PredictorService {
   }
 
   private runKillEngine(hist: number[][], killCount: number): KillEngineResult {
+    const cacheKey = `${this.getHistArrayCacheKey(hist)}:${killCount}`;
+    if (this.memoKillEngine.has(cacheKey)) {
+      return this.memoKillEngine.get(cacheKey)!;
+    }
+
     const backtest = this.backtestEngineModels(
       hist,
       killCount,
@@ -3226,7 +3217,7 @@ export class PredictorService {
       Math.min(180, Math.max(60, Math.floor(hist.length * 0.18))),
     );
     if (!backtest) {
-      return {
+      const fallback = {
         predictions: this.getProbabilityKillPredictions(hist, killCount),
         stats: null,
         debug: {
@@ -3234,6 +3225,8 @@ export class PredictorService {
           reason: 'history-too-short',
         },
       };
+      this.memoKillEngine.set(cacheKey, fallback);
+      return fallback;
     }
 
     const models = this.getEngineModelOutputs(hist);
@@ -3266,7 +3259,7 @@ export class PredictorService {
       0,
     );
 
-    return {
+    const result = {
       predictions,
       stats: backtest.stats,
       debug: {
@@ -3323,6 +3316,8 @@ export class PredictorService {
         },
       },
     };
+    this.memoKillEngine.set(cacheKey, result);
+    return result;
   }
 
   private getRecentHistoryKillCandidates(

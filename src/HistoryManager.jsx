@@ -12,11 +12,23 @@ export default function HistoryManager() {
   const [yearInput, setYearInput] = useState(new Date().getFullYear().toString());
   const [noInput, setNoInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(null);
   const [msg, setMsg] = useState(null);
   const [activeTab, setActiveTab] = useState("default");
   const [queryYear, setQueryYear] = useState(new Date().getFullYear());
 
   const API_BASE = activeTab === "hk" ? "/api/hk/history" : "/api/history";
+
+  const getErrorMessage = async (res, fallback) => {
+    const text = await res.text();
+    if (!text) return fallback;
+    try {
+      const data = JSON.parse(text);
+      return data.message || data.error || fallback;
+    } catch {
+      return text || fallback;
+    }
+  };
 
   // 加载数据
   const fetchRecords = async () => {
@@ -48,6 +60,14 @@ export default function HistoryManager() {
     const payload = { numbers };
     if (yearInput.trim()) payload.year = parseInt(yearInput.trim(), 10);
     if (noInput.trim()) payload.No = parseInt(noInput.trim(), 10);
+    if (
+      payload.year !== undefined &&
+      payload.No !== undefined &&
+      records.some((r) => r.year === payload.year && r.No === payload.No)
+    ) {
+      setMsg({ type: "error", text: `第 ${payload.year} 年第 ${payload.No} 期数据已存在` });
+      return;
+    }
 
     setSubmitting(true);
     setMsg(null);
@@ -57,7 +77,7 @@ export default function HistoryManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("新增失败");
+      if (!res.ok) throw new Error(await getErrorMessage(res, "新增失败"));
       setInputs(["", "", "", "", "", "", ""]);
       setYearInput(queryYear.toString());
       setNoInput("");
@@ -67,6 +87,46 @@ export default function HistoryManager() {
       setMsg({ type: "error", text: "❌ " + e.message });
     }
     setSubmitting(false);
+  };
+
+  const handleSync = async (mode) => {
+    if (activeTab !== "default") {
+      setMsg({ type: "error", text: "当前只支持同步默认数据" });
+      return;
+    }
+    const year = parseInt(queryYear || yearInput, 10);
+    if (!Number.isInteger(year)) {
+      setMsg({ type: "error", text: "请输入要同步的年份" });
+      return;
+    }
+
+    setSyncing(mode);
+    setMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/${mode === "year" ? "sync-year" : "sync-latest"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year }),
+      });
+      if (!res.ok) throw new Error(await getErrorMessage(res, "同步失败"));
+      const data = await res.json();
+      if (mode === "year") {
+        setMsg({
+          type: "success",
+          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期`,
+        });
+      } else {
+        setMsg({
+          type: data.inserted > 0 ? "success" : "error",
+          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}`,
+        });
+      }
+      fetchRecords();
+    } catch (e) {
+      setMsg({ type: "error", text: "❌ " + e.message });
+    } finally {
+      setSyncing(null);
+    }
   };
 
   // 删除
@@ -187,6 +247,10 @@ export default function HistoryManager() {
       background: "linear-gradient(135deg, #2ecc71, #27ae60)",
       color: "#fff",
     },
+    syncBtn: {
+      background: "linear-gradient(135deg, #3498db, #2980b9)",
+      color: "#fff",
+    },
     deleteBtn: {
       background: "transparent",
       color: "#e74c3c",
@@ -262,13 +326,40 @@ export default function HistoryManager() {
       <p style={styles.subtitle}>
         当前库：{activeTab === "hk" ? "香港 (hk)" : "默认 (default)"} · {queryYear}年 · 共 {records.length} 条记录 · 支持在线新增和删除
       </p>
+      {msg && <div style={styles.msg(msg.type)}>{msg.text}</div>}
+
+      {activeTab === "default" && (
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>
+            <span>🔄</span> 数据同步
+          </div>
+          <div style={styles.inputRow}>
+            <button
+              onClick={() => handleSync("year")}
+              disabled={Boolean(syncing)}
+              style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
+            >
+              {syncing === "year" ? "同步中..." : `同步${queryYear}全年`}
+            </button>
+            <button
+              onClick={() => handleSync("latest")}
+              disabled={Boolean(syncing)}
+              style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
+            >
+              {syncing === "latest" ? "同步中..." : "同步最后一期"}
+            </button>
+          </div>
+          <p style={{ fontSize: 12, color: "#667788", margin: 0 }}>
+            同步整年时，如果 year + No 已存在会自动忽略；最后一期也会做同样校验。
+          </p>
+        </div>
+      )}
 
       {/* 新增表单 */}
       <div style={styles.card}>
         <div style={styles.cardTitle}>
           <span>➕</span> 新增一行数据
         </div>
-        {msg && <div style={styles.msg(msg.type)}>{msg.text}</div>}
         <div style={styles.inputRow}>
           {inputs.map((val, idx) => (
             <input

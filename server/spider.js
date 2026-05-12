@@ -1,89 +1,153 @@
-const axios = require('axios');
-const cheerio = require('cheerio');
 const fs = require('fs');
 const https = require('https');
-const year = 2023;
-async function fetchLotteryData() {
-  const url = `https://zeijpd.d23p7-1eavj-pqsgfz.work:16633/kj/3/${year}.html`;
+const zlib = require('zlib');
 
-  try {
-    console.log('正在请求数据，请稍候...');
-    const response = await axios.get(url, {
-      // 忽略非标准域名可能带来的证书报错
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
+function parseYear(value) {
+  const year = parseInt(value, 10);
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+    throw new Error('年份参数不合法');
+  }
+  return year;
+}
+
+function parseLotteryHtml(html, year) {
+  const results = [];
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const htmlBody = bodyMatch ? bodyMatch[1] : html;
+  const textContent = htmlBody
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ');
+  const dateEventRegex = /(\d{4})年(\d{1,2})月(\d{1,2})日\s+第\s*(\d{1,3})\s*期/g;
+
+  const matches = [];
+  let match;
+  while ((match = dateEventRegex.exec(textContent)) !== null) {
+    matches.push({
+      index: match.index,
+      matchLength: match[0].length,
+      date: `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`,
+      event: `第${match[4].padStart(3, '0')}期`,
+      No: parseInt(match[4], 10),
+      year: parseInt(match[1], 10) || year,
     });
+  }
 
-    const $ = cheerio.load(response.data);
-    const results = [];
+  for (let i = 0; i < matches.length; i++) {
+    const current = matches[i];
+    const nextIndex =
+      i + 1 < matches.length ? matches[i + 1].index : textContent.length;
+    const blockContent = textContent.slice(
+      current.index + current.matchLength,
+      nextIndex,
+    );
+    const numsRegex = /\b(0?[1-9]|[1-4][0-9])\b/g;
+    const items = [];
+    let numMatch;
 
-    // 提取 body 内的纯文本进行区块分割解析
-    // 这种方式比依赖未知的 DOM Class (如 <li>, <div>) 更稳定
-    const textContent = $('body').text().replace(/\s+/g, ' ');
+    while ((numMatch = numsRegex.exec(blockContent)) !== null) {
+      const n = parseInt(numMatch[1], 10);
+      if (n >= 1 && n <= 49) items.push(n);
+      if (items.length === 7) break;
+    }
 
-    // 匹配格式：2025年12月31日 第365期
-    const dateEventRegex = /(\d{4})年(\d{2})月(\d{2})日\s+(第\d{3}期)/g;
-
-    let matches = [];
-    let match;
-    while ((match = dateEventRegex.exec(textContent)) !== null) {
-      matches.push({
-        index: match.index,
-        matchLength: match[0].length,
-        date: `${match[1]}-${match[2]}-${match[3]}`,
-        event: match[4],
+    if (items.length === 7) {
+      results.push({
+        date: current.date,
+        event: current.event,
+        year: current.year,
+        No: current.No,
+        items,
       });
     }
+  }
 
-    // 截取两期文本之间的内容，提取前 7 个号码
-    for (let i = 0; i < matches.length; i++) {
-      const current = matches[i];
-      const nextIndex =
-        i + 1 < matches.length ? matches[i + 1].index : textContent.length;
+  return results.sort((a, b) => a.No - b.No);
+}
 
-      const blockContent = textContent.slice(
-        current.index + current.matchLength,
-        nextIndex,
-      );
-
-      // 匹配 01-49 之间的数字
-      const numsRegex = /\b(0?[1-9]|[1-4][0-9])\b/g;
-      const items = [];
-      let numMatch;
-
-      while ((numMatch = numsRegex.exec(blockContent)) !== null) {
-        // 排除年份等误伤数据
-        const n = parseInt(numMatch[1], 10);
-        if (n >= 1 && n <= 49) {
-          items.push(n);
+function requestText(url, timeout = 20000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        rejectUnauthorized: false,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Encoding': 'gzip, deflate, br',
+        },
+        timeout,
+      },
+      (res) => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`HTTP ${res.statusCode}`));
+          res.resume();
+          return;
         }
-        // 仅收集前 7 个号码（平码+特码）
-        if (items.length === 7) break;
-      }
 
-      if (items.length === 7) {
-        results.push({
-          date: current.date,
-          event: current.event,
-          items: items,
+        const chunks = [];
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
         });
-      }
-    }
+        res.on('end', () => {
+          try {
+            let data = Buffer.concat(chunks);
+            const encoding = String(res.headers['content-encoding'] || '').toLowerCase();
+            if (encoding === 'gzip') {
+              data = zlib.gunzipSync(data);
+            } else if (encoding === 'deflate') {
+              data = zlib.inflateSync(data);
+            } else if (encoding === 'br') {
+              data = zlib.brotliDecompressSync(data);
+            }
+            resolve(data.toString('utf8'));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
 
-    // 按照要求保存为 JSON
+    req.on('timeout', () => {
+      req.destroy(new Error('请求超时'));
+    });
+    req.on('error', reject);
+  });
+}
+
+async function fetchLotteryData(yearInput, options = {}) {
+  const year = parseYear(yearInput);
+  const url = `https://zeijpd.d23p7-1eavj-pqsgfz.work:16633/kj/3/${year}.html`;
+  const html = await requestText(url, options.timeout || 20000);
+  const results = parseLotteryHtml(html, year);
+  if (options.writeFile) {
     fs.writeFileSync(
       `lottery_${year}.json`,
       JSON.stringify(results, null, 2),
       'utf-8',
     );
-    console.log(`✅ 成功抓取 ${results.length} 期数据！`);
-    console.log(`📄 文件已保存至当前目录下的 lottery_${year}.json`);
-  } catch (error) {
-    console.error('❌ 抓取失败:', error.message);
   }
+  return results;
 }
 
-fetchLotteryData();
+module.exports = {
+  fetchLotteryData,
+  parseLotteryHtml,
+  requestText,
+};
+
+if (require.main === module) {
+  const year = parseYear(process.argv[2] || new Date().getFullYear());
+  fetchLotteryData(year, { writeFile: true })
+    .then((results) => {
+      console.log(`✅ 成功抓取 ${results.length} 期数据！`);
+      console.log(`📄 文件已保存至当前目录下的 lottery_${year}.json`);
+    })
+    .catch((error) => {
+      console.error('❌ 抓取失败:', error.message);
+      process.exitCode = 1;
+    });
+}

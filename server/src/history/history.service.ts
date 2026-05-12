@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { History } from './history.entity';
 
 @Injectable()
@@ -22,6 +24,12 @@ export class HistoryService {
     });
   }
 
+  async existsByYearNo(year?: number, No?: number): Promise<boolean> {
+    if (year === undefined || No === undefined) return false;
+    const count = await this.historyRepo.count({ where: { year, No } });
+    return count > 0;
+  }
+
   /** 获取单条记录 */
   async findOne(id: number): Promise<History> {
     const record = await this.historyRepo.findOneBy({ id });
@@ -36,6 +44,9 @@ export class HistoryService {
     if (numbers.length !== 7) {
       throw new Error('需要恰好 7 个数字');
     }
+    if (await this.existsByYearNo(year, No)) {
+      throw new ConflictException(`第 ${year} 年第 ${No} 期数据已存在`);
+    }
     const record = this.historyRepo.create({
       n1: numbers[0],
       n2: numbers[1],
@@ -48,6 +59,91 @@ export class HistoryService {
       No,
     });
     return this.historyRepo.save(record);
+  }
+
+  private loadSpider() {
+    const candidates = [
+      join(process.cwd(), 'spider.js'),
+      join(process.cwd(), 'server', 'spider.js'),
+      join(__dirname, '..', '..', 'spider.js'),
+      join(__dirname, '..', '..', '..', 'spider.js'),
+    ];
+    const spiderPath = candidates.find((path) => existsSync(path));
+    if (!spiderPath) {
+      throw new Error(`找不到 spider.js，已尝试：${candidates.join(', ')}`);
+    }
+    delete require.cache[require.resolve(spiderPath)];
+    return require(spiderPath);
+  }
+
+  async syncYear(year: number) {
+    const spider = this.loadSpider();
+    const records = await spider.fetchLotteryData(year);
+    let inserted = 0;
+    let skipped = 0;
+    const insertedRecords: History[] = [];
+
+    for (const item of records) {
+      const itemYear = item.year || year;
+      if (await this.existsByYearNo(itemYear, item.No)) {
+        skipped++;
+        continue;
+      }
+      const saved = await this.create(item.items, itemYear, item.No);
+      inserted++;
+      insertedRecords.push(saved);
+    }
+
+    return {
+      year,
+      fetched: records.length,
+      inserted,
+      skipped,
+      records: insertedRecords,
+    };
+  }
+
+  async syncLatest(year: number) {
+    const spider = this.loadSpider();
+    let sourceYear = year;
+    let records = await spider.fetchLotteryData(sourceYear);
+    while (records.length === 0 && sourceYear > year - 3) {
+      sourceYear--;
+      records = await spider.fetchLotteryData(sourceYear);
+    }
+    const latest = [...records].sort((a, b) => b.No - a.No)[0];
+    if (!latest) {
+      return {
+        year,
+        sourceYear,
+        inserted: 0,
+        skipped: 0,
+        record: null,
+        message: '未抓取到数据',
+      };
+    }
+
+    const itemYear = latest.year || year;
+    if (await this.existsByYearNo(itemYear, latest.No)) {
+      return {
+        year,
+        sourceYear,
+        inserted: 0,
+        skipped: 1,
+        record: null,
+        message: `第 ${itemYear} 年第 ${latest.No} 期数据已存在`,
+      };
+    }
+
+    const saved = await this.create(latest.items, itemYear, latest.No);
+    return {
+      year,
+      sourceYear,
+      inserted: 1,
+      skipped: 0,
+      record: saved,
+      message: `已同步第 ${itemYear} 年第 ${latest.No} 期`,
+    };
   }
 
   /** 修改一行 */

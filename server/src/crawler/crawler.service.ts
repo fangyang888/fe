@@ -1,4 +1,6 @@
 import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class CrawlerService {
@@ -20,6 +22,30 @@ export class CrawlerService {
     } catch (error) {
       throw new HttpException(
         `Crawler failed to fetch ${url}: ${(error as Error).message}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  async fetchLotteryYear(year: number) {
+    try {
+      // Keep the legacy spider.js as the single source for parsing this site.
+      const candidates = [
+        join(process.cwd(), 'spider.js'),
+        join(process.cwd(), 'server', 'spider.js'),
+        join(__dirname, '..', '..', 'spider.js'),
+        join(__dirname, '..', '..', '..', 'spider.js'),
+      ];
+      const spiderPath = candidates.find((path) => existsSync(path));
+      if (!spiderPath) {
+        throw new Error(`Cannot find spider.js. Tried: ${candidates.join(', ')}`);
+      }
+      delete require.cache[require.resolve(spiderPath)];
+      const spider = require(spiderPath);
+      return await spider.fetchLotteryData(year);
+    } catch (error) {
+      throw new HttpException(
+        `Lottery spider failed for ${year}: ${(error as Error).message}`,
         HttpStatus.BAD_REQUEST,
       );
     }

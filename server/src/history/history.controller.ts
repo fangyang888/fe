@@ -19,6 +19,10 @@ class CreateHistoryDto {
   No?: number;
 }
 
+class SyncHistoryDto {
+  year: number;
+}
+
 @Controller('api/history')
 export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
@@ -48,6 +52,18 @@ export class HistoryController {
   @Post()
   async create(@Body() dto: CreateHistoryDto): Promise<History> {
     return this.historyService.create(dto.numbers, dto.year, dto.No);
+  }
+
+  /** POST /api/history/sync-year — 从 spider 同步整年，重复 year+No 自动忽略 */
+  @Post('sync-year')
+  async syncYear(@Body() dto: SyncHistoryDto) {
+    return this.historyService.syncYear(dto.year);
+  }
+
+  /** POST /api/history/sync-latest — 从 spider 同步指定年份最后一期 */
+  @Post('sync-latest')
+  async syncLatest(@Body() dto: SyncHistoryDto) {
+    return this.historyService.syncLatest(dto.year);
   }
 
   /** PUT /api/history/:id — 修改 */

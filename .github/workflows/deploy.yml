@@ -66,6 +66,7 @@ jobs:
             echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
             echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
             echo "PORT=3000" >> .env
+            echo "SERVER_TIMEOUT_MS=900000" >> .env
             REDIS_URL="${{ secrets.REDIS_URL }}"
             if [ -z "$REDIS_URL" ]; then
               REDIS_URL="redis://127.0.0.1:6379"
@@ -79,3 +80,13 @@ jobs:
             pnpm install --prod --frozen-lockfile
             cd ..
             pm2 startOrReload ecosystem.config.cjs --env production
+
+            # 重新加载 Nginx 配置，确保长耗时预测接口不会 5 分钟 504
+            sudo cp deploy/nginx.conf /etc/nginx/conf.d/fe.conf
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            # 部署后从 ECS 本机预热 Redis 缓存，避免用户第一次访问承担冷启动计算
+            curl --max-time 900 -sS -X POST http://127.0.0.1:3000/api/predictor/kill/cache/refresh > /tmp/fe-kill-cache-warmup.json || true
+            curl --max-time 900 -sS -X POST http://127.0.0.1:3000/api/predictor/hot-pick/cache/refresh > /tmp/fe-hot-pick-cache-warmup.json || true
+            curl --max-time 900 -sS -X POST 'http://127.0.0.1:3000/api/predictor/hot-pick/cache/refresh?type=hk' > /tmp/fe-hot-pick-hk-cache-warmup.json || true

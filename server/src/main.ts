@@ -17,8 +17,9 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   const server = await app.listen(port);
   
-  // 设置 HTTP 服务端超时时间为 300 秒 (5分钟)，匹配 Nginx 设置
-  server.setTimeout(300000);
+  // 复杂预测首次冷启动可能很慢，允许通过环境变量和 Nginx 同步调大。
+  const serverTimeoutMs = Number(process.env.SERVER_TIMEOUT_MS || 900000);
+  server.setTimeout(serverTimeoutMs);
 
   console.log(`🚀 Server running on http://localhost:${port}`);
   console.log(`📡 API: http://localhost:${port}/api/history`);

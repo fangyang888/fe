@@ -316,12 +316,15 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
-  async getKillPredictions() {
+  async getKillPredictions(options: { forceRefresh?: boolean } = {}) {
     const rawHist = await this.historyService.findAll();
     this.checkAndClearCache(rawHist.length, 'default'); // 检查是否需要清理缓存
+    if (options.forceRefresh) {
+      this.memoKillPredictionResponse.clear();
+    }
     const responseCacheKey = this.getKillResponseCacheKey(rawHist);
     const memoCacheKey = this.getHistoryCacheKey(rawHist);
-    if (this.memoKillPredictionResponse.has(memoCacheKey)) {
+    if (!options.forceRefresh && this.memoKillPredictionResponse.has(memoCacheKey)) {
       const cached = this.memoKillPredictionResponse.get(memoCacheKey);
       return {
         ...cached,
@@ -333,7 +336,7 @@ export class PredictorService implements OnModuleDestroy {
         },
       };
     }
-    const cached = await this.getJsonCache<any>(responseCacheKey);
+    const cached = options.forceRefresh ? null : await this.getJsonCache<any>(responseCacheKey);
     if (cached) {
       const response = {
         ...cached,
@@ -416,6 +419,38 @@ export class PredictorService implements OnModuleDestroy {
     response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
     this.memoKillPredictionResponse.set(memoCacheKey, response);
     return response;
+  }
+
+  async clearKillCache() {
+    const rawHist = await this.historyService.findAll();
+    const responseCacheKey = this.getKillResponseCacheKey(rawHist);
+    this.memoKillPredictionResponse.clear();
+    const deleted = await this.deleteJsonCache(responseCacheKey);
+
+    return {
+      ok: true,
+      cacheMeta: {
+        action: 'cleared',
+        hit: false,
+        deleted,
+        store: deleted ? 'redis' : 'memory',
+        key: responseCacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async refreshKillCache() {
+    const cleared = await this.clearKillCache();
+    const response = await this.getKillPredictions({ forceRefresh: true });
+    return {
+      ...response,
+      cacheMeta: {
+        ...response.cacheMeta,
+        action: 'refreshed',
+        deletedBeforeRefresh: cleared.cacheMeta.deleted,
+      },
+    };
   }
 
   async getHotPickPredictionResponse(type?: string, options: { forceRefresh?: boolean } = {}) {

@@ -10,6 +10,16 @@ export class PredictorController {
     return this.predictorService.getKillPredictions();
   }
 
+  @Post('kill/cache/clear')
+  async clearKillCache() {
+    return this.predictorService.clearKillCache();
+  }
+
+  @Post('kill/cache/refresh')
+  async refreshKillCache() {
+    return this.predictorService.refreshKillCache();
+  }
+
   @Get('hot-pick')
   async getHotPickPredictions(@Query('type') type?: string) {
     return this.predictorService.getHotPickPredictionResponse(type);

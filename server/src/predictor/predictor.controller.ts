@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { PredictorService } from './predictor.service';
 
 @Controller('api/predictor')
@@ -11,7 +11,7 @@ export class PredictorController {
   }
 
   @Get('hot-pick')
-  async getHotPickPredictions() {
-    return this.predictorService.getHotPickPredictionResponse();
+  async getHotPickPredictions(@Query('type') type?: string) {
+    return this.predictorService.getHotPickPredictionResponse(type);
   }
 }

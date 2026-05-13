@@ -21,7 +21,8 @@ function parseLotteryHtml(html, year) {
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ');
-  const dateEventRegex = /(\d{4})年(\d{1,2})月(\d{1,2})日\s+第\s*(\d{1,3})\s*期/g;
+  const dateEventRegex =
+    /(\d{4})年(\d{1,2})月(\d{1,2})日\s+第\s*(\d{1,3})\s*期/g;
 
   const matches = [];
   let match;
@@ -95,7 +96,9 @@ function requestText(url, timeout = 20000) {
         res.on('end', () => {
           try {
             let data = Buffer.concat(chunks);
-            const encoding = String(res.headers['content-encoding'] || '').toLowerCase();
+            const encoding = String(
+              res.headers['content-encoding'] || '',
+            ).toLowerCase();
             if (encoding === 'gzip') {
               data = zlib.gunzipSync(data);
             } else if (encoding === 'deflate') {
@@ -117,10 +120,30 @@ function requestText(url, timeout = 20000) {
     req.on('error', reject);
   });
 }
+const LOTTERY_SOURCES = {
+  default: (year) =>
+    `https://zeijpd.d23p7-1eavj-pqsgfz.work:16633/kj/3/${year}.html`,
+  hk: (year) =>
+    `https://zeijpd.d23p7-1eavj-pqsgfz.work:16633/kj/1/${year}.html`,
+};
+
+function parseSourceType(value = 'default') {
+  if (value === 'default' || value === 'hk') {
+    return value;
+  }
+  throw new Error(`数据类型不合法：${value}`);
+}
+
+function buildLotteryUrl(year, type = 'default') {
+  const sourceType = parseSourceType(type);
+  return LOTTERY_SOURCES[sourceType](year);
+}
 
 async function fetchLotteryData(yearInput, options = {}) {
   const year = parseYear(yearInput);
-  const url = `https://zeijpd.d23p7-1eavj-pqsgfz.work:16633/kj/3/${year}.html`;
+  const type = parseSourceType(options.type);
+  const url = buildLotteryUrl(year, type);
+
   const html = await requestText(url, options.timeout || 20000);
   const results = parseLotteryHtml(html, year);
   if (options.writeFile) {
@@ -135,7 +158,9 @@ async function fetchLotteryData(yearInput, options = {}) {
 
 module.exports = {
   fetchLotteryData,
+  buildLotteryUrl,
   parseLotteryHtml,
+  parseSourceType,
   requestText,
 };
 

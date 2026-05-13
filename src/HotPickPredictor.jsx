@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
 export default function HotPickPredictor() {
+  const [activeTab, setActiveTab] = useState('default');
   const [hotPick, setHotPick] = useState(null);
   const [historyMeta, setHistoryMeta] = useState(null);
   const [recentOccurrenceStats, setRecentOccurrenceStats] = useState(null);
@@ -10,8 +11,11 @@ export default function HotPickPredictor() {
 
   useEffect(() => {
     const fetchHotPick = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch('/api/predictor/hot-pick', { cache: 'no-store' });
+        const query = activeTab === 'hk' ? '?type=hk' : '';
+        const res = await fetch(`/api/predictor/hot-pick${query}`, { cache: 'no-store' });
         if (!res.ok) {
           const message = await res.text();
           throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
@@ -30,7 +34,7 @@ export default function HotPickPredictor() {
     };
 
     fetchHotPick();
-  }, []);
+  }, [activeTab]);
 
   const formatPercent = (value, digits = 1) => {
     if (typeof value !== 'number' || Number.isNaN(value)) return '--';
@@ -129,6 +133,35 @@ export default function HotPickPredictor() {
           padding: 9px 14px;
           font-size: 0.84rem;
           font-weight: 900;
+        }
+
+        .hot-pick-tabs {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 24px;
+          flex-wrap: wrap;
+        }
+
+        .hot-pick-tab-btn {
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          background: rgba(255, 255, 255, 0.06);
+          color: #dbeafe;
+          border-radius: 10px;
+          padding: 9px 16px;
+          font-size: 0.9rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+        }
+
+        .hot-pick-tab-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        .hot-pick-tab-btn.active {
+          background: #86efac;
+          color: #052e16;
+          border-color: #86efac;
         }
 
         .hot-pick-meta {
@@ -665,6 +698,23 @@ export default function HotPickPredictor() {
       ` }} />
 
       <div className="hot-pick-card">
+        <div className="hot-pick-tabs">
+          <button
+            type="button"
+            className={`hot-pick-tab-btn ${activeTab === 'default' ? 'active' : ''}`}
+            onClick={() => setActiveTab('default')}
+          >
+            默认数据
+          </button>
+          <button
+            type="button"
+            className={`hot-pick-tab-btn ${activeTab === 'hk' ? 'active' : ''}`}
+            onClick={() => setActiveTab('hk')}
+          >
+            香港数据
+          </button>
+        </div>
+
         {loading && <div className="spinner" />}
         {error && <div className="error-message">{error}</div>}
 
@@ -677,6 +727,9 @@ export default function HotPickPredictor() {
                   目标：一期 7 个开奖中，当前选择 {hotPick.selectedCount} 个号，争取命中至少 3 个。{reasonText()}
                 </div>
                 <div className="hot-pick-meta">
+                  <span className="hot-pick-pill">
+                    当前库 {activeTab === 'hk' ? '香港 (hk)' : '默认 (default)'}
+                  </span>
                   <span className="hot-pick-pill">策略 {formatStrategy(hotPick.selectedStrategy)}</span>
                   {hotPick.diversified && <span className="hot-pick-pill">尾数/区间分散</span>}
                   {historyMeta?.latest?.No && (

@@ -90,10 +90,6 @@ export default function HistoryManager() {
   };
 
   const handleSync = async (mode) => {
-    if (activeTab !== "default") {
-      setMsg({ type: "error", text: "当前只支持同步默认数据" });
-      return;
-    }
     const year = parseInt(queryYear || yearInput, 10);
     if (!Number.isInteger(year)) {
       setMsg({ type: "error", text: "请输入要同步的年份" });
@@ -328,32 +324,30 @@ export default function HistoryManager() {
       </p>
       {msg && <div style={styles.msg(msg.type)}>{msg.text}</div>}
 
-      {activeTab === "default" && (
-        <div style={styles.card}>
-          <div style={styles.cardTitle}>
-            <span>🔄</span> 数据同步
-          </div>
-          <div style={styles.inputRow}>
-            <button
-              onClick={() => handleSync("year")}
-              disabled={Boolean(syncing)}
-              style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
-            >
-              {syncing === "year" ? "同步中..." : `同步${queryYear}全年`}
-            </button>
-            <button
-              onClick={() => handleSync("latest")}
-              disabled={Boolean(syncing)}
-              style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
-            >
-              {syncing === "latest" ? "同步中..." : "同步最后一期"}
-            </button>
-          </div>
-          <p style={{ fontSize: 12, color: "#667788", margin: 0 }}>
-            同步整年时，如果 year + No 已存在会自动忽略；最后一期也会做同样校验。
-          </p>
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>🔄</span> 数据同步
         </div>
-      )}
+        <div style={styles.inputRow}>
+          <button
+            onClick={() => handleSync("year")}
+            disabled={Boolean(syncing)}
+            style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
+          >
+            {syncing === "year" ? "同步中..." : `同步${queryYear}全年`}
+          </button>
+          <button
+            onClick={() => handleSync("latest")}
+            disabled={Boolean(syncing)}
+            style={{ ...styles.btn, ...styles.syncBtn, opacity: syncing ? 0.6 : 1 }}
+          >
+            {syncing === "latest" ? "同步中..." : "同步最后一期"}
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: "#667788", margin: 0 }}>
+          当前同步源：{activeTab === "hk" ? "香港数据 hkUrl" : "默认数据"}；如果 year + No 已存在会自动忽略。
+        </p>
+      </div>
 
       {/* 新增表单 */}
       <div style={styles.card}>

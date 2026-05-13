@@ -19,6 +19,10 @@ class CreateHistoryHkDto {
   No?: number;
 }
 
+class SyncHistoryHkDto {
+  year: number;
+}
+
 @Controller('api/hk/history')
 export class HistoryHkController {
   constructor(private readonly historyHkService: HistoryHkService) {}
@@ -48,6 +52,18 @@ export class HistoryHkController {
   @Post()
   async create(@Body() dto: CreateHistoryHkDto): Promise<HistoryHk> {
     return this.historyHkService.create(dto.numbers, dto.year, dto.No);
+  }
+
+  /** POST /api/hk/history/sync-year — 从 spider 同步香港整年数据 */
+  @Post('sync-year')
+  async syncYear(@Body() dto: SyncHistoryHkDto) {
+    return this.historyHkService.syncYear(dto.year);
+  }
+
+  /** POST /api/hk/history/sync-latest — 从 spider 同步香港最后一期 */
+  @Post('sync-latest')
+  async syncLatest(@Body() dto: SyncHistoryHkDto) {
+    return this.historyHkService.syncLatest(dto.year);
   }
 
   /** PUT /api/hk/history/:id — 修改 */

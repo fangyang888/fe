@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
+import { HistoryHkService } from '../history-hk/history-hk.service';
+
+type HistorySourceType = 'default' | 'hk';
 
 interface PredictionResult {
   n: number;
@@ -131,7 +134,10 @@ class BoundedCache<K, V> {
 
 @Injectable()
 export class PredictorService {
-  constructor(private readonly historyService: HistoryService) {}
+  constructor(
+    private readonly historyService: HistoryService,
+    private readonly historyHkService: HistoryHkService,
+  ) {}
 
   private readonly highConfidenceKillCount = 10;
   private readonly randomKillProb = 42 / 49;
@@ -157,10 +163,23 @@ export class PredictorService {
   private memoHistoricalLearning = new BoundedCache<number, any>(500);
   private memoKillPredictionResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
+  private lastHistorySource: HistorySourceType = 'default';
 
-  private checkAndClearCache(currentHistLength: number) {
-    // 如果数据长度减小了（可能是数据库重置），清空缓存
-    if (currentHistLength < this.lastHistLength) {
+  private parseHistorySourceType(type?: string): HistorySourceType {
+    if (!type || type === 'default') return 'default';
+    if (type === 'hk') return 'hk';
+    throw new Error(`数据类型不合法：${type}`);
+  }
+
+  private async findHistoryBySource(type: HistorySourceType) {
+    return type === 'hk'
+      ? this.historyHkService.findAll()
+      : this.historyService.findAll();
+  }
+
+  private checkAndClearCache(currentHistLength: number, source: HistorySourceType = 'default') {
+    // 如果切换数据源或数据长度减小了（可能是数据库重置），清空缓存
+    if (source !== this.lastHistorySource || currentHistLength < this.lastHistLength) {
       this.memoKill10.clear();
       this.memoKillRepulsion.clear();
       this.memoAdaptiveOpts.clear();
@@ -181,6 +200,7 @@ export class PredictorService {
       this.memoKillPredictionResponse.clear();
     }
     this.lastHistLength = currentHistLength;
+    this.lastHistorySource = source;
   }
 
   private getHistoryCacheKey(rawHist: any[]) {
@@ -195,10 +215,10 @@ export class PredictorService {
     return `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
   }
 
-  private getHistoryMeta(rawHist: any[]) {
+  private getHistoryMeta(rawHist: any[], source: HistorySourceType = 'default') {
     const last = rawHist[rawHist.length - 1];
     return {
-      source: 'database:history',
+      source: source === 'hk' ? 'database:history_hk' : 'database:history',
       count: rawHist.length,
       latest: last
         ? {
@@ -213,7 +233,7 @@ export class PredictorService {
 
   async getKillPredictions() {
     const rawHist = await this.historyService.findAll();
-    this.checkAndClearCache(rawHist.length); // 检查是否需要清理缓存
+    this.checkAndClearCache(rawHist.length, 'default'); // 检查是否需要清理缓存
     const responseCacheKey = this.getHistoryCacheKey(rawHist);
     if (this.memoKillPredictionResponse.has(responseCacheKey)) {
       return this.memoKillPredictionResponse.get(responseCacheKey);
@@ -244,7 +264,7 @@ export class PredictorService {
     const response = {
       predictions: finalPredictions,
       coreKill,
-      historyMeta: this.getHistoryMeta(rawHist),
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
       specialCode: this.getSpecialCodePrediction(hist, 25, 15),
       repulsionInfo: {
         ...repulsionInfo,
@@ -276,9 +296,10 @@ export class PredictorService {
     return response;
   }
 
-  async getHotPickPredictionResponse() {
-    const rawHist = await this.historyService.findAll();
-    this.checkAndClearCache(rawHist.length);
+  async getHotPickPredictionResponse(type?: string) {
+    const sourceType = this.parseHistorySourceType(type);
+    const rawHist = await this.findHistoryBySource(sourceType);
+    this.checkAndClearCache(rawHist.length, sourceType);
     const hist = rawHist.map((item) => [
       item.n1,
       item.n2,
@@ -292,7 +313,7 @@ export class PredictorService {
 
     return {
       hotPick: this.buildAdaptiveHotPick(hist),
-      historyMeta: this.getHistoryMeta(rawHist),
+      historyMeta: this.getHistoryMeta(rawHist, sourceType),
       recentOccurrenceStats,
       hotPickKill5: this.buildHotPickKill5(hist, recentOccurrenceStats),
     };

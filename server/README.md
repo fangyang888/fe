@@ -34,6 +34,9 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=fe_prediction
+
+# 可选：开启 Redis 后，/api/predictor/hot-pick 会缓存重计算结果
+REDIS_URL=redis://localhost:6379
 ```
 
 ---

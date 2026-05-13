@@ -6,8 +6,18 @@ export default function HotPickPredictor() {
   const [historyMeta, setHistoryMeta] = useState(null);
   const [recentOccurrenceStats, setRecentOccurrenceStats] = useState(null);
   const [hotPickKill5, setHotPickKill5] = useState(null);
+  const [cacheMeta, setCacheMeta] = useState(null);
+  const [cacheAction, setCacheAction] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const applyHotPickData = (data) => {
+    setHotPick(data.hotPick || null);
+    setHistoryMeta(data.historyMeta || null);
+    setRecentOccurrenceStats(data.recentOccurrenceStats || null);
+    setHotPickKill5(data.hotPickKill5 || null);
+    setCacheMeta(data.cacheMeta || null);
+  };
 
   useEffect(() => {
     const fetchHotPick = async () => {
@@ -21,10 +31,7 @@ export default function HotPickPredictor() {
           throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
         }
         const data = await res.json();
-        setHotPick(data.hotPick || null);
-        setHistoryMeta(data.historyMeta || null);
-        setRecentOccurrenceStats(data.recentOccurrenceStats || null);
-        setHotPickKill5(data.hotPickKill5 || null);
+        applyHotPickData(data);
       } catch (err) {
         console.error(err);
         setError(`命中模块加载失败。${err.message ? `（${err.message}）` : ''}`);
@@ -35,6 +42,33 @@ export default function HotPickPredictor() {
 
     fetchHotPick();
   }, [activeTab]);
+
+  const runCacheAction = async (action) => {
+    setCacheAction(action);
+    setError(null);
+    try {
+      const query = activeTab === 'hk' ? '?type=hk' : '';
+      const res = await fetch(`/api/predictor/hot-pick/cache/${action}${query}`, {
+        method: 'POST',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
+      }
+      const data = await res.json();
+      if (action === 'refresh') {
+        applyHotPickData(data);
+      } else {
+        setCacheMeta(data.cacheMeta || null);
+      }
+    } catch (err) {
+      console.error(err);
+      setError(`缓存操作失败。${err.message ? `（${err.message}）` : ''}`);
+    } finally {
+      setCacheAction(null);
+    }
+  };
 
   const formatPercent = (value, digits = 1) => {
     if (typeof value !== 'number' || Number.isNaN(value)) return '--';
@@ -60,6 +94,13 @@ export default function HotPickPredictor() {
       'hk-stable30': '香港30期稳定',
     };
     return labels[strategy] || strategy || '--';
+  };
+
+  const cacheStatusText = () => {
+    if (!cacheMeta?.store) return '';
+    if (cacheMeta.action === 'cleared') return `缓存 ${cacheMeta.store} 已清空`;
+    if (cacheMeta.action === 'refreshed') return `缓存 ${cacheMeta.store} 已重设`;
+    return `缓存 ${cacheMeta.store}${cacheMeta.hit ? ' 命中' : ' 已刷新'}`;
   };
 
   const selectedNumbers = new Set((hotPick?.predictions || []).map((p) => p.n));
@@ -151,6 +192,7 @@ export default function HotPickPredictor() {
           gap: 10px;
           margin-bottom: 24px;
           flex-wrap: wrap;
+          align-items: center;
         }
 
         .hot-pick-tab-btn {
@@ -173,6 +215,36 @@ export default function HotPickPredictor() {
           background: #86efac;
           color: #052e16;
           border-color: #86efac;
+        }
+
+        .hot-pick-cache-actions {
+          display: flex;
+          gap: 8px;
+          margin-left: auto;
+          flex-wrap: wrap;
+        }
+
+        .hot-pick-cache-btn {
+          border: 1px solid rgba(186, 230, 253, 0.18);
+          background: rgba(255, 255, 255, 0.04);
+          color: #bae6fd;
+          border-radius: 10px;
+          padding: 9px 13px;
+          font-size: 0.82rem;
+          font-weight: 900;
+          cursor: pointer;
+          transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+        }
+
+        .hot-pick-cache-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          border-color: rgba(134, 239, 172, 0.55);
+          color: #dcfce7;
+        }
+
+        .hot-pick-cache-btn:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
         }
 
         .hot-pick-meta {
@@ -724,6 +796,24 @@ export default function HotPickPredictor() {
           >
             香港数据
           </button>
+          <div className="hot-pick-cache-actions">
+            <button
+              type="button"
+              className="hot-pick-cache-btn"
+              disabled={loading || Boolean(cacheAction)}
+              onClick={() => runCacheAction('clear')}
+            >
+              {cacheAction === 'clear' ? '清空中...' : '清空缓存'}
+            </button>
+            <button
+              type="button"
+              className="hot-pick-cache-btn"
+              disabled={loading || Boolean(cacheAction)}
+              onClick={() => runCacheAction('refresh')}
+            >
+              {cacheAction === 'refresh' ? '重设中...' : '重新设置缓存'}
+            </button>
+          </div>
         </div>
 
         {loading && <div className="spinner" />}
@@ -748,6 +838,11 @@ export default function HotPickPredictor() {
                   )}
                   {historyMeta?.count && (
                     <span className="hot-pick-pill">历史 {historyMeta.count} 期</span>
+                  )}
+                  {cacheMeta?.store && (
+                    <span className="hot-pick-pill">
+                      {cacheStatusText()}
+                    </span>
                   )}
                 </div>
               </div>

@@ -17,6 +17,7 @@ export default function NewKillPredictor() {
   const [hybridInfo, setHybridInfo] = useState(null);
   const [historyMeta, setHistoryMeta] = useState(null);
   const [modelComparison, setModelComparison] = useState([]);
+  const [cacheMeta, setCacheMeta] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function NewKillPredictor() {
           setEngineInfo(data.repulsionInfo?.engine || null);
           setHybridInfo(data.repulsionInfo?.hybrid || null);
           setModelComparison(data.repulsionInfo?.modelComparison || []);
+          setCacheMeta(data.cacheMeta || null);
           setLoading(false);
         } else {
           throw new Error('Invalid data format');
@@ -83,6 +85,10 @@ export default function NewKillPredictor() {
 
   const isRiskGuardEnabled =
     hybridInfo?.guarded === true || String(hybridInfo?.selectedLabel || '').includes('风险过滤');
+
+  const cacheStatusText = cacheMeta?.store
+    ? `缓存 ${cacheMeta.store}${cacheMeta.hit ? ' 命中' : ' 已刷新'}`
+    : '';
 
   return (
     <div className="new-kill-predictor-container">
@@ -243,6 +249,13 @@ export default function NewKillPredictor() {
           font-weight: 800;
           letter-spacing: 0.04em;
           text-transform: uppercase;
+        }
+
+        .engine-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          justify-content: flex-end;
         }
 
         .engine-metrics {
@@ -781,7 +794,12 @@ export default function NewKillPredictor() {
                       )}
                     </div>
                   </div>
-                  <div className="engine-badge">{engineInfo.selectedMode || engineInfo.mode || 'ensemble'}</div>
+                  <div className="engine-badges">
+                    {cacheStatusText && (
+                      <div className="engine-badge">{cacheStatusText}</div>
+                    )}
+                    <div className="engine-badge">{engineInfo.selectedMode || engineInfo.mode || 'ensemble'}</div>
+                  </div>
                 </div>
 
                 <div className="engine-metrics">

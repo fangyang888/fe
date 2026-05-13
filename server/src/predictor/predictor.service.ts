@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, type RedisClientType } from 'redis';
 import { HistoryService } from '../history/history.service';
 import { HistoryHkService } from '../history-hk/history-hk.service';
 
@@ -133,11 +135,20 @@ class BoundedCache<K, V> {
 }
 
 @Injectable()
-export class PredictorService {
+export class PredictorService implements OnModuleDestroy {
   constructor(
     private readonly historyService: HistoryService,
     private readonly historyHkService: HistoryHkService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    if (redisUrl) {
+      this.redisClient = createClient({ url: redisUrl });
+      this.redisClient.on('error', (err) => {
+        console.warn('[predictor-cache] Redis error:', err.message);
+      });
+    }
+  }
 
   private readonly highConfidenceKillCount = 10;
   private readonly randomKillProb = 42 / 49;
@@ -164,6 +175,72 @@ export class PredictorService {
   private memoKillPredictionResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
   private lastHistorySource: HistorySourceType = 'default';
+  private readonly predictorRedisTtlSeconds = 12 * 60 * 60;
+  private redisClient?: RedisClientType;
+  private redisConnectPromise?: Promise<RedisClientType | null>;
+  private redisDisabled = false;
+
+  async onModuleDestroy() {
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
+  }
+
+  private async getRedisClient() {
+    if (!this.redisClient || this.redisDisabled) return null;
+    if (this.redisClient.isReady) return this.redisClient;
+
+    if (!this.redisConnectPromise) {
+      this.redisConnectPromise = this.redisClient
+        .connect()
+        .then(() => this.redisClient || null)
+        .catch((err) => {
+          this.redisDisabled = true;
+          console.warn('[predictor-cache] Redis disabled:', err.message);
+          return null;
+        });
+    }
+
+    return this.redisConnectPromise;
+  }
+
+  private async getJsonCache<T>(key: string): Promise<T | null> {
+    const client = await this.getRedisClient();
+    if (!client) return null;
+
+    try {
+      const value = await client.get(key);
+      return value ? (JSON.parse(value) as T) : null;
+    } catch (err) {
+      console.warn('[predictor-cache] Redis read failed:', (err as Error).message);
+      return null;
+    }
+  }
+
+  private async setJsonCache(key: string, value: any, ttlSeconds: number) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      await client.set(key, JSON.stringify(value), { EX: ttlSeconds });
+      return true;
+    } catch (err) {
+      console.warn('[predictor-cache] Redis write failed:', (err as Error).message);
+      return false;
+    }
+  }
+
+  private async deleteJsonCache(key: string) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      return (await client.del(key)) > 0;
+    } catch (err) {
+      console.warn('[predictor-cache] Redis delete failed:', (err as Error).message);
+      return false;
+    }
+  }
 
   private parseHistorySourceType(type?: string): HistorySourceType {
     if (!type || type === 'default') return 'default';
@@ -211,6 +288,14 @@ export class PredictorService {
     return `${rawHist.length}:${period}:${nums}`;
   }
 
+  private getHotPickResponseCacheKey(sourceType: HistorySourceType, rawHist: any[]) {
+    return `predictor:hot-pick:v2:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
+  private getKillResponseCacheKey(rawHist: any[]) {
+    return `predictor:kill:v2:default:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
   private getHistArrayCacheKey(hist: number[][]) {
     return `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
   }
@@ -234,9 +319,33 @@ export class PredictorService {
   async getKillPredictions() {
     const rawHist = await this.historyService.findAll();
     this.checkAndClearCache(rawHist.length, 'default'); // 检查是否需要清理缓存
-    const responseCacheKey = this.getHistoryCacheKey(rawHist);
-    if (this.memoKillPredictionResponse.has(responseCacheKey)) {
-      return this.memoKillPredictionResponse.get(responseCacheKey);
+    const responseCacheKey = this.getKillResponseCacheKey(rawHist);
+    const memoCacheKey = this.getHistoryCacheKey(rawHist);
+    if (this.memoKillPredictionResponse.has(memoCacheKey)) {
+      const cached = this.memoKillPredictionResponse.get(memoCacheKey);
+      return {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'memory',
+          key: responseCacheKey,
+        },
+      };
+    }
+    const cached = await this.getJsonCache<any>(responseCacheKey);
+    if (cached) {
+      const response = {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'redis',
+          key: responseCacheKey,
+        },
+      };
+      this.memoKillPredictionResponse.set(memoCacheKey, response);
+      return response;
     }
 
     const hist = rawHist.map((item) => [
@@ -291,15 +400,45 @@ export class PredictorService {
       probabilityBacktestStats:
         hybridResult.stats ||
         engineResult.stats,
+      cacheMeta: {
+        hit: false,
+        store: 'redis',
+        key: responseCacheKey,
+        ttlSeconds: this.predictorRedisTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
     };
-    this.memoKillPredictionResponse.set(responseCacheKey, response);
+    const cachedInRedis = await this.setJsonCache(
+      responseCacheKey,
+      response,
+      this.predictorRedisTtlSeconds,
+    );
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoKillPredictionResponse.set(memoCacheKey, response);
     return response;
   }
 
-  async getHotPickPredictionResponse(type?: string) {
+  async getHotPickPredictionResponse(type?: string, options: { forceRefresh?: boolean } = {}) {
     const sourceType = this.parseHistorySourceType(type);
     const rawHist = await this.findHistoryBySource(sourceType);
     this.checkAndClearCache(rawHist.length, sourceType);
+    if (options.forceRefresh) {
+      this.memoHotPick.clear();
+    }
+    const responseCacheKey = this.getHotPickResponseCacheKey(sourceType, rawHist);
+    const cached = options.forceRefresh ? null : await this.getJsonCache<any>(responseCacheKey);
+    if (cached) {
+      return {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'redis',
+          key: responseCacheKey,
+        },
+      };
+    }
+
     const hist = rawHist.map((item) => [
       item.n1,
       item.n2,
@@ -315,7 +454,7 @@ export class PredictorService {
         ? this.buildHkAdaptiveHotPick(hist)
         : this.buildAdaptiveHotPick(hist);
 
-    return {
+    const response = {
       hotPick,
       historyMeta: this.getHistoryMeta(rawHist, sourceType),
       recentOccurrenceStats,
@@ -323,6 +462,63 @@ export class PredictorService {
         sourceType === 'hk'
           ? this.buildHkHotPickKill5(hist, recentOccurrenceStats)
           : this.buildHotPickKill5(hist, recentOccurrenceStats),
+    };
+    const cacheMeta = {
+      hit: false,
+      store: 'redis',
+      key: responseCacheKey,
+      ttlSeconds: this.predictorRedisTtlSeconds,
+      generatedAt: new Date().toISOString(),
+    };
+    const redisResponse = {
+      ...response,
+      cacheMeta,
+    };
+    const cachedInRedis = await this.setJsonCache(
+      responseCacheKey,
+      redisResponse,
+      this.predictorRedisTtlSeconds,
+    );
+
+    return {
+      ...response,
+      cacheMeta: {
+        ...cacheMeta,
+        store: cachedInRedis ? 'redis' : 'memory',
+      },
+    };
+  }
+
+  async clearHotPickCache(type?: string) {
+    const sourceType = this.parseHistorySourceType(type);
+    const rawHist = await this.findHistoryBySource(sourceType);
+    const responseCacheKey = this.getHotPickResponseCacheKey(sourceType, rawHist);
+    this.memoHotPick.clear();
+    const deleted = await this.deleteJsonCache(responseCacheKey);
+
+    return {
+      ok: true,
+      cacheMeta: {
+        action: 'cleared',
+        hit: false,
+        deleted,
+        store: deleted ? 'redis' : 'memory',
+        key: responseCacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async refreshHotPickCache(type?: string) {
+    const cleared = await this.clearHotPickCache(type);
+    const response = await this.getHotPickPredictionResponse(type, { forceRefresh: true });
+    return {
+      ...response,
+      cacheMeta: {
+        ...response.cacheMeta,
+        action: 'refreshed',
+        deletedBeforeRefresh: cleared.cacheMeta.deleted,
+      },
     };
   }
 

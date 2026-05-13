@@ -12,6 +12,7 @@
 - [事件循环](#事件循环)
 - [浏览器进程线程和-Web-Worker](#浏览器进程线程和-web-worker)
 - [大厂深度场景面试题](#大厂深度场景面试题)
+- [Vue 3 深度理解和大厂考察](#vue-3-深度理解和大厂考察)
 - [练习题](#练习题)
 
 ## 闭包
@@ -1886,6 +1887,1038 @@ function flattenByStack(arr) {
   return result.reverse();
 }
 ```
+
+## Vue 3 深度理解和大厂考察
+
+这一节适合在掌握 JS 闭包、原型、事件循环之后学习。Vue 3 的很多设计，本质上都建立在这些 JS 机制上：闭包保存依赖、Proxy 拦截对象、微任务批量更新、组件通过函数重新执行生成虚拟 DOM。
+
+### Vue 3 核心变化
+
+Vue 3 相比 Vue 2，核心变化主要有：
+
+- 响应式从 `Object.defineProperty` 改为 `Proxy`。
+- 新增 Composition API：`setup`、`ref`、`reactive`、`computed`、`watch`。
+- 更好的 TypeScript 支持。
+- 虚拟 DOM 和编译器优化更强。
+- 支持 Fragment、Teleport、Suspense。
+- 更好的 Tree-shaking，没用到的 API 可以不打包。
+
+面试里不要只说“Vue 3 更快”，要能说出为什么：
+
+- Proxy 可以拦截更多操作。
+- 编译器能标记动态节点。
+- patch 时可以跳过更多静态内容。
+- Composition API 更容易组织复杂逻辑。
+
+### 响应式原理
+
+Vue 3 响应式的核心可以理解成：
+
+```txt
+读取数据时收集依赖
+修改数据时触发依赖
+```
+
+简化版实现：
+
+```js
+let activeEffect;
+const targetMap = new WeakMap();
+
+function effect(fn) {
+  activeEffect = fn;
+  fn();
+  activeEffect = null;
+}
+
+function track(target, key) {
+  if (!activeEffect) return;
+
+  let depsMap = targetMap.get(target);
+  if (!depsMap) {
+    depsMap = new Map();
+    targetMap.set(target, depsMap);
+  }
+
+  let deps = depsMap.get(key);
+  if (!deps) {
+    deps = new Set();
+    depsMap.set(key, deps);
+  }
+
+  deps.add(activeEffect);
+}
+
+function trigger(target, key) {
+  const depsMap = targetMap.get(target);
+  if (!depsMap) return;
+
+  const deps = depsMap.get(key);
+  if (!deps) return;
+
+  deps.forEach((fn) => fn());
+}
+
+function reactive(target) {
+  return new Proxy(target, {
+    get(obj, key, receiver) {
+      const value = Reflect.get(obj, key, receiver);
+      track(obj, key);
+      return value;
+    },
+    set(obj, key, value, receiver) {
+      const result = Reflect.set(obj, key, value, receiver);
+      trigger(obj, key);
+      return result;
+    },
+  });
+}
+```
+
+测试：
+
+```js
+const state = reactive({
+  count: 0,
+});
+
+effect(() => {
+  console.log("count:", state.count);
+});
+
+state.count++;
+```
+
+输出：
+
+```txt
+count: 0
+count: 1
+```
+
+解析：
+
+- 执行 `effect` 时会读取 `state.count`。
+- `get` 拦截触发 `track`，记录当前副作用函数。
+- 修改 `state.count` 时触发 `set`。
+- `set` 里执行 `trigger`，重新运行相关副作用函数。
+
+大厂常追问：
+
+- 为什么用 `WeakMap`？
+- 为什么依赖集合用 `Set`？
+- 为什么要用 `Reflect.get` 和 `Reflect.set`？
+
+回答：
+
+- `WeakMap` 的 key 是原始对象，原始对象没有其他引用时可以被垃圾回收。
+- `Set` 可以去重，避免同一个 effect 被重复收集。
+- `Reflect` 更接近语言内部默认行为，也能正确处理 getter、setter 和继承场景。
+
+### Vue 2 和 Vue 3 响应式区别
+
+Vue 2 使用 `Object.defineProperty`：
+
+```js
+function defineReactive(obj, key, value) {
+  Object.defineProperty(obj, key, {
+    get() {
+      console.log("track", key);
+      return value;
+    },
+    set(newValue) {
+      console.log("trigger", key);
+      value = newValue;
+    },
+  });
+}
+```
+
+局限：
+
+- 不能直接监听新增属性。
+- 不能直接监听删除属性。
+- 数组变化需要特殊处理。
+- 初始化时需要递归遍历对象属性。
+
+Vue 3 使用 `Proxy`：
+
+```js
+const proxy = new Proxy(obj, {
+  get(target, key) {},
+  set(target, key, value) {},
+  deleteProperty(target, key) {},
+  has(target, key) {},
+  ownKeys(target) {},
+});
+```
+
+优势：
+
+- 可以监听新增属性。
+- 可以监听删除属性。
+- 可以监听 `in`、`Object.keys` 等操作。
+- 不需要一开始递归劫持所有属性，访问到深层对象时再代理。
+
+注意：
+
+Proxy 代理的是对象本身，不是对象属性，所以老浏览器很难完整 polyfill。
+
+### ref 和 reactive 的区别
+
+`ref` 适合包装基础类型，也可以包装对象：
+
+```js
+const count = ref(0);
+console.log(count.value);
+count.value++;
+```
+
+`reactive` 适合包装对象：
+
+```js
+const state = reactive({
+  count: 0,
+});
+
+state.count++;
+```
+
+核心区别：
+
+| 对比项 | ref | reactive |
+| --- | --- | --- |
+| 适合数据 | 基础类型和对象 | 对象、数组、Map、Set |
+| 访问方式 | JS 中需要 `.value` | 直接访问属性 |
+| 模板中 | 自动解包 | 直接使用 |
+| 替换整体对象 | 可以通过 `.value = 新值` | 不建议直接整体替换 |
+
+常见坑：
+
+```js
+const state = reactive({
+  count: 0,
+});
+
+let { count } = state;
+count++;
+
+console.log(state.count); // 0
+```
+
+解析：
+
+解构后 `count` 是普通变量，不再保持响应式连接。
+
+修复：
+
+```js
+const state = reactive({
+  count: 0,
+});
+
+const { count } = toRefs(state);
+
+count.value++;
+
+console.log(state.count); // 1
+```
+
+### computed 和 watch 的区别
+
+`computed` 适合“由已有状态推导新状态”：
+
+```js
+const price = ref(100);
+const count = ref(2);
+
+const total = computed(() => price.value * count.value);
+```
+
+特点：
+
+- 有缓存。
+- 依赖不变时不会重新计算。
+- 更像一个响应式的值。
+
+`watch` 适合“状态变化后执行副作用”：
+
+```js
+watch(
+  () => count.value,
+  (newValue, oldValue) => {
+    console.log(newValue, oldValue);
+    fetchData(newValue);
+  },
+);
+```
+
+特点：
+
+- 适合请求接口、操作本地缓存、手动操作 DOM。
+- 可以拿到新旧值。
+- 可以配置 `immediate`、`deep`、`flush`。
+
+面试回答：
+
+```txt
+computed 关注结果，watch 关注过程。
+computed 应该尽量保持纯计算，watch 用来处理副作用。
+```
+
+### watchEffect 和 watch 的区别
+
+`watchEffect` 会自动收集依赖：
+
+```js
+watchEffect(() => {
+  console.log(user.value.name);
+});
+```
+
+只要函数里访问到的响应式数据变化，就会重新执行。
+
+`watch` 需要显式指定监听源：
+
+```js
+watch(
+  () => user.value.name,
+  (name) => {
+    console.log(name);
+  },
+);
+```
+
+区别：
+
+- `watchEffect` 自动收集依赖，立即执行。
+- `watch` 手动指定依赖，默认懒执行。
+- `watch` 更适合精确控制新旧值。
+- `watchEffect` 更适合快速同步多个依赖产生的副作用。
+
+### nextTick 原理
+
+Vue 更新 DOM 不是每次状态变化都立刻更新，而是批量异步更新。
+
+```js
+count.value++;
+count.value++;
+count.value++;
+```
+
+这三次修改通常只会触发一次 DOM 更新。
+
+如果修改数据后马上读取 DOM，可能读到旧 DOM：
+
+```js
+count.value++;
+console.log(el.textContent); // 可能还是旧值
+```
+
+正确写法：
+
+```js
+count.value++;
+
+await nextTick();
+
+console.log(el.textContent); // 新值
+```
+
+原理：
+
+```txt
+状态变化 -> 组件更新任务进入队列 -> 使用微任务批量刷新 -> DOM 更新完成 -> nextTick 回调执行
+```
+
+大厂常问：
+
+为什么 Vue 要异步更新？
+
+回答：
+
+如果每次状态变化都同步更新 DOM，会导致大量重复渲染。异步批量更新可以把同一轮事件循环里的多次状态修改合并成一次组件更新。
+
+### 虚拟 DOM 和 patch
+
+虚拟 DOM 是用 JS 对象描述真实 DOM。
+
+```js
+const vnode = {
+  type: "div",
+  props: {
+    id: "app",
+  },
+  children: "hello",
+};
+```
+
+Vue 渲染过程可以简化成：
+
+```txt
+template -> render 函数 -> vnode -> patch -> 真实 DOM
+```
+
+当状态变化时：
+
+```txt
+重新执行 render -> 得到新 vnode -> 新旧 vnode diff -> 最小化更新真实 DOM
+```
+
+面试要点：
+
+- 虚拟 DOM 不是一定比手写原生 DOM 快。
+- 虚拟 DOM 的价值是声明式编程、跨平台能力、可维护性和稳定的性能下限。
+- Vue 3 通过编译时优化减少 diff 成本。
+
+### Vue 3 编译优化
+
+Vue 3 编译器会分析模板，把静态内容和动态内容区分开。
+
+比如：
+
+```vue
+<template>
+  <div>
+    <h1>标题</h1>
+    <p>{{ count }}</p>
+  </div>
+</template>
+```
+
+`h1` 是静态节点，`p` 里有动态文本。
+
+Vue 3 会尽量只关注动态部分。
+
+常见优化：
+
+- 静态提升：静态 vnode 提升到 render 外面，避免重复创建。
+- Patch Flag：给动态节点打标记，patch 时精准更新。
+- Block Tree：收集动态子节点，减少全量遍历。
+- 缓存事件处理函数：避免每次 render 都创建新函数。
+
+回答模板：
+
+```txt
+Vue 3 的性能提升不只来自 Proxy，也来自编译器。编译器能提前知道哪些节点是静态的，哪些属性是动态的，所以运行时 patch 可以更精准。
+```
+
+### key 的作用
+
+题目：
+
+为什么 `v-for` 需要写 `key`？
+
+```vue
+<li v-for="item in list" :key="item.id">
+  {{ item.name }}
+</li>
+```
+
+解析：
+
+`key` 帮助 Vue 判断新旧节点是否是同一个节点。
+
+没有稳定 key 时，Vue 可能按位置复用 DOM，导致状态错乱。
+
+典型场景：
+
+```vue
+<input
+  v-for="item in list"
+  :key="item.id"
+  :value="item.name"
+/>
+```
+
+如果使用数组下标作为 key，列表插入、删除、排序时，输入框 DOM 可能被错误复用。
+
+面试回答：
+
+```txt
+key 的本质是给 vnode 一个稳定身份，帮助 diff 判断节点复用和移动，避免错误复用 DOM。
+```
+
+### 组件通信
+
+常见方式：
+
+- `props`：父传子。
+- `emit`：子通知父。
+- `v-model`：父子双向绑定语法糖。
+- `provide / inject`：跨层级传递。
+- `Pinia`：全局状态管理。
+- `expose`：父组件通过 ref 调用子组件暴露的方法。
+
+父传子：
+
+```vue
+<UserCard :user="user" />
+```
+
+子通知父：
+
+```vue
+<button @click="$emit('select', user)">选择</button>
+```
+
+`provide / inject`：
+
+```js
+provide("theme", theme);
+const theme = inject("theme");
+```
+
+注意：
+
+- `props` 不应该在子组件里直接修改。
+- 跨很多层级才考虑 `provide / inject`。
+- 多页面共享状态优先考虑 Pinia。
+
+### Composition API 的价值
+
+Options API 按选项组织代码：
+
+```js
+export default {
+  data() {},
+  computed: {},
+  methods: {},
+  mounted() {},
+};
+```
+
+当一个组件逻辑复杂时，同一业务逻辑会散落在 `data`、`computed`、`methods`、生命周期里。
+
+Composition API 按功能组织代码：
+
+```js
+function useUser() {
+  const user = ref(null);
+
+  async function loadUser() {
+    user.value = await fetchUser();
+  }
+
+  return {
+    user,
+    loadUser,
+  };
+}
+```
+
+优势：
+
+- 逻辑更容易复用。
+- 复杂组件里相关代码可以放在一起。
+- TypeScript 类型推导更自然。
+- 更适合大型项目维护。
+
+面试回答不要贬低 Options API：
+
+```txt
+Options API 对简单组件很直观；Composition API 更适合复杂逻辑抽离和大型项目复用。
+```
+
+### setup 执行时机
+
+`setup` 在组件创建阶段执行，早于 `beforeCreate` 和 `created`。
+
+在 `setup` 里：
+
+- 不能直接使用 Options API 里的 `this`。
+- 可以接收 `props` 和 `context`。
+- 返回的数据可以在模板中使用。
+
+```js
+export default {
+  props: {
+    id: Number,
+  },
+  setup(props, context) {
+    console.log(props.id);
+
+    context.emit("ready");
+
+    return {
+      message: "hello",
+    };
+  },
+};
+```
+
+`<script setup>` 是编译时语法糖：
+
+```vue
+<script setup>
+const count = ref(0);
+</script>
+```
+
+里面声明的变量可以直接在模板使用。
+
+### 生命周期
+
+Options API 和 Composition API 对照：
+
+| Options API | Composition API |
+| --- | --- |
+| beforeCreate | setup |
+| created | setup |
+| beforeMount | onBeforeMount |
+| mounted | onMounted |
+| beforeUpdate | onBeforeUpdate |
+| updated | onUpdated |
+| beforeUnmount | onBeforeUnmount |
+| unmounted | onUnmounted |
+
+注意：
+
+- 请求数据通常可以放在 `onMounted`，也可以在 `setup` 中直接发起，取决于是否依赖 DOM。
+- 操作 DOM 要放在 `onMounted` 之后。
+- 定时器、事件监听、第三方实例要在 `onUnmounted` 中清理。
+
+### keep-alive
+
+`keep-alive` 用来缓存组件实例。
+
+```vue
+<keep-alive>
+  <component :is="currentComponent" />
+</keep-alive>
+```
+
+被缓存的组件切走时不会销毁，而是进入停用状态。
+
+相关生命周期：
+
+- `onActivated`：组件被激活。
+- `onDeactivated`：组件被停用。
+
+适合场景：
+
+- tab 页面切换。
+- 列表页返回后保留滚动位置。
+- 表单页面临时保留输入状态。
+
+不适合场景：
+
+- 数据必须每次进入都重新初始化。
+- 缓存太多导致内存压力。
+
+### Teleport
+
+`Teleport` 可以把组件内容渲染到 DOM 的其他位置。
+
+```vue
+<teleport to="body">
+  <div class="modal">弹窗内容</div>
+</teleport>
+```
+
+适合：
+
+- 弹窗
+- 全局提示
+- 下拉菜单
+- 浮层
+
+原因：
+
+弹窗如果嵌套在很深的组件里，可能受父元素 `overflow: hidden`、`z-index`、`transform` 影响。Teleport 可以把弹窗直接挂到 `body` 下。
+
+### Suspense
+
+`Suspense` 用来处理异步组件或异步 setup。
+
+```vue
+<Suspense>
+  <template #default>
+    <AsyncUser />
+  </template>
+
+  <template #fallback>
+    <div>加载中...</div>
+  </template>
+</Suspense>
+```
+
+适合：
+
+- 异步组件加载。
+- 页面首屏异步数据。
+- 统一 loading 状态。
+
+### Vue 3 性能优化
+
+常见优化手段：
+
+- `v-if` 用于条件切换少的场景。
+- `v-show` 用于频繁显示隐藏的场景。
+- `v-for` 一定使用稳定 `key`。
+- 大列表使用虚拟滚动。
+- 合理拆分组件，避免一个组件过大。
+- 使用 `computed` 缓存派生数据。
+- 不要在模板里写复杂计算。
+- 使用 `defineAsyncComponent` 做异步组件。
+- 使用 `markRaw` 跳过不需要响应式的大对象。
+- 使用 `shallowRef` 或 `shallowReactive` 减少深层代理成本。
+
+例子：
+
+```js
+const chartInstance = shallowRef(null);
+
+onMounted(() => {
+  chartInstance.value = markRaw(createChart());
+});
+```
+
+第三方图表实例通常不需要被 Vue 深度代理。
+
+### Vue 3 大厂面试题 1：为什么 reactive 解构会丢失响应式
+
+题目：
+
+```js
+const state = reactive({
+  count: 0,
+});
+
+const { count } = state;
+
+count++;
+
+console.log(state.count);
+```
+
+输出：
+
+```txt
+0
+```
+
+解析：
+
+`reactive` 返回的是 Proxy。访问 `state.count` 时才能触发 `get`。解构后，`count` 只是普通数字，不再经过 Proxy。
+
+修复：
+
+```js
+const { count } = toRefs(state);
+
+count.value++;
+```
+
+### Vue 3 大厂面试题 2：computed 为什么有缓存
+
+题目：
+
+```js
+const count = ref(1);
+
+const double = computed(() => {
+  console.log("computed run");
+  return count.value * 2;
+});
+
+console.log(double.value);
+console.log(double.value);
+count.value++;
+console.log(double.value);
+```
+
+输出：
+
+```txt
+computed run
+2
+2
+computed run
+4
+```
+
+解析：
+
+- 第一次读取 `double.value` 时执行 getter。
+- 第二次读取时依赖没变，直接返回缓存。
+- `count.value++` 后，computed 被标记为 dirty。
+- 再次读取时重新计算。
+
+面试回答：
+
+```txt
+computed 本质是懒执行的响应式 effect。依赖变化时不会立刻重新计算，而是标记 dirty；下次读取 value 时才重新计算。
+```
+
+### Vue 3 大厂面试题 3：watch 的 flush 有什么区别
+
+题目：
+
+`watch` 的 `flush: "pre" | "post" | "sync"` 有什么区别？
+
+回答：
+
+- `pre`：默认值，组件更新前执行。
+- `post`：组件 DOM 更新后执行。
+- `sync`：同步执行，不经过调度队列。
+
+例子：
+
+```js
+watch(
+  count,
+  () => {
+    console.log("DOM 已更新后执行");
+  },
+  {
+    flush: "post",
+  },
+);
+```
+
+使用建议：
+
+- 需要读取更新后的 DOM，用 `post`。
+- 大部分业务场景用默认 `pre`。
+- `sync` 要慎用，可能导致频繁执行和性能问题。
+
+### Vue 3 大厂面试题 4：为什么不要用 index 做 key
+
+题目：
+
+```vue
+<div v-for="(item, index) in list" :key="index">
+  <input :value="item.name" />
+</div>
+```
+
+如果在列表头部插入一项，可能出现什么问题？
+
+解析：
+
+使用 index 作为 key 时，插入后原来的第 0 项变成第 1 项，但它们的 key 也跟着变了。Vue 会按位置复用 DOM，可能导致输入框状态和数据错位。
+
+正确写法：
+
+```vue
+<div v-for="item in list" :key="item.id">
+  <input :value="item.name" />
+</div>
+```
+
+稳定 key 应该来自业务唯一 id。
+
+### Vue 3 大厂面试题 5：nextTick 为什么能拿到更新后的 DOM
+
+题目：
+
+```js
+count.value++;
+
+await nextTick();
+
+console.log(el.textContent);
+```
+
+为什么 `nextTick` 后能读到新 DOM？
+
+解析：
+
+Vue 状态变化后，不会立刻同步更新 DOM，而是把组件更新任务放进队列。这个队列通常通过微任务刷新。
+
+`nextTick` 会等待当前这一轮组件更新队列刷新完成，所以它后面的代码能读到更新后的 DOM。
+
+一句话：
+
+```txt
+nextTick 等的是 Vue 的异步 DOM 更新队列，不是简单等一个 setTimeout。
+```
+
+### Vue 3 大厂面试题 6：Vue 3 如何减少 diff 成本
+
+回答要点：
+
+- 编译阶段区分静态节点和动态节点。
+- 静态节点提升，避免重复创建。
+- 动态节点加 Patch Flag，运行时精准更新。
+- Block Tree 收集动态子节点，减少无意义遍历。
+- 对事件处理函数做缓存，减少重复创建。
+
+示例回答：
+
+```txt
+Vue 3 不是每次都盲目全量 diff。编译器会在模板编译时标记动态部分，运行时 patch 可以直接知道哪些属性或文本需要更新，这就是 Patch Flag 的价值。
+```
+
+### Vue 3 大厂面试题 7：v-if 和 v-show 如何选择
+
+区别：
+
+- `v-if` 是真正创建和销毁 DOM。
+- `v-show` 是切换 CSS 的 `display`。
+
+选择：
+
+- 条件很少变化，用 `v-if`。
+- 频繁显示隐藏，用 `v-show`。
+
+例子：
+
+```vue
+<Modal v-if="visible" />
+<div v-show="active">内容</div>
+```
+
+### Vue 3 大厂面试题 8：父子组件更新顺序
+
+问题：
+
+父组件状态变化导致父子组件都要更新，更新顺序是什么？
+
+简化理解：
+
+```txt
+父组件先重新 render
+子组件接收新的 props 后再更新
+DOM patch 按组件树顺序推进
+updated 钩子通常子组件先执行，父组件后执行
+```
+
+注意：
+
+面试时不需要死背所有内部细节，但要说明组件更新是进入调度队列的，并且 Vue 会保证父子更新顺序稳定，避免子组件拿到过期 props。
+
+### Vue 3 大厂面试题 9：为什么组件里的定时器要清理
+
+题目：
+
+```js
+onMounted(() => {
+  setInterval(() => {
+    console.log("polling");
+  }, 1000);
+});
+```
+
+有什么问题？
+
+解析：
+
+组件卸载后，定时器仍然存在，会继续执行，造成内存泄漏和无效请求。
+
+修复：
+
+```js
+let timer = null;
+
+onMounted(() => {
+  timer = setInterval(() => {
+    console.log("polling");
+  }, 1000);
+});
+
+onUnmounted(() => {
+  clearInterval(timer);
+});
+```
+
+同样需要清理的还有：
+
+- DOM 事件监听。
+- WebSocket。
+- 第三方图表实例。
+- IntersectionObserver。
+- 未完成且可取消的请求。
+
+### Vue 3 大厂面试题 10：如何设计一个可复用的 useRequest
+
+场景：
+
+多个页面都需要请求数据、loading、error、刷新，请设计一个组合式函数。
+
+参考实现：
+
+```js
+function useRequest(service, options = {}) {
+  const data = ref(options.initialData ?? null);
+  const loading = ref(false);
+  const error = ref(null);
+
+  async function run(...args) {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const result = await service(...args);
+      data.value = result;
+      return result;
+    } catch (err) {
+      error.value = err;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  if (options.immediate) {
+    run(...(options.defaultParams || []));
+  }
+
+  return {
+    data,
+    loading,
+    error,
+    run,
+    refresh: run,
+  };
+}
+```
+
+使用：
+
+```js
+const { data, loading, error, run } = useRequest(fetchUser, {
+  immediate: true,
+  defaultParams: [userId.value],
+});
+```
+
+面试扩展：
+
+- 增加防抖。
+- 增加缓存。
+- 增加请求竞态处理。
+- 增加取消请求。
+- 增加分页。
+
+请求竞态问题：
+
+```js
+let requestId = 0;
+
+async function run(...args) {
+  const currentId = ++requestId;
+  loading.value = true;
+
+  try {
+    const result = await service(...args);
+
+    if (currentId !== requestId) {
+      return;
+    }
+
+    data.value = result;
+    return result;
+  } finally {
+    if (currentId === requestId) {
+      loading.value = false;
+    }
+  }
+}
+```
+
+如果后发请求先回来，旧请求结果不能覆盖新请求结果。
 
 ## 常见易错点
 

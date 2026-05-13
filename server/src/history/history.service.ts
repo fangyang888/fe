@@ -1,9 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { existsSync } from 'fs';
-import { join } from 'path';
 import { History } from './history.entity';
+import { loadSpider } from '../common/spider-loader';
 
 @Injectable()
 export class HistoryService {
@@ -61,23 +60,8 @@ export class HistoryService {
     return this.historyRepo.save(record);
   }
 
-  private loadSpider() {
-    const candidates = [
-      join(process.cwd(), 'spider.js'),
-      join(process.cwd(), 'server', 'spider.js'),
-      join(__dirname, '..', '..', 'spider.js'),
-      join(__dirname, '..', '..', '..', 'spider.js'),
-    ];
-    const spiderPath = candidates.find((path) => existsSync(path));
-    if (!spiderPath) {
-      throw new Error(`找不到 spider.js，已尝试：${candidates.join(', ')}`);
-    }
-    delete require.cache[require.resolve(spiderPath)];
-    return require(spiderPath);
-  }
-
   async syncYear(year: number) {
-    const spider = this.loadSpider();
+    const spider = loadSpider();
     const records = await spider.fetchLotteryData(year);
     let inserted = 0;
     let skipped = 0;
@@ -104,7 +88,7 @@ export class HistoryService {
   }
 
   async syncLatest(year: number) {
-    const spider = this.loadSpider();
+    const spider = loadSpider();
     let sourceYear = year;
     let records = await spider.fetchLotteryData(sourceYear);
     while (records.length === 0 && sourceYear > year - 3) {

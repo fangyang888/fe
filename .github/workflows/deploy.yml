@@ -39,7 +39,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/**,server/dist/**,server/package.json,server/package-lock.json,ecosystem.config.cjs,deploy/nginx.conf'
+          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,ecosystem.config.cjs,deploy/nginx.conf'
           target: '/home/deploy/fe'
           strip_components: 0
           timeout: 120s
@@ -66,10 +66,16 @@ jobs:
             echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
             echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
             echo "PORT=3000" >> .env
+            REDIS_URL="${{ secrets.REDIS_URL }}"
+            if [ -z "$REDIS_URL" ]; then
+              REDIS_URL="redis://127.0.0.1:6379"
+            fi
+            echo "REDIS_URL=$REDIS_URL" >> .env
 
             echo ".env file generated successfully."
 
             # 安装依赖并重启服务
-            npm install --production
+            corepack enable
+            pnpm install --prod --frozen-lockfile
             cd ..
             pm2 startOrReload ecosystem.config.cjs --env production

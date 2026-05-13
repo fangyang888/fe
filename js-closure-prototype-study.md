@@ -10,7 +10,8 @@
 - [JS 运行机制总览](#js-运行机制总览)
 - [JavaScript 单线程](#javascript-单线程)
 - [事件循环](#事件循环)
-- [浏览器进程线程和-Web-Worker](#浏览器进程线程和-web-worker)
+- [浏览器进程线程和 Web Worker](#浏览器进程线程和-web-worker)
+- [浏览器渲染机制：HTML、CSS、JS 怎么变成页面](#浏览器渲染机制htmlcssjs-怎么变成页面)
 - [大厂深度场景面试题](#大厂深度场景面试题)
 - [Vue 3 深度理解和大厂考察](#vue-3-深度理解和大厂考察)
 - [练习题](#练习题)
@@ -1185,6 +1186,978 @@ Worker 收到：hello
 - Worker 适合 CPU 密集型任务，不适合所有异步任务。
 - Worker 不能直接访问 DOM。
 - Worker 可以使用部分 Web API，例如 `fetch`、`setTimeout`。
+
+## 浏览器渲染机制：HTML、CSS、JS 怎么变成页面
+
+这一节回答一个很重要的问题：
+
+```txt
+浏览器拿到 HTML、CSS、JS 后，到底怎么把它们画成你看到的页面？
+```
+
+先记一个总流程：
+
+```txt
+网络加载资源
+  |
+  v
+解析 HTML -> 构建 DOM 树
+  |
+  +-- 遇到 CSS -> 解析 CSS -> 构建 CSSOM 树
+  |
+  +-- 遇到 JS -> 下载、解析、执行 JS，JS 可能读取或修改 DOM/CSSOM
+  |
+  v
+DOM + CSSOM -> Render Tree
+  |
+  v
+Layout 布局：计算每个元素的位置和大小
+  |
+  v
+Paint 绘制：把文字、颜色、边框、阴影等画出来
+  |
+  v
+Composite 合成：把不同图层合成到屏幕上
+```
+
+一句话：
+
+```txt
+HTML 决定结构，CSS 决定样式，JS 可以动态修改结构和样式，浏览器最后通过布局、绘制、合成把它们显示到屏幕。
+```
+
+### DOM 树：HTML 变成页面结构
+
+浏览器拿到 HTML 后，会从上到下解析标签，生成 DOM 树。
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <title>Demo</title>
+  </head>
+  <body>
+    <div id="app">
+      <h1>Hello</h1>
+      <p>JavaScript</p>
+    </div>
+  </body>
+</html>
+```
+
+可以理解成：
+
+```txt
+Document
+  html
+    head
+      title
+    body
+      div#app
+        h1
+        p
+```
+
+DOM 树不是最终显示结果，它只是页面结构。比如 `display: none` 的元素也在 DOM 树里，只是后面不会进入最终渲染树。
+
+解析 HTML 时，如果 HTML 写得不规范，浏览器会自动修复：
+
+```html
+<p>hello
+<div>world</div>
+```
+
+浏览器会根据 HTML 规则自动补全和调整标签，所以最终 DOM 不一定完全等于源代码文本。
+
+### CSSOM 树：CSS 变成样式规则
+
+CSS 也会被解析成一棵树，叫 CSSOM。
+
+```css
+body {
+  margin: 0;
+}
+
+#app {
+  color: red;
+  font-size: 20px;
+}
+
+#app p {
+  color: blue;
+}
+```
+
+浏览器会做几件事：
+
+- 解析选择器。
+- 处理层叠规则。
+- 计算继承。
+- 处理默认样式。
+- 把相对单位转成可计算的值。
+
+比如 `p` 的文字最终是蓝色，因为 `#app p` 比继承自 `#app` 的 `color: red` 更具体。
+
+CSS 的全名是 Cascading Style Sheets，核心就在“层叠”。最终样式不是某一条规则决定的，而是多条规则按优先级合并后的结果。
+
+### CSS 优先级和最终样式
+
+常见优先级从高到低：
+
+```txt
+!important
+内联样式 style=""
+ID 选择器
+class / 属性 / 伪类
+标签 / 伪元素
+通配符和继承
+浏览器默认样式
+```
+
+例子：
+
+```html
+<p id="title" class="text" style="color: green;">hello</p>
+```
+
+```css
+p {
+  color: red;
+}
+
+.text {
+  color: blue;
+}
+
+#title {
+  color: orange;
+}
+```
+
+最终是绿色，因为内联样式优先级更高。
+
+如果有：
+
+```css
+.text {
+  color: blue !important;
+}
+```
+
+最终就会变成蓝色，因为 `!important` 优先级更高。
+
+实际开发建议：
+
+- 少用 `!important`，它会让样式变得难覆盖。
+- 少写过深选择器，例如 `.a .b .c .d span`。
+- 组件样式尽量控制作用域，避免全局污染。
+
+### Render Tree：DOM 和 CSSOM 合并
+
+浏览器会把 DOM 和 CSSOM 合并成 Render Tree，也可以理解成“真正要渲染的节点树”。
+
+DOM 树里有些节点不会进入 Render Tree：
+
+- `head`
+- `script`
+- `style`
+- `display: none` 的元素
+
+但是 `visibility: hidden` 的元素会进入 Render Tree，因为它虽然看不见，但仍然占位置。
+
+对比：
+
+```css
+.hidden-1 {
+  display: none;
+}
+
+.hidden-2 {
+  visibility: hidden;
+}
+
+.transparent {
+  opacity: 0;
+}
+```
+
+区别：
+
+| 写法 | 是否占位置 | 是否渲染 | 是否可点击 |
+| --- | --- | --- | --- |
+| `display: none` | 不占 | 不渲染 | 不可点击 |
+| `visibility: hidden` | 占 | 不可见 | 不可点击 |
+| `opacity: 0` | 占 | 透明 | 通常仍可点击 |
+
+这也是为什么隐藏元素时不能只背属性，要知道它会影响布局、绘制和交互。
+
+### Layout：计算元素位置和大小
+
+Layout 也叫布局或回流，作用是计算每个可见元素的几何信息：
+
+- 宽度
+- 高度
+- 横向位置
+- 纵向位置
+- 行盒位置
+- 子元素位置
+
+比如：
+
+```html
+<div class="box">hello</div>
+```
+
+```css
+.box {
+  width: 200px;
+  height: 100px;
+  padding: 20px;
+  border: 1px solid #000;
+  margin: 10px;
+}
+```
+
+浏览器需要算出：
+
+- 内容区宽高是多少。
+- padding 占多少。
+- border 占多少。
+- margin 和相邻元素如何影响位置。
+- 这个元素最终在视口里的坐标是什么。
+
+如果使用默认盒模型：
+
+```css
+.box {
+  box-sizing: content-box;
+}
+```
+
+元素实际占用宽度大致是：
+
+```txt
+width + padding-left + padding-right + border-left + border-right
+```
+
+如果使用：
+
+```css
+.box {
+  box-sizing: border-box;
+}
+```
+
+`width: 200px` 包含 content、padding 和 border，布局通常更好控制。
+
+实际项目里常见全局设置：
+
+```css
+* {
+  box-sizing: border-box;
+}
+```
+
+### Paint：把样式画出来
+
+Layout 算完位置和大小后，浏览器进入 Paint 阶段。
+
+Paint 负责把视觉内容画出来，例如：
+
+- 文字
+- 颜色
+- 背景图
+- 边框
+- 阴影
+- 圆角
+- 渐变
+
+比如你改了：
+
+```css
+.box {
+  color: red;
+  background: yellow;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+```
+
+如果这些改动不影响元素位置和大小，通常不需要重新 Layout，但需要重新 Paint。
+
+注意：`box-shadow`、`filter`、大面积渐变、复杂背景图可能增加绘制成本。
+
+### Composite：图层合成
+
+现代浏览器不会总是把整个页面一次性画成一张图。它会把页面拆成多个图层，有些图层可以交给 GPU 合成。
+
+常见可能创建合成层的情况：
+
+- `transform`
+- `opacity`
+- `position: fixed`
+- `will-change`
+- `<video>`
+- `<canvas>`
+- 3D transform，例如 `translateZ(0)`
+
+如果只改变合成属性，浏览器可能跳过 Layout 和 Paint，只做 Composite。
+
+例如：
+
+```css
+.box {
+  transform: translateX(100px);
+}
+```
+
+通常比下面这种动画更流畅：
+
+```css
+.box {
+  left: 100px;
+}
+```
+
+因为 `left` 会影响布局，`transform` 通常只影响合成。
+
+但不要滥用图层：
+
+```css
+.card {
+  will-change: transform;
+}
+```
+
+`will-change` 可以提前告诉浏览器这个元素要变动，但每个图层都要占内存。大量使用会适得其反。
+
+### JS 如何影响页面
+
+JavaScript 可以通过 DOM API 修改页面结构：
+
+```js
+const app = document.querySelector("#app");
+
+const button = document.createElement("button");
+button.textContent = "点击";
+
+app.appendChild(button);
+```
+
+也可以修改样式：
+
+```js
+const box = document.querySelector(".box");
+
+box.style.width = "300px";
+box.style.backgroundColor = "red";
+box.classList.add("active");
+```
+
+也可以监听用户事件：
+
+```js
+button.addEventListener("click", () => {
+  box.classList.toggle("active");
+});
+```
+
+所以 JS 对页面的影响主要有三类：
+
+- 改 DOM 结构：新增、删除、移动节点。
+- 改 CSS 样式：修改内联样式、class、CSS 变量。
+- 改数据状态：框架里通常是改数据，再由框架更新 DOM。
+
+原生写法：
+
+```js
+const count = document.querySelector("#count");
+const btn = document.querySelector("#btn");
+
+let value = 0;
+
+btn.addEventListener("click", () => {
+  value++;
+  count.textContent = value;
+});
+```
+
+Vue / React 这类框架的写法看起来是在改数据：
+
+```js
+count.value++;
+```
+
+但最终仍然要落到浏览器层面：更新 DOM、重新计算样式、布局、绘制、合成。
+
+### CSS 和 JS 的加载会不会阻塞渲染
+
+这个问题面试很常见。
+
+#### CSS 会阻塞渲染
+
+浏览器需要 CSSOM 才能知道元素最终样式，所以 CSS 通常会阻塞首次渲染。
+
+```html
+<link rel="stylesheet" href="./style.css" />
+```
+
+如果 CSS 文件很大、下载很慢，浏览器可能已经有 DOM 了，但还不能稳定绘制页面，因为样式没准备好。
+
+优化方向：
+
+- 首屏关键 CSS 尽量小。
+- 非关键 CSS 延后加载。
+- 避免引入巨大但只用到一点点的样式库。
+- 使用构建工具移除未使用 CSS。
+
+#### JS 会阻塞 HTML 解析
+
+普通脚本会阻塞 HTML 解析：
+
+```html
+<script src="./main.js"></script>
+```
+
+原因是 JS 可能修改 DOM：
+
+```js
+document.write("<h1>new content</h1>");
+```
+
+浏览器遇到普通 `script` 时，需要先下载并执行脚本，再继续解析后面的 HTML。
+
+#### defer
+
+```html
+<script defer src="./main.js"></script>
+```
+
+特点：
+
+- 不阻塞 HTML 解析。
+- 脚本会并行下载。
+- 等 DOM 解析完成后、`DOMContentLoaded` 前执行。
+- 多个 `defer` 脚本按文档顺序执行。
+
+适合大多数业务脚本。
+
+#### async
+
+```html
+<script async src="./analytics.js"></script>
+```
+
+特点：
+
+- 不阻塞 HTML 解析时的下载。
+- 下载完成后会立刻执行，执行时仍会暂停 HTML 解析。
+- 多个 `async` 脚本不保证顺序。
+
+适合统计、广告、第三方 SDK 这类不依赖页面其他脚本的代码。
+
+对比：
+
+| 写法 | 是否阻塞 HTML 解析 | 执行时机 | 是否保证顺序 |
+| --- | --- | --- | --- |
+| 普通 script | 阻塞 | 下载后立即执行 | 保证 |
+| `defer` | 不阻塞解析 | DOM 解析完成后执行 | 保证 |
+| `async` | 下载不阻塞，执行会打断 | 下载完立即执行 | 不保证 |
+
+### 从输入 URL 到页面显示
+
+完整流程可以这样记：
+
+```txt
+1. 用户输入 URL
+2. 浏览器检查缓存
+3. DNS 解析域名
+4. 建立 TCP 连接，HTTPS 还要 TLS 握手
+5. 发送 HTTP 请求
+6. 服务器返回 HTML
+7. 浏览器解析 HTML，发现 CSS、JS、图片等资源继续请求
+8. 构建 DOM 和 CSSOM
+9. 执行 JS，JS 可能修改 DOM 和 CSSOM
+10. 构建 Render Tree
+11. Layout
+12. Paint
+13. Composite
+14. 页面显示，后续用户交互继续触发 JS 和渲染更新
+```
+
+面试回答不需要一口气背所有细节，但要能把网络、解析、渲染、JS 执行串起来。
+
+### DOMContentLoaded 和 load
+
+`DOMContentLoaded`：
+
+```txt
+HTML 已经解析完成，DOM 树已经构建好，不一定等图片、视频等资源加载完成。
+```
+
+`load`：
+
+```txt
+页面依赖的资源基本都加载完成，包括图片、样式、脚本等。
+```
+
+例子：
+
+```js
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM ready");
+});
+
+window.addEventListener("load", () => {
+  console.log("all resources loaded");
+});
+```
+
+如果只是要操作 DOM，通常用 `DOMContentLoaded` 就够了。如果要获取图片真实宽高，可能要等图片自身 `load` 或窗口 `load`。
+
+### 重排、重绘、合成
+
+页面更新时，浏览器不一定每次都完整走一遍流程。
+
+#### 重排 Reflow / Layout
+
+元素几何信息变化时会触发布局：
+
+- 修改 `width`、`height`
+- 修改 `padding`、`margin`
+- 修改 `border`
+- 修改 `font-size`
+- 修改 `top`、`left`
+- 添加或删除 DOM 节点
+- 改变窗口大小
+- 内容变化导致尺寸变化
+
+例子：
+
+```js
+box.style.width = "300px";
+```
+
+宽度变了，浏览器要重新计算它和相关元素的位置大小。
+
+#### 重绘 Repaint / Paint
+
+只改变视觉样式，不改变布局时，通常触发重绘：
+
+- `color`
+- `background-color`
+- `visibility`
+- `box-shadow`
+- `outline`
+
+例子：
+
+```js
+box.style.backgroundColor = "red";
+```
+
+位置没变，但颜色变了，需要重新绘制。
+
+#### 合成 Composite
+
+只改变合成属性时，可能只触发合成：
+
+- `transform`
+- `opacity`
+
+例子：
+
+```js
+box.style.transform = "translateX(100px)";
+box.style.opacity = "0.5";
+```
+
+这通常是动画优化的重点。
+
+性能成本大致可以这样记：
+
+```txt
+重排 Layout > 重绘 Paint > 合成 Composite
+```
+
+不是说永远不能重排，而是高频操作里要避免反复重排。
+
+### 强制同步布局
+
+浏览器会批量处理样式修改，但有些读取操作会强迫浏览器立刻把布局算出来。
+
+例如：
+
+```js
+const box = document.querySelector(".box");
+
+box.style.width = "300px";
+
+console.log(box.offsetWidth);
+```
+
+你刚修改宽度，马上读取 `offsetWidth`。浏览器为了给你准确结果，必须立刻执行布局计算，这叫强制同步布局。
+
+常见会触发布局读取的属性或方法：
+
+- `offsetWidth`
+- `offsetHeight`
+- `offsetTop`
+- `offsetLeft`
+- `clientWidth`
+- `clientHeight`
+- `scrollTop`
+- `scrollHeight`
+- `getBoundingClientRect()`
+- `getComputedStyle()`
+
+糟糕写法：
+
+```js
+const list = document.querySelectorAll(".item");
+
+list.forEach((item) => {
+  item.style.width = `${box.offsetWidth + 10}px`;
+});
+```
+
+如果循环里不断读布局、写样式，就可能造成反复强制布局。
+
+优化写法：先读，后写。
+
+```js
+const width = box.offsetWidth;
+const list = document.querySelectorAll(".item");
+
+list.forEach((item) => {
+  item.style.width = `${width + 10}px`;
+});
+```
+
+更通用的原则：
+
+```txt
+把 DOM 读取集中在一起，把 DOM 写入集中在一起。
+```
+
+### requestAnimationFrame
+
+`requestAnimationFrame` 会在浏览器下一次绘制前执行回调，适合做动画。
+
+```js
+const box = document.querySelector(".box");
+let x = 0;
+
+function move() {
+  x += 2;
+  box.style.transform = `translateX(${x}px)`;
+
+  if (x < 300) {
+    requestAnimationFrame(move);
+  }
+}
+
+requestAnimationFrame(move);
+```
+
+相比 `setTimeout`：
+
+- `requestAnimationFrame` 更贴近屏幕刷新节奏。
+- 页面切到后台时，浏览器通常会降低执行频率，节省资源。
+- 更适合视觉更新。
+
+不要用长时间同步循环做动画：
+
+```js
+while (x < 300) {
+  x++;
+  box.style.transform = `translateX(${x}px)`;
+}
+```
+
+这会一直占用主线程，浏览器没有机会一帧一帧绘制，中间过程不会流畅显示。
+
+### 一帧里浏览器做什么
+
+屏幕常见刷新率是 60Hz，也就是大约每 16.7ms 显示一帧。
+
+一帧里浏览器可能要做：
+
+```txt
+处理用户输入
+执行 JS
+执行 requestAnimationFrame
+计算样式
+布局
+绘制
+合成
+提交到屏幕
+```
+
+如果 JS 执行太久，比如 50ms，那么这一帧就赶不上，用户会感觉卡顿。
+
+性能优化的一个目标就是：
+
+```txt
+主线程每一小段任务尽量短，让浏览器有机会及时渲染和响应输入。
+```
+
+### CSS 动画怎么更流畅
+
+推荐优先动画这些属性：
+
+```css
+.box {
+  transition:
+    transform 0.3s,
+    opacity 0.3s;
+}
+
+.box.active {
+  transform: translateY(20px);
+  opacity: 0.5;
+}
+```
+
+尽量少对这些属性做高频动画：
+
+```css
+.box {
+  transition:
+    width 0.3s,
+    height 0.3s,
+    left 0.3s,
+    top 0.3s;
+}
+```
+
+原因：
+
+- `width`、`height`、`left`、`top` 通常影响布局。
+- `transform`、`opacity` 通常更容易走合成。
+
+把 `left` 动画改成 `transform`：
+
+```css
+/* 不推荐 */
+.box {
+  position: absolute;
+  left: 0;
+  transition: left 0.3s;
+}
+
+.box.active {
+  left: 100px;
+}
+```
+
+```css
+/* 推荐 */
+.box {
+  transform: translateX(0);
+  transition: transform 0.3s;
+}
+
+.box.active {
+  transform: translateX(100px);
+}
+```
+
+### 图片和字体也会影响渲染
+
+图片如果没有宽高，加载完成后可能把页面撑开，导致布局偏移。
+
+不推荐：
+
+```html
+<img src="./banner.jpg" alt="banner" />
+```
+
+推荐：
+
+```html
+<img src="./banner.jpg" width="1200" height="400" alt="banner" />
+```
+
+或者用 CSS 预留比例：
+
+```css
+.banner {
+  aspect-ratio: 3 / 1;
+  width: 100%;
+  object-fit: cover;
+}
+```
+
+字体也可能导致闪烁或布局变化。比如自定义字体加载前后，文字宽度不同，页面可能跳动。
+
+常见优化：
+
+- 使用 `font-display: swap`。
+- 减少字体文件体积。
+- 只加载需要的字重。
+- 中文字体文件很大时谨慎引入完整字体。
+
+### 常见性能指标
+
+前端性能优化经常会看到这些指标：
+
+| 指标 | 含义 | 优化重点 |
+| --- | --- | --- |
+| FCP | 首次内容绘制 | 减少阻塞资源，让内容尽快出现 |
+| LCP | 最大内容绘制 | 优化首屏大图、关键文本、服务响应 |
+| CLS | 累积布局偏移 | 给图片广告预留尺寸，避免突然插入内容 |
+| INP | 交互到下一次绘制 | 减少主线程长任务，提高交互响应 |
+| TTFB | 首字节时间 | 优化服务器响应、缓存、网络链路 |
+
+不用死背英文，但要理解它们分别关注什么：
+
+```txt
+出现得快不快、主体内容快不快、页面稳不稳、点了以后响应快不快、服务器回得快不快。
+```
+
+### 渲染优化总清单
+
+#### HTML 优化
+
+- 结构尽量语义化，减少无意义嵌套。
+- 首屏关键内容尽量靠前。
+- 图片写 `width` 和 `height`，避免布局偏移。
+- 非首屏图片使用懒加载：
+
+```html
+<img src="./photo.jpg" loading="lazy" alt="photo" />
+```
+
+#### CSS 优化
+
+- 首屏关键 CSS 保持精简。
+- 减少没用到的 CSS。
+- 避免过深选择器。
+- 少用高成本绘制属性做大面积动画，例如复杂阴影、滤镜。
+- 动画优先使用 `transform` 和 `opacity`。
+- 谨慎使用 `will-change`，只给确实即将变化的元素加。
+- 使用 `contain` 限制布局影响范围：
+
+```css
+.widget {
+  contain: layout paint;
+}
+```
+
+`contain` 的意思是告诉浏览器：这个区域的布局和绘制影响尽量限制在自己内部。适合独立卡片、组件、小部件，但不要无脑全局加。
+
+#### JS 优化
+
+- 避免长任务霸占主线程。
+- 大计算放到 Web Worker。
+- 高频事件使用防抖或节流。
+- DOM 操作尽量批量做。
+- DOM 读取和写入分离，避免布局抖动。
+- 动画用 `requestAnimationFrame`。
+- 空闲任务可以考虑 `requestIdleCallback`。
+
+```js
+requestIdleCallback(() => {
+  // 做一些不紧急的统计、预计算、缓存清理
+});
+```
+
+注意：`requestIdleCallback` 不适合关键任务，因为浏览器忙的时候它可能很晚才执行。
+
+#### 资源加载优化
+
+- JS 使用 `defer`，非关键第三方脚本考虑 `async`。
+- 路由级别代码分割，首屏不要加载全站代码。
+- 使用 HTTP 缓存。
+- 图片压缩，优先使用合适格式，例如 WebP、AVIF。
+- 大图按显示尺寸裁剪，不要用 4000px 图片显示成 400px。
+- 关键资源可以用 `preload`：
+
+```html
+<link rel="preload" href="./hero.webp" as="image" />
+```
+
+- 提前建立第三方连接可以用 `preconnect`：
+
+```html
+<link rel="preconnect" href="https://cdn.example.com" />
+```
+
+不要滥用 `preload`，否则会抢占真正关键资源的下载带宽。
+
+#### 框架项目优化
+
+Vue / React 项目最终还是浏览器渲染，所以优化方向类似：
+
+- 列表渲染写稳定 `key`。
+- 长列表使用虚拟列表。
+- 避免一个状态变化导致大范围组件重渲染。
+- 大组件拆分时按业务边界拆，不是越碎越好。
+- 弹窗、图表、编辑器等重组件按需加载。
+- 缓存昂贵计算，例如 Vue 的 `computed`、React 的 `useMemo`。
+- 事件监听、定时器、第三方实例要在组件卸载时清理。
+
+### 长列表为什么要虚拟滚动
+
+如果一次渲染 10000 条 DOM：
+
+```js
+const list = Array.from({ length: 10000 }, (_, index) => index);
+```
+
+页面会有大量 DOM 节点，带来：
+
+- DOM 创建成本高。
+- Layout 成本高。
+- Paint 成本高。
+- 内存占用高。
+- 滚动时容易卡。
+
+虚拟列表的思路：
+
+```txt
+数据有 10000 条，但屏幕上只渲染可见的几十条。
+滚动时根据 scrollTop 计算应该显示哪一段。
+```
+
+简化思路：
+
+```js
+const itemHeight = 40;
+const visibleCount = 20;
+
+function getVisibleRange(scrollTop) {
+  const start = Math.floor(scrollTop / itemHeight);
+  const end = start + visibleCount;
+
+  return {
+    start,
+    end,
+  };
+}
+```
+
+真实虚拟列表还要处理动态高度、缓冲区、滚动容器高度、定位偏移等问题。
+
+### 面试回答模板
+
+问题：浏览器如何把页面渲染出来？
+
+可以这样答：
+
+```txt
+浏览器先解析 HTML 构建 DOM，解析 CSS 构建 CSSOM。DOM 和 CSSOM 合成 Render Tree 后，浏览器进行 Layout，计算每个可见节点的位置和大小；再 Paint，把颜色、文字、边框、阴影等绘制出来；最后 Composite，把不同图层合成到屏幕上。
+
+JS 会阻塞 HTML 解析，因为它可能修改 DOM；CSS 通常阻塞渲染，因为浏览器需要 CSSOM 才知道最终样式。页面更新时，如果改了尺寸和位置会触发重排，只改颜色这类视觉属性通常触发重绘，改 transform 和 opacity 这类属性可能只走合成，所以动画一般优先使用 transform 和 opacity。
+```
+
+问题：怎么优化页面渲染性能？
+
+可以这样答：
+
+```txt
+从资源、渲染和 JS 三个方向优化。资源上减少首屏阻塞，压缩图片，代码分割，合理使用 defer、preload 和缓存。渲染上减少无效 DOM，避免频繁重排，动画优先使用 transform 和 opacity，图片预留尺寸避免 CLS。JS 上减少长任务，批量 DOM 操作，读写分离，高频事件做防抖节流，大计算放到 Web Worker，动画用 requestAnimationFrame。
+```
 
 ## 大厂深度场景面试题
 
@@ -3179,6 +4152,20 @@ Web Worker：
 重计算交给 Worker -> 结果发回主线程 -> 主线程更新页面
 ```
 
+浏览器渲染：
+
+```txt
+HTML -> DOM
+CSS -> CSSOM
+DOM + CSSOM -> Render Tree -> Layout -> Paint -> Composite
+```
+
+渲染优化：
+
+```txt
+少阻塞首屏 -> 少触发布局 -> 动画用 transform/opacity -> 长任务拆分或丢给 Worker
+```
+
 ## 推荐学习顺序
 
 1. 先理解作用域、执行上下文、`let`、`const`、`var`。
@@ -3187,4 +4174,5 @@ Web Worker：
 4. 再学习原型链、继承、`class`。
 5. 然后学习调用栈、同步任务、异步任务。
 6. 再学习事件循环、宏任务、微任务、`async/await`。
-7. 最后学习浏览器进程线程模型和 Web Worker。
+7. 再学习浏览器进程线程模型和 Web Worker。
+8. 最后学习浏览器渲染机制，重点理解 DOM、CSSOM、Layout、Paint、Composite 和性能优化。

@@ -310,12 +310,19 @@ export class PredictorService {
       item.n7,
     ]);
     const recentOccurrenceStats = this.getRecentOccurrenceStats(rawHist, 30);
+    const hotPick =
+      sourceType === 'hk'
+        ? this.buildHkAdaptiveHotPick(hist)
+        : this.buildAdaptiveHotPick(hist);
 
     return {
-      hotPick: this.buildAdaptiveHotPick(hist),
+      hotPick,
       historyMeta: this.getHistoryMeta(rawHist, sourceType),
       recentOccurrenceStats,
-      hotPickKill5: this.buildHotPickKill5(hist, recentOccurrenceStats),
+      hotPickKill5:
+        sourceType === 'hk'
+          ? this.buildHkHotPickKill5(hist, recentOccurrenceStats)
+          : this.buildHotPickKill5(hist, recentOccurrenceStats),
     };
   }
 
@@ -519,7 +526,7 @@ export class PredictorService {
       const subHist = hist.slice(0, i);
       const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
       const result: any = this.buildHotPickKill5(subHist, occurrenceStats, false);
-      const displayed: any[] = this.getHotPickKill5Displayed(result).slice(0, 5);
+      const displayed: any[] = (result.predictions || []).slice(0, 5);
       const actualSet = new Set(hist[i]);
       const failed = displayed.filter((item: any) => actualSet.has(item.n));
       const correctCount = displayed.length - failed.length;
@@ -603,6 +610,270 @@ export class PredictorService {
         predictions.length >= 5
           ? '已筛出5个94%+高置信杀码。'
           : `当前只有${predictions.length}个号码达到94%阈值，未硬凑。`,
+    };
+  }
+
+  private getHkKillAbsenceStats(hist: number[][], n: number) {
+    const countInWindow = (window: number) => {
+      const start = Math.max(0, hist.length - window);
+      let count = 0;
+      for (let i = start; i < hist.length; i++) {
+        if (hist[i].includes(n)) count++;
+      }
+      return {
+        periods: hist.length - start,
+        count,
+        rate: hist.length - start > 0 ? (count / (hist.length - start)) * 100 : 0,
+        killRate: hist.length - start > 0 ? (1 - count / (hist.length - start)) * 100 : 0,
+      };
+    };
+    const appearances = [];
+    for (let i = 0; i < hist.length; i++) {
+      if (hist[i].includes(n)) appearances.push(i);
+    }
+    const currentGap =
+      appearances.length > 0 ? hist.length - 1 - appearances[appearances.length - 1] : hist.length;
+    const gaps = [];
+    for (let i = 1; i < appearances.length; i++) {
+      gaps.push(appearances[i] - appearances[i - 1]);
+    }
+    const avgGap =
+      gaps.length > 0
+        ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length
+        : 49 / 7;
+
+    return {
+      window10: countInWindow(10),
+      window20: countInWindow(20),
+      window30: countInWindow(30),
+      window40: countInWindow(40),
+      window60: countInWindow(60),
+      currentGap,
+      avgGap,
+      gapRatio: avgGap > 0 ? currentGap / avgGap : 1,
+    };
+  }
+
+  private getHkHotPickKill5Candidates(hist: number[][], occurrenceStats: any): any {
+    const threshold = 94;
+    const probabilityPreds = this.getProbabilityKillPredictions(hist, 49);
+    const lowRiskPreds = this.getLowRiskKillPredictions(hist, 49);
+    const enginePreds = this.runKillEngine(hist, 10).predictions || [];
+    const hybridPreds = this.buildAdaptiveHybridKill10(hist, enginePreds).predictions || [];
+    const rollingRates = this.getRecentModelKillRates(hist, 40);
+    const occurrenceByNum = new Map(
+      (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
+    );
+    const probabilityByNum = new Map(
+      probabilityPreds.map((item, i) => [item.n, { ...item, rank: i + 1 }]),
+    );
+    const lowRiskByNum = new Map(
+      lowRiskPreds.map((item, i) => [item.n, { ...item, rank: i + 1 }]),
+    );
+    const engineByNum = new Map(
+      enginePreds.map((item: any, i: number) => [item.n, { ...item, rank: i + 1 }]),
+    );
+    const hybridByNum = new Map(
+      hybridPreds.map((item: any, i: number) => [item.n, { ...item, rank: i + 1 }]),
+    );
+
+    const candidates = Array.from({ length: 49 }, (_, i) => {
+      const n = i + 1;
+      const occurrence = occurrenceByNum.get(n) as any;
+      const probability = probabilityByNum.get(n) as any;
+      const lowRisk = lowRiskByNum.get(n) as any;
+      const engine = engineByNum.get(n) as any;
+      const hybrid = hybridByNum.get(n) as any;
+      const rolling = rollingRates.get(n);
+      const absence = this.getHkKillAbsenceStats(hist, n);
+      const recentRate = occurrence?.rate || absence.window30.rate;
+      const recentCount = occurrence?.count || absence.window30.count;
+      const heatRank = occurrence?.rank || 49;
+      const probabilityAppear = probability?.appearProb ?? this.randomAppearProb;
+      const lowRiskAppear = lowRisk?.appearProb ?? this.randomAppearProb;
+      const hybridAppear =
+        hybrid?.appearProb ?? engine?.appearProb ?? Math.min(probabilityAppear, lowRiskAppear);
+      const modelKillProbability =
+        (1 - (probabilityAppear * 0.22 + lowRiskAppear * 0.43 + hybridAppear * 0.35)) * 100;
+      const cold30 = Math.max(0, 100 - recentRate);
+      const rankColdProbability = ((heatRank - 1) / 48) * 100;
+      const rollingModelKillRate =
+        rolling && rolling.samples >= 4
+          ? (rolling.successes / rolling.samples) * 100
+          : absence.window40.killRate;
+      const gapColdProbability =
+        Math.max(0, Math.min(100, this.normalizeMetric(absence.gapRatio, 0.8, 2.8) * 100));
+      const stableAbsence =
+        absence.window20.killRate * 0.38 +
+        absence.window40.killRate * 0.34 +
+        absence.window60.killRate * 0.28;
+      const consensus =
+        (probability?.rank && probability.rank <= 10 ? 1 : 0) +
+        (lowRisk?.rank && lowRisk.rank <= 10 ? 1 : 0) +
+        (engine?.rank && engine.rank <= 10 ? 1 : 0) +
+        (hybrid?.rank && hybrid.rank <= 10 ? 1 : 0);
+      const consensusBonus = consensus * 0.9;
+      const recentAppearPenalty =
+        absence.window10.count >= 3 ? 2.6 : absence.window10.count === 2 ? 1.4 : 0;
+      const killProbability = Math.min(
+        98.8,
+        modelKillProbability * 0.32 +
+          stableAbsence * 0.26 +
+          cold30 * 0.17 +
+          rollingModelKillRate * 0.13 +
+          rankColdProbability * 0.07 +
+          gapColdProbability * 0.05 +
+          consensusBonus -
+          recentAppearPenalty,
+      );
+
+      const reasons = [
+        `香港近30期${recentCount}期`,
+        `近20杀码${absence.window20.killRate.toFixed(1)}%`,
+        `模型杀码${modelKillProbability.toFixed(1)}%`,
+        `遗漏${absence.currentGap}期`,
+      ];
+      if (rolling?.samples) {
+        reasons.push(`港滚动${rolling.successes}/${rolling.samples}`);
+      }
+      if (consensus > 0) {
+        reasons.push(`模型共识${consensus}`);
+      }
+
+      return {
+        n,
+        killProbability: Math.round(killProbability * 10) / 10,
+        modelKillProbability: Math.round(modelKillProbability * 10) / 10,
+        recentColdProbability: Math.round(cold30 * 10) / 10,
+        rollingKillRate: Math.round(rollingModelKillRate * 10) / 10,
+        stableAbsenceRate: Math.round(stableAbsence * 10) / 10,
+        gapColdProbability: Math.round(gapColdProbability * 10) / 10,
+        recentCount,
+        recentRate: Math.round(recentRate * 10) / 10,
+        heatRank,
+        consensus,
+        sourceAlgorithm: 'hk-kill5-independent',
+        sources: {
+          probabilityRank: probability?.rank || null,
+          lowRiskRank: lowRisk?.rank || null,
+          engineRank: engine?.rank || null,
+          hybridRank: hybrid?.rank || null,
+        },
+        reasons,
+      };
+    }).sort(
+      (a, b) =>
+        b.killProbability - a.killProbability ||
+        b.stableAbsenceRate - a.stableAbsenceRate ||
+        b.consensus - a.consensus ||
+        a.recentCount - b.recentCount ||
+        b.heatRank - a.heatRank,
+    );
+
+    const qualified = candidates.filter((candidate) => candidate.killProbability >= threshold);
+    return {
+      candidates,
+      qualified,
+    };
+  }
+
+  private backtestHkHotPickKill5(hist: number[][], displayPeriods = 20): any {
+    const start = Math.max(80, hist.length - displayPeriods);
+    const details = [];
+    let totalCorrect = 0;
+    let totalPredicted = 0;
+    let allCorrectPeriods = 0;
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
+      const result: any = this.buildHkHotPickKill5(subHist, occurrenceStats, false);
+      const displayed: any[] = (result.predictions || []).slice(0, 5);
+      const actualSet = new Set(hist[i]);
+      const failed = displayed.filter((item: any) => actualSet.has(item.n));
+      const correctCount = displayed.length - failed.length;
+      const avgKillProbability =
+        displayed.length > 0
+          ? displayed.reduce((sum: number, item: any) => sum + item.killProbability, 0) /
+            displayed.length
+          : 0;
+      const groupAllKillProbability =
+        displayed.reduce(
+          (product: number, item: any) => product * (item.killProbability / 100),
+          1,
+        ) * 100;
+
+      totalCorrect += correctCount;
+      totalPredicted += displayed.length;
+      if (displayed.length > 0 && failed.length === 0) allCorrectPeriods++;
+
+      details.push({
+        periodOffset: hist.length - i,
+        predicted: displayed.map((item: any) => ({
+          n: item.n,
+          killProbability: item.killProbability,
+        })),
+        actual: hist[i],
+        failed: failed.map((item: any) => item.n),
+        correctCount,
+        accuracy: displayed.length > 0 ? (correctCount / displayed.length) * 100 : 0,
+        avgKillProbability: Math.round(avgKillProbability * 10) / 10,
+        groupAllKillProbability: Math.round(groupAllKillProbability * 10) / 10,
+        qualifiedCount: result.selectedCount,
+      });
+    }
+
+    const calcPeriods: number = details.length;
+    return {
+      calcPeriods,
+      details: details.reverse(),
+      totalCorrect,
+      totalPredicted,
+      overallAccuracy:
+        totalPredicted > 0 ? Math.round((totalCorrect / totalPredicted) * 1000) / 10 : 0,
+      allCorrectPeriods,
+      allCorrectRate:
+        calcPeriods > 0 ? Math.round((allCorrectPeriods / calcPeriods) * 1000) / 10 : 0,
+    };
+  }
+
+  private buildHkHotPickKill5(
+    hist: number[][],
+    occurrenceStats: any,
+    includeBacktest = true,
+  ): any {
+    if (hist.length < 80) {
+      return {
+        threshold: 94,
+        selectedCount: 0,
+        targetCount: 5,
+        predictions: [],
+        candidates: [],
+        backtest: null,
+        sourceAlgorithm: 'hk-kill5-independent',
+        note: '香港历史不足80期，暂不生成香港独立94%高置信5杀。',
+      };
+    }
+
+    const threshold = 94;
+    const { candidates, qualified } = this.getHkHotPickKill5Candidates(
+      hist,
+      occurrenceStats,
+    );
+    const predictions = qualified.slice(0, 5);
+
+    return {
+      threshold,
+      selectedCount: predictions.length,
+      targetCount: 5,
+      predictions,
+      candidates: candidates.slice(0, 12),
+      backtest: includeBacktest ? this.backtestHkHotPickKill5(hist, 20) : null,
+      sourceAlgorithm: 'hk-kill5-independent',
+      note:
+        predictions.length >= 5
+          ? '香港独立算法已筛出5个94%+高置信杀码。'
+          : `香港独立算法当前只有${predictions.length}个号码达到94%阈值，未硬凑。`,
     };
   }
 
@@ -2468,6 +2739,316 @@ export class PredictorService {
       minHit: calcPeriods > 0 ? minHit : 0,
       randomBaseline: this.getRandomHotPickHitAtLeastRate(count, 3) * 100,
     };
+  }
+
+  private getHkHotPickCandidates(hist: number[][], profile = 'hk-balanced') {
+    const hn = hist.length;
+    const featureRows = this.getHotPickFeatureRows(hist);
+    const transitions = this.getHotPickTransitionScores(hist);
+    const lastTwo = new Set((hist[hn - 1] || []).concat(hist[hn - 2] || []));
+
+    const rows = featureRows.map((row) => {
+      const f = row.features;
+      const markov = transitions.markov[row.n] || this.randomAppearProb;
+      const markov2 = transitions.markov2[row.n] || this.randomAppearProb;
+      const hotShort = f.freq3 * 0.2 + f.freq5 * 0.32 + f.freq10 * 0.28 + f.freq20 * 0.2;
+      const hotMid = f.freq20 * 0.28 + f.freq30 * 0.3 + f.freq50 * 0.26 + f.longFreq * 0.16;
+      const recentRank = 1 - (Math.max(1, f.recent30Rank) - 1) / 48;
+      const cycleReady = this.normalizeMetric(f.gapRatio, 0.7, 2.4);
+      const stalePenalty = this.normalizeMetric(f.gapRatio, 3.2, 5.5) * 0.1;
+      const repeatSignal = (lastTwo.has(row.n) ? 1 : 0) * 0.08 + f.lastHit * 0.08;
+      const transitionSignal = markov * 0.62 + markov2 * 0.38;
+
+      const scoreByProfile: Record<string, number> = {
+        'hk-balanced':
+          hotMid * 0.31 +
+          transitionSignal * 0.27 +
+          cycleReady * 0.18 +
+          hotShort * 0.16 +
+          repeatSignal -
+          stalePenalty,
+        'hk-recent':
+          hotShort * 0.43 +
+          transitionSignal * 0.22 +
+          repeatSignal * 1.35 +
+          recentRank * 0.18 +
+          cycleReady * 0.07 -
+          stalePenalty,
+        'hk-cycle':
+          cycleReady * 0.42 +
+          hotMid * 0.22 +
+          transitionSignal * 0.2 +
+          recentRank * 0.1 +
+          f.freq20 * 0.06 -
+          stalePenalty,
+        'hk-transition':
+          transitionSignal * 0.52 +
+          hotMid * 0.18 +
+          hotShort * 0.13 +
+          cycleReady * 0.12 +
+          repeatSignal -
+          stalePenalty,
+        'hk-stable30':
+          f.freq30 * 0.34 +
+          recentRank * 0.22 +
+          hotMid * 0.2 +
+          transitionSignal * 0.14 +
+          cycleReady * 0.1 -
+          stalePenalty,
+      };
+      const score = scoreByProfile[profile] ?? scoreByProfile['hk-balanced'];
+      const appearProb = Math.max(
+        0.025,
+        Math.min(
+          0.46,
+          hotMid * 0.26 +
+            hotShort * 0.2 +
+            transitionSignal * 0.24 +
+            cycleReady * 0.18 +
+            recentRank * 0.08 +
+            repeatSignal,
+        ),
+      );
+
+      return {
+        n: row.n,
+        score,
+        appearProb,
+        reasons: [
+          `港热${Math.round(hotMid * 100)}%`,
+          `近30期${Math.round(f.freq30 * Math.min(30, hn))}期/#${f.recent30Rank}`,
+          `港转移${Math.round(transitionSignal * 100)}%`,
+          `间隔${f.currentGap}期`,
+        ],
+        features: {
+          ...f,
+          hotShort,
+          hotMid,
+          recentRank,
+          cycleReady,
+          markov,
+          markov2,
+          transitionSignal,
+        },
+      };
+    });
+
+    rows.sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.appearProb - a.appearProb ||
+        a.n - b.n,
+    );
+    return rows;
+  }
+
+  private getHkHotPickPredictions(
+    hist: number[][],
+    count = 10,
+    profile = 'hk-balanced',
+    diversified = true,
+  ) {
+    const candidates = this.getHkHotPickCandidates(hist, profile);
+    const selected = diversified
+      ? this.diversifyHotPickCandidates(candidates, count)
+      : candidates.slice(0, count);
+
+    return selected.map((row, i) => ({
+      n: row.n,
+      rank: i + 1,
+      score: Math.round(row.score * 1000) / 1000,
+      appearProb: Math.round(row.appearProb * 1000) / 1000,
+      reasons: row.reasons,
+    }));
+  }
+
+  private backtestHkHotPick(
+    hist: number[][],
+    count = 10,
+    displayPeriods = 20,
+    profile = 'hk-balanced',
+    diversified = true,
+  ) {
+    const start = Math.max(80, hist.length - displayPeriods);
+    const details = [];
+    let totalHit = 0;
+    let successPeriods = 0;
+    let maxHit = 0;
+    let minHit = count;
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const predicted = this.getHkHotPickPredictions(
+        subHist,
+        count,
+        profile,
+        diversified,
+      ).map((p) => p.n);
+      const actualSet = new Set(hist[i]);
+      const hitNums = predicted.filter((n) => actualSet.has(n));
+      const hitCount = hitNums.length;
+      totalHit += hitCount;
+      if (hitCount >= 3) successPeriods++;
+      maxHit = Math.max(maxHit, hitCount);
+      minHit = Math.min(minHit, hitCount);
+      details.push({
+        periodOffset: hist.length - i,
+        predicted,
+        actual: hist[i],
+        hitNums,
+        hitCount,
+        success: hitCount >= 3,
+        accuracy: (hitCount / count) * 100,
+      });
+    }
+
+    const calcPeriods = hist.length - start;
+    return {
+      count,
+      strategy: profile,
+      diversified,
+      targetHit: 3,
+      calcPeriods,
+      details: details.reverse(),
+      totalHit,
+      avgHit: calcPeriods > 0 ? totalHit / calcPeriods : 0,
+      successPeriods,
+      successRate: calcPeriods > 0 ? (successPeriods / calcPeriods) * 100 : 0,
+      maxHit,
+      minHit: calcPeriods > 0 ? minHit : 0,
+      randomBaseline: this.getRandomHotPickHitAtLeastRate(count, 3) * 100,
+    };
+  }
+
+  private buildHkAdaptiveHotPick(hist: number[][]) {
+    const cacheKey = `hk:${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
+    if (this.memoHotPick.has(cacheKey)) {
+      return this.memoHotPick.get(cacheKey);
+    }
+
+    const profiles = [
+      'hk-balanced',
+      'hk-recent',
+      'hk-cycle',
+      'hk-transition',
+      'hk-stable30',
+    ];
+
+    if (hist.length < 80) {
+      const predictions = this.getHkHotPickPredictions(hist, 10, 'hk-balanced', true);
+      const fallback = {
+        mode: 'hk-hot-pick-fallback',
+        sourceAlgorithm: 'hk-independent',
+        selectedCount: 10,
+        targetHit: 3,
+        selectedStrategy: 'hk-balanced',
+        diversified: true,
+        predictions,
+        selectedStats: null,
+        optimizedStats: null,
+        groupProbability: this.getHotPickGroupProbability(predictions, null, 3),
+        contributionRanking: [],
+        options: [],
+        reason: 'hk-independent-history-too-short',
+      };
+      this.memoHotPick.set(cacheKey, fallback);
+      return fallback;
+    }
+
+    const variants = profiles.flatMap((profile) =>
+      [false, true].map((diversified) => {
+        const recent20 = this.backtestHkHotPick(hist, 10, 20, profile, diversified);
+        const recent60 = this.backtestHkHotPick(hist, 10, 60, profile, diversified);
+        return {
+          ...recent20,
+          profile,
+          recent20,
+          recent60,
+        };
+      }),
+    );
+    const scoreVariant = (stats: any) =>
+      stats.recent20.successRate * 1.45 +
+      stats.recent60.successRate * 0.65 +
+      stats.recent20.avgHit * 14 +
+      stats.recent60.avgHit * 6 +
+      Math.max(0, stats.recent20.successRate - stats.recent20.randomBaseline) * 0.28 +
+      Math.max(0, stats.recent60.successRate - stats.recent60.randomBaseline) * 0.18 +
+      stats.recent20.minHit * 1.8;
+    const selectedStats = [...variants].sort(
+      (a, b) =>
+        scoreVariant(b) - scoreVariant(a) ||
+        b.recent20.successRate - a.recent20.successRate ||
+        b.recent60.successRate - a.recent60.successRate ||
+        b.recent20.avgHit - a.recent20.avgHit,
+    )[0];
+    const predictions = this.getHkHotPickPredictions(
+      hist,
+      10,
+      selectedStats.profile,
+      selectedStats.diversified,
+    );
+    const selected20 = this.backtestHkHotPick(
+      hist,
+      10,
+      20,
+      selectedStats.profile,
+      selectedStats.diversified,
+    );
+    const selected60 = this.backtestHkHotPick(
+      hist,
+      10,
+      60,
+      selectedStats.profile,
+      selectedStats.diversified,
+    );
+    const contributionRanking = this.getHkHotPickCandidates(hist, selectedStats.profile)
+      .slice(0, 10)
+      .map((candidate) => ({
+        n: candidate.n,
+        samples: selected20.calcPeriods,
+        hitRate: Math.round((candidate.features.freq30 || 0) * 1000) / 10,
+        successLift: Math.round((candidate.score - selected20.randomBaseline / 100) * 1000) / 10,
+        avgHitLift: Math.round((candidate.appearProb - this.randomAppearProb) * 1000) / 1000,
+        contributionScore: candidate.score,
+      }));
+    const result = {
+      mode: 'hk-adaptive-hot-pick',
+      sourceAlgorithm: 'hk-independent',
+      selectedCount: 10,
+      selectedStrategy: selectedStats.profile,
+      targetHit: 3,
+      predictions,
+      selectedStats: selected20,
+      optimizedStats: selected20,
+      longBacktestStats: selected60,
+      groupProbability: this.getHotPickGroupProbability(predictions, selected20, 3),
+      contributionRanking,
+      options: variants
+        .sort(
+          (a, b) =>
+            scoreVariant(b) - scoreVariant(a) ||
+            b.recent20.successRate - a.recent20.successRate ||
+            b.recent60.successRate - a.recent60.successRate,
+        )
+        .slice(0, 6)
+        .map((stats) => ({
+          count: stats.count,
+          strategy: stats.profile,
+          diversified: stats.diversified,
+          successRate: stats.recent20.successRate,
+          avgHit: stats.recent20.avgHit,
+          successPeriods: stats.recent20.successPeriods,
+          calcPeriods: stats.recent20.calcPeriods,
+          longSuccessRate: stats.recent60.successRate,
+          longAvgHit: stats.recent60.avgHit,
+          randomBaseline: stats.recent20.randomBaseline,
+        })),
+      reason: 'hk-independent-rolling-backtest',
+      diversified: selectedStats.diversified,
+    };
+    this.memoHotPick.set(cacheKey, result);
+    return result;
   }
 
   private getRandomHotPickHitAtLeastRate(count: number, targetHit: number) {

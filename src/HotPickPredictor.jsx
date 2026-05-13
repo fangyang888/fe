@@ -53,6 +53,11 @@ export default function HotPickPredictor() {
       hot: '热度',
       due: '间隔',
       recent30: '近30联合',
+      'hk-balanced': '香港均衡',
+      'hk-recent': '香港近热',
+      'hk-cycle': '香港周期',
+      'hk-transition': '香港转移',
+      'hk-stable30': '香港30期稳定',
     };
     return labels[strategy] || strategy || '--';
   };
@@ -69,6 +74,12 @@ export default function HotPickPredictor() {
         return '固定10码方案，已结合近30期出现期数/排名与滚动贡献筛选。';
       }
       return '固定10码方案，按整组3+概率和滚动贡献筛选。';
+    }
+    if (hotPick.reason === 'hk-independent-rolling-backtest') {
+      return '香港独立算法，按香港库近20/60期滚动回测自动选择策略。';
+    }
+    if (hotPick.reason === 'hk-independent-history-too-short') {
+      return '香港独立算法样本偏少，先使用香港均衡方案。';
     }
     if (hotPick.reason === 'six-count-passed-recent-backtest') {
       return '近10期6码回测达标，保持6码方案。';
@@ -805,13 +816,17 @@ export default function HotPickPredictor() {
                     <div className="hot-pick-stat-value">
                       {formatPercent(hotPick.selectedStats.successRate)}
                     </div>
-                    <div className="hot-pick-stat-label">近10期命中3+占比</div>
+                    <div className="hot-pick-stat-label">
+                      近{hotPick.selectedStats.calcPeriods}期命中3+占比
+                    </div>
                   </div>
                   <div className="hot-pick-stat">
                     <div className="hot-pick-stat-value">
                       {hotPick.selectedStats.avgHit.toFixed(2)}
                     </div>
-                    <div className="hot-pick-stat-label">近10期平均命中数</div>
+                    <div className="hot-pick-stat-label">
+                      近{hotPick.selectedStats.calcPeriods}期平均命中数
+                    </div>
                   </div>
                   <div className="hot-pick-stat">
                     <div className="hot-pick-stat-value">
@@ -825,9 +840,31 @@ export default function HotPickPredictor() {
                     </div>
                     <div className="hot-pick-stat-label">随机基线</div>
                   </div>
+                  {hotPick.longBacktestStats && (
+                    <div className="hot-pick-stat">
+                      <div className="hot-pick-stat-value">
+                        {formatPercent(hotPick.longBacktestStats.successRate)}
+                      </div>
+                      <div className="hot-pick-stat-label">
+                        近{hotPick.longBacktestStats.calcPeriods}期命中3+占比
+                      </div>
+                    </div>
+                  )}
+                  {hotPick.longBacktestStats && (
+                    <div className="hot-pick-stat">
+                      <div className="hot-pick-stat-value">
+                        {hotPick.longBacktestStats.avgHit.toFixed(2)}
+                      </div>
+                      <div className="hot-pick-stat-label">
+                        近{hotPick.longBacktestStats.calcPeriods}期平均命中数
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                <div className="hot-pick-section-title">近 10 期回测详情</div>
+                <div className="hot-pick-section-title">
+                  近 {hotPick.selectedStats.calcPeriods} 期回测详情
+                </div>
                 <div className="hot-pick-backtest">
                   {hotPick.selectedStats.details.map((item) => (
                     <div key={item.periodOffset} className="hot-pick-row">
@@ -884,7 +921,9 @@ export default function HotPickPredictor() {
                   <div className="hot-pick-kill-head">
                     <div>
                       <div className="hot-pick-kill-title">
-                        基于近30期热度 + NewKill 多模型算法
+                        {hotPickKill5.sourceAlgorithm === 'hk-kill5-independent'
+                          ? '香港独立 5杀算法'
+                          : '基于近30期热度 + NewKill 多模型算法'}
                       </div>
                       <div className="hot-pick-kill-note">{hotPickKill5.note}</div>
                     </div>

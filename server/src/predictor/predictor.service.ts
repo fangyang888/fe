@@ -289,7 +289,7 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private getHotPickResponseCacheKey(sourceType: HistorySourceType, rawHist: any[]) {
-    return `predictor:hot-pick:v2:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
+    return `predictor:hot-pick:v3:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getKillResponseCacheKey(rawHist: any[]) {
@@ -946,8 +946,7 @@ export class PredictorService implements OnModuleDestroy {
       const consensusBonus = consensus * 0.9;
       const recentAppearPenalty =
         absence.window10.count >= 3 ? 2.6 : absence.window10.count === 2 ? 1.4 : 0;
-      const killProbability = Math.min(
-        98.8,
+      const blendedKillProbability =
         modelKillProbability * 0.32 +
           stableAbsence * 0.26 +
           cold30 * 0.17 +
@@ -955,7 +954,45 @@ export class PredictorService implements OnModuleDestroy {
           rankColdProbability * 0.07 +
           gapColdProbability * 0.05 +
           consensusBonus -
-          recentAppearPenalty,
+          recentAppearPenalty;
+
+      let empiricalFloor = 0;
+      if (
+        rolling &&
+        rolling.samples >= 12 &&
+        rollingModelKillRate >= 96 &&
+        absence.window20.killRate >= 90 &&
+        recentCount <= 2 &&
+        absence.window10.count <= 1
+      ) {
+        empiricalFloor = 95.2 + Math.min(1.8, (rollingModelKillRate - 96) * 0.35);
+      } else if (
+        rolling &&
+        rolling.samples >= 10 &&
+        rollingModelKillRate >= 94 &&
+        stableAbsence >= 90 &&
+        recentCount <= 2 &&
+        absence.window10.count <= 1
+      ) {
+        empiricalFloor = 94.4 + Math.min(1.2, (rollingModelKillRate - 94) * 0.28);
+      } else if (
+        rolling &&
+        rolling.samples >= 8 &&
+        rollingModelKillRate >= 95 &&
+        stableAbsence >= 88 &&
+        recentCount <= 3 &&
+        absence.window10.count <= 1
+      ) {
+        empiricalFloor = 94 + Math.min(0.9, (rollingModelKillRate - 95) * 0.22);
+      }
+
+      if (recentCount === 0 && absence.currentGap >= 25 && absence.window40.killRate >= 97) {
+        empiricalFloor = Math.max(empiricalFloor, 95.8);
+      }
+
+      const killProbability = Math.min(
+        98.8,
+        Math.max(blendedKillProbability, empiricalFloor) - recentAppearPenalty * 0.25,
       );
 
       const reasons = [
@@ -1008,7 +1045,7 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
-  private backtestHkHotPickKill5(hist: number[][], displayPeriods = 20): any {
+  private backtestHkHotPickKill5(hist: number[][], displayPeriods = 10): any {
     const start = Math.max(80, hist.length - displayPeriods);
     const details = [];
     let totalCorrect = 0;
@@ -1099,7 +1136,7 @@ export class PredictorService implements OnModuleDestroy {
       targetCount: 5,
       predictions,
       candidates: candidates.slice(0, 12),
-      backtest: includeBacktest ? this.backtestHkHotPickKill5(hist, 20) : null,
+      backtest: includeBacktest ? this.backtestHkHotPickKill5(hist, 10) : null,
       sourceAlgorithm: 'hk-kill5-independent',
       note:
         predictions.length >= 5

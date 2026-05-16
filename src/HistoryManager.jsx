@@ -50,6 +50,16 @@ export default function HistoryManager() {
     fetchRecords();
   }, [activeTab, queryYear]);
 
+  const refreshHotPickCache = async () => {
+    const query = activeTab === "hk" ? "?type=hk" : "";
+    const res = await fetch(`/api/predictor/hot-pick/cache/refresh${query}`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await getErrorMessage(res, "HotPickPredictor 缓存刷新失败"));
+    return res.json();
+  };
+
   // 新增
   const handleAdd = async () => {
     const numbers = inputs.map((n) => parseInt(n.trim(), 10));
@@ -106,15 +116,23 @@ export default function HistoryManager() {
       });
       if (!res.ok) throw new Error(await getErrorMessage(res, "同步失败"));
       const data = await res.json();
+      let cacheText = "";
+      if (data.inserted > 0) {
+        const cacheResult = await refreshHotPickCache();
+        const persisted = cacheResult.cacheMeta?.persisted !== false;
+        cacheText = persisted
+          ? "；HotPickPredictor Redis 缓存已更新"
+          : "；HotPickPredictor Redis 缓存写入失败";
+      }
       if (mode === "year") {
         setMsg({
           type: "success",
-          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期`,
+          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期${cacheText}`,
         });
       } else {
         setMsg({
           type: data.inserted > 0 ? "success" : "error",
-          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}`,
+          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}${cacheText}`,
         });
       }
       fetchRecords();

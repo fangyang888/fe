@@ -19,7 +19,7 @@ import HotPickPredictor from './HotPickPredictor.jsx';
 import HistoryManager from './HistoryManager.jsx';
 // @ts-ignore
 import KillPredictorHK from './KillPredictorHK.jsx';
-
+// fabu
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter basename="/fe">
     <Routes>

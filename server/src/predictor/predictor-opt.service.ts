@@ -322,7 +322,7 @@ export class PredictorOptService implements OnModuleDestroy {
   }
 
   private getHotPickResponseCacheKey(sourceType: HistorySourceType, rawHist: any[]) {
-    return `predictor:hot-pick:v3:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
+    return `predictor-opt:hot-pick:v1:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getKillResponseCacheKey(rawHist: any[]) {
@@ -909,7 +909,7 @@ export class PredictorOptService implements OnModuleDestroy {
       const subHist = hist.slice(0, i);
       const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
       const result: any = this.buildHotPickKill5(subHist, occurrenceStats, false, true);
-      const displayed: any[] = (result.predictions || []).slice(0, 5);
+      const displayed: any[] = this.getHotPickKill5Displayed(result);
       const actualSet = new Set(hist[i]);
       const failed = displayed.filter((item: any) => actualSet.has(item.n));
       const correctCount = displayed.length - failed.length;
@@ -1211,7 +1211,7 @@ export class PredictorOptService implements OnModuleDestroy {
       const subHist = hist.slice(0, i);
       const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
       const result: any = this.buildHkHotPickKill5(subHist, occurrenceStats, false);
-      const displayed: any[] = (result.predictions || []).slice(0, 5);
+      const displayed: any[] = this.getHotPickKill5Displayed(result);
       const actualSet = new Set(hist[i]);
       const failed = displayed.filter((item: any) => actualSet.has(item.n));
       const correctCount = displayed.length - failed.length;

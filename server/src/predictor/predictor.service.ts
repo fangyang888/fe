@@ -698,7 +698,7 @@ export class PredictorService implements OnModuleDestroy {
 
     const response = {
       historyMeta: this.getHistoryMeta(rawHist, 'default'),
-      killSevenBacktest: this.buildKillSevenStats(hist),
+      killSevenBacktest: this.buildKillSevenBacktest(hist),
       generatedAt: new Date().toISOString(),
       cacheMeta: {
         hit: false,
@@ -726,6 +726,52 @@ export class PredictorService implements OnModuleDestroy {
         ...(response.cacheMeta || {}),
         action: 'refreshed',
       },
+    };
+  }
+
+  private buildKillSevenBacktest(hist: number[][]) {
+    const current = this.buildKillSevenCurrent(hist);
+    const combo = (current.selected || []).map((item: any) => item.n);
+    const targetAllCorrectRate = current.targetAllCorrectRate;
+    const evalPeriods = Math.min(80, Math.max(30, hist.length - 100));
+    const start = Math.max(60, hist.length - evalPeriods);
+    const actualEvalPeriods = Math.max(0, hist.length - start);
+    let allCorrectPeriods = 0;
+    const details = [];
+
+    for (let i = start; i < hist.length; i++) {
+      const actualSet = new Set(hist[i]);
+      const failed = combo.filter((n) => actualSet.has(n));
+      if (failed.length === 0) allCorrectPeriods++;
+      if (i >= hist.length - 10) {
+        details.push({
+          periodOffset: hist.length - i,
+          predicted: combo,
+          actual: hist[i],
+          failed,
+          correctCount: combo.length - failed.length,
+          accuracy: combo.length > 0 ? ((combo.length - failed.length) / combo.length) * 100 : 0,
+        });
+      }
+    }
+
+    const allCorrectRate =
+      actualEvalPeriods > 0 ? (allCorrectPeriods / actualEvalPeriods) * 100 : 0;
+    const thresholdMet = allCorrectRate >= targetAllCorrectRate;
+
+    return {
+      ...current,
+      thresholdMet,
+      backtest: {
+        calcPeriods: actualEvalPeriods,
+        startOffset: hist.length - start,
+        allCorrectPeriods,
+        allCorrectRate: Math.round(allCorrectRate * 10) / 10,
+        details: details.reverse(),
+      },
+      note: thresholdMet
+        ? '本期7码组合在历史统计窗口内达到90%+整组全中率。'
+        : '本期7码组合在当前历史统计窗口内未达到90%整组全中率。',
     };
   }
 

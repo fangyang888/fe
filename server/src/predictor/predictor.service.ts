@@ -173,6 +173,7 @@ export class PredictorService implements OnModuleDestroy {
   private memoHotPick = new BoundedCache<string, any>(100);
   private memoHistoricalLearning = new BoundedCache<number, any>(500);
   private memoKillPredictionResponse = new BoundedCache<string, any>(20);
+  private memoKillSevenResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
   private lastHistorySource: HistorySourceType = 'default';
   private readonly predictorRedisTtlSeconds = 12 * 60 * 60;
@@ -275,6 +276,7 @@ export class PredictorService implements OnModuleDestroy {
       this.memoHotPick.clear();
       this.memoHistoricalLearning.clear();
       this.memoKillPredictionResponse.clear();
+      this.memoKillSevenResponse.clear();
     }
     this.lastHistLength = currentHistLength;
     this.lastHistorySource = source;
@@ -294,6 +296,10 @@ export class PredictorService implements OnModuleDestroy {
 
   private getKillResponseCacheKey(rawHist: any[]) {
     return `predictor:kill:v2:default:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
+  private getKillSevenResponseCacheKey(rawHist: any[]) {
+    return `predictor:kill-seven:v1:default:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getHistArrayCacheKey(hist: number[][]) {
@@ -557,6 +563,86 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
+  async getKillSevenStats(options: { forceRefresh?: boolean } = {}) {
+    const rawHist = await this.historyService.findAll();
+    this.checkAndClearCache(rawHist.length, 'default');
+    if (options.forceRefresh) {
+      this.memoKillSevenResponse.clear();
+    }
+    const responseCacheKey = this.getKillSevenResponseCacheKey(rawHist);
+    const memoCacheKey = this.getHistoryCacheKey(rawHist);
+
+    if (!options.forceRefresh && this.memoKillSevenResponse.has(memoCacheKey)) {
+      const cached = this.memoKillSevenResponse.get(memoCacheKey);
+      return {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'memory',
+          key: responseCacheKey,
+        },
+      };
+    }
+
+    const cached = options.forceRefresh ? null : await this.getJsonCache<any>(responseCacheKey);
+    if (cached) {
+      const response = {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'redis',
+          key: responseCacheKey,
+        },
+      };
+      this.memoKillSevenResponse.set(memoCacheKey, response);
+      return response;
+    }
+
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+
+    const response = {
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
+      killSeven: this.buildKillSevenStats(hist),
+      generatedAt: new Date().toISOString(),
+      cacheMeta: {
+        hit: false,
+        store: 'redis',
+        key: responseCacheKey,
+        ttlSeconds: this.predictorRedisTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    const cachedInRedis = await this.setJsonCache(
+      responseCacheKey,
+      response,
+      this.predictorRedisTtlSeconds,
+    );
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoKillSevenResponse.set(memoCacheKey, response);
+    return response;
+  }
+
+  async refreshKillSevenCache() {
+    const response = await this.getKillSevenStats({ forceRefresh: true });
+    return {
+      ...response,
+      cacheMeta: {
+        ...(response.cacheMeta || {}),
+        action: 'refreshed',
+      },
+    };
+  }
+
   private getRecentOccurrenceStats(rawHist: any[], windowSize = 30) {
     const recentRows = rawHist.slice(-windowSize);
     const counts = new Array(50).fill(0);
@@ -608,6 +694,309 @@ export class PredictorService implements OnModuleDestroy {
       })),
       windowSize,
     );
+  }
+
+  private getLegacyKillPredictor10Numbers(hist: number[][]): number[] {
+    if (hist.length < 10) return [];
+    const opts = this.getAdaptiveKill10Opts(hist);
+    const baseNums = this.kill10WithOpts(hist, opts).map((item: any) => item.n);
+    const top8 = baseNums.slice(0, 8);
+    const lowCVPicks = this.pickLowCVFromLastRow(hist, 2).map((item: any) => item.n).filter(
+      (n) => !top8.includes(n),
+    );
+    const finalNums = [...top8, ...lowCVPicks];
+    if (finalNums.length < 10) {
+      finalNums.push(...baseNums.slice(8).filter((n) => !finalNums.includes(n)));
+    }
+    return finalNums.slice(0, 10);
+  }
+
+  private getHotPickPredictor5Numbers(hist: number[][]): number[] {
+    if (hist.length < 30) return [];
+    const occurrenceStats = this.getRecentOccurrenceStatsFromHist(hist, 30);
+    return this.getHotPickKill5Displayed(
+      this.buildHotPickKill5(hist, occurrenceStats, false),
+    )
+      .slice(0, 5)
+      .map((item: any) => item.n);
+  }
+
+  private getNewKillPredictor10Numbers(hist: number[][]): number[] {
+    if (hist.length < 30) return [];
+    const engineResult = this.runKillEngine(hist, 10);
+    const modelPredictions =
+      engineResult.predictions.length > 0
+        ? engineResult.predictions
+        : this.getProbabilityKillPredictions(hist, 10);
+    const hybridResult = this.buildAdaptiveHybridKill10(hist, modelPredictions);
+    return (hybridResult.predictions || modelPredictions)
+      .slice(0, 10)
+      .map((item: any) => item.n);
+  }
+
+  private getKillSevenSources(hist: number[][]) {
+    return [
+      {
+        key: 'hotPick5',
+        name: 'HotPickPredictor 5杀',
+        count: 5,
+        numbers: this.getHotPickPredictor5Numbers(hist),
+      },
+      {
+        key: 'legacyKill10',
+        name: 'KillPredictor 10杀',
+        count: 10,
+        numbers: this.getLegacyKillPredictor10Numbers(hist),
+      },
+      {
+        key: 'newKill10',
+        name: 'NewKillPredictor 10杀',
+        count: 10,
+        numbers: this.getNewKillPredictor10Numbers(hist),
+      },
+    ];
+  }
+
+  private buildKillSevenStats(hist: number[][]) {
+    const targetCount = 7;
+    const targetAllCorrectRate = 90;
+    if (hist.length < 100) {
+      return {
+        targetCount,
+        targetAllCorrectRate,
+        selected: [],
+        thresholdMet: false,
+        reason: '历史不足100期，暂不生成7码统计组合。',
+        sources: [],
+        backtest: { calcPeriods: 0, allCorrectRate: 0, details: [] },
+      };
+    }
+
+    const evalPeriods = Math.min(80, Math.max(30, hist.length - 100));
+    const start = Math.max(60, hist.length - evalPeriods);
+    const numberStats = new Map<number, any>();
+    const sourceStats = new Map<string, any>();
+
+    const ensureNumber = (n: number) => {
+      if (!numberStats.has(n)) {
+        numberStats.set(n, {
+          n,
+          sourceSamples: 0,
+          sourceSuccesses: 0,
+          sourceHits: {},
+          periodAbsences: 0,
+        });
+      }
+      return numberStats.get(n);
+    };
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const actualSet = new Set(hist[i]);
+      const sources = this.getKillSevenSources(subHist);
+
+      for (const source of sources) {
+        const uniqueNums = [...new Set(source.numbers)].slice(0, source.count);
+        if (!sourceStats.has(source.key)) {
+          sourceStats.set(source.key, {
+            key: source.key,
+            name: source.name,
+            count: source.count,
+            allCorrectPeriods: 0,
+            calcPeriods: 0,
+            totalCorrect: 0,
+            totalPredicted: 0,
+          });
+        }
+        const stat = sourceStats.get(source.key);
+        const failed = uniqueNums.filter((n) => actualSet.has(n));
+        stat.calcPeriods++;
+        stat.totalPredicted += uniqueNums.length;
+        stat.totalCorrect += uniqueNums.length - failed.length;
+        if (failed.length === 0) stat.allCorrectPeriods++;
+
+        for (const n of uniqueNums) {
+          const row = ensureNumber(n);
+          row.sourceSamples++;
+          row.sourceSuccesses += actualSet.has(n) ? 0 : 1;
+          row.sourceHits[source.key] = (row.sourceHits[source.key] || 0) + 1;
+        }
+      }
+    }
+
+    const currentSources = this.getKillSevenSources(hist);
+    const currentCandidateSet = new Set<number>();
+    currentSources.forEach((source) =>
+      source.numbers.forEach((n) => currentCandidateSet.add(n)),
+    );
+
+    for (const n of currentCandidateSet) {
+      const row = ensureNumber(n);
+      let absences = 0;
+      for (let i = start; i < hist.length; i++) {
+        if (!hist[i].includes(n)) absences++;
+      }
+      row.periodAbsences = absences;
+    }
+
+    const currentSourceByNum = new Map<number, string[]>();
+    for (const source of currentSources) {
+      for (const n of source.numbers) {
+        const list = currentSourceByNum.get(n) || [];
+        list.push(source.name);
+        currentSourceByNum.set(n, list);
+      }
+    }
+
+    const candidates = [...currentCandidateSet]
+      .map((n) => {
+        const stat = ensureNumber(n);
+        const sourceKillRate =
+          stat.sourceSamples > 0 ? (stat.sourceSuccesses / stat.sourceSamples) * 100 : 0;
+        const periodKillRate =
+          evalPeriods > 0 ? (stat.periodAbsences / evalPeriods) * 100 : 0;
+        const sources = currentSourceByNum.get(n) || [];
+        const score =
+          periodKillRate * 0.55 +
+          sourceKillRate * 0.35 +
+          Math.min(10, sources.length * 3 + stat.sourceSamples * 0.03);
+        return {
+          n,
+          sourceKillRate,
+          periodKillRate,
+          sourceSamples: stat.sourceSamples,
+          sourceSuccesses: stat.sourceSuccesses,
+          sources,
+          sourceHits: stat.sourceHits,
+          score,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.periodKillRate - a.periodKillRate ||
+          b.sourceKillRate - a.sourceKillRate ||
+          b.sources.length - a.sources.length ||
+          a.n - b.n,
+      )
+      .slice(0, 20);
+
+    const evaluateCombo = (combo: number[]) => {
+      let allCorrectPeriods = 0;
+      const details = [];
+      for (let i = start; i < hist.length; i++) {
+        const actualSet = new Set(hist[i]);
+        const failed = combo.filter((n) => actualSet.has(n));
+        if (failed.length === 0) allCorrectPeriods++;
+        if (i >= hist.length - 10) {
+          details.push({
+            periodOffset: hist.length - i,
+            predicted: combo,
+            actual: hist[i],
+            failed,
+            correctCount: combo.length - failed.length,
+            accuracy: ((combo.length - failed.length) / combo.length) * 100,
+          });
+        }
+      }
+      return {
+        allCorrectPeriods,
+        allCorrectRate:
+          evalPeriods > 0 ? (allCorrectPeriods / evalPeriods) * 100 : 0,
+        details: details.reverse(),
+      };
+    };
+
+    let bestCombo: number[] = [];
+    let bestEval: any = { allCorrectRate: -1, allCorrectPeriods: 0, details: [] };
+    let bestAvgScore = -1;
+    const pool = candidates.map((item) => item.n);
+    const visit = (startIndex: number, combo: number[]) => {
+      if (combo.length === targetCount) {
+        const evaluated = evaluateCombo(combo);
+        const avgScore =
+          combo.reduce(
+            (sum, n) => sum + (candidates.find((item) => item.n === n)?.score || 0),
+            0,
+          ) / combo.length;
+        if (
+          evaluated.allCorrectRate > bestEval.allCorrectRate ||
+          (evaluated.allCorrectRate === bestEval.allCorrectRate && avgScore > bestAvgScore)
+        ) {
+          bestCombo = [...combo];
+          bestEval = evaluated;
+          bestAvgScore = avgScore;
+        }
+        return;
+      }
+      const remaining = targetCount - combo.length;
+      for (let i = startIndex; i <= pool.length - remaining; i++) {
+        combo.push(pool[i]);
+        visit(i + 1, combo);
+        combo.pop();
+      }
+    };
+    visit(0, []);
+
+    const selected = bestCombo
+      .map((n, index) => {
+        const candidate = candidates.find((item) => item.n === n);
+        return {
+          ...candidate,
+          rank: index + 1,
+          sourceKillRate: Math.round((candidate?.sourceKillRate || 0) * 10) / 10,
+          periodKillRate: Math.round((candidate?.periodKillRate || 0) * 10) / 10,
+          score: Math.round((candidate?.score || 0) * 10) / 10,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      targetCount,
+      targetAllCorrectRate,
+      thresholdMet: bestEval.allCorrectRate >= targetAllCorrectRate,
+      selected,
+      candidates: candidates.map((item) => ({
+        ...item,
+        sourceKillRate: Math.round(item.sourceKillRate * 10) / 10,
+        periodKillRate: Math.round(item.periodKillRate * 10) / 10,
+        score: Math.round(item.score * 10) / 10,
+      })),
+      sources: currentSources.map((source) => ({
+        key: source.key,
+        name: source.name,
+        count: source.count,
+        numbers: source.numbers,
+        stats: (() => {
+          const stat = sourceStats.get(source.key);
+          return stat
+            ? {
+                allCorrectRate:
+                  stat.calcPeriods > 0
+                    ? Math.round((stat.allCorrectPeriods / stat.calcPeriods) * 1000) / 10
+                    : 0,
+                singleAccuracy:
+                  stat.totalPredicted > 0
+                    ? Math.round((stat.totalCorrect / stat.totalPredicted) * 1000) / 10
+                    : 0,
+                allCorrectPeriods: stat.allCorrectPeriods,
+                calcPeriods: stat.calcPeriods,
+              }
+            : null;
+        })(),
+      })),
+      backtest: {
+        calcPeriods: evalPeriods,
+        startOffset: hist.length - start,
+        allCorrectPeriods: bestEval.allCorrectPeriods,
+        allCorrectRate: Math.round(bestEval.allCorrectRate * 10) / 10,
+        details: bestEval.details,
+      },
+      note:
+        bestEval.allCorrectRate >= targetAllCorrectRate
+          ? '当前7码组合在历史统计窗口内达到90%+整组全中率。'
+          : '当前历史统计窗口内没有找到90%+整组全中组合，已返回最高全中率组合。',
+    };
   }
 
   private getRecentModelKillRates(hist: number[][], evalPeriods = 30) {

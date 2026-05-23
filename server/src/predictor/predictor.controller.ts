@@ -25,6 +25,16 @@ export class PredictorController {
     return this.predictorService.getHotPickPredictionResponse(type);
   }
 
+  @Get('kill-seven')
+  async getKillSevenStats() {
+    return this.predictorService.getKillSevenStats();
+  }
+
+  @Post('kill-seven/cache/refresh')
+  async refreshKillSevenCache() {
+    return this.predictorService.refreshKillSevenCache();
+  }
+
   @Post('hot-pick/cache/clear')
   async clearHotPickCache(@Query('type') type?: string) {
     return this.predictorService.clearHotPickCache(type);

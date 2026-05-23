@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 
 export default function KillSevenStats() {
   const [data, setData] = useState(null);
+  const [backtestData, setBacktestData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [backtestLoading, setBacktestLoading] = useState(false);
   const [cacheLoading, setCacheLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [backtestError, setBacktestError] = useState(null);
 
   useEffect(() => {
     const load = async () => {
@@ -16,10 +19,12 @@ export default function KillSevenStats() {
           const message = await res.text();
           throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
         }
-        setData(await res.json());
+        const nextData = await res.json();
+        setData(nextData);
+        setBacktestData(null);
       } catch (err) {
         console.error(err);
-        setError(`7码统计加载失败。${err.message ? `（${err.message}）` : ''}`);
+        setError(`本期预测加载失败。${err.message ? `（${err.message}）` : ''}`);
       } finally {
         setLoading(false);
       }
@@ -39,7 +44,9 @@ export default function KillSevenStats() {
         const message = await res.text();
         throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
       }
-      setData(await res.json());
+      const nextData = await res.json();
+      setData(nextData);
+      setBacktestData(null);
       setLoading(false);
     } catch (err) {
       console.error(err);
@@ -49,12 +56,31 @@ export default function KillSevenStats() {
     }
   };
 
+  const loadBacktest = async () => {
+    setBacktestLoading(true);
+    setBacktestError(null);
+    try {
+      const res = await fetch('/api/predictor/kill-seven/backtest', { cache: 'no-store' });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(`HTTP ${res.status}: ${message || res.statusText}`);
+      }
+      setBacktestData(await res.json());
+    } catch (err) {
+      console.error(err);
+      setBacktestError(`回测数据加载失败。${err.message ? `（${err.message}）` : ''}`);
+    } finally {
+      setBacktestLoading(false);
+    }
+  };
+
   const formatPercent = (value, digits = 1) => {
     if (typeof value !== 'number' || Number.isNaN(value)) return '--';
     return `${value.toFixed(digits)}%`;
   };
 
   const result = data?.killSeven;
+  const backtestResult = backtestData?.killSevenBacktest;
 
   return (
     <div className="kill-seven-page">
@@ -130,6 +156,20 @@ export default function KillSevenStats() {
         .kill-seven-cache-btn.busy {
           color: #93c5fd;
           cursor: progress;
+        }
+        .kill-seven-cache-btn:disabled {
+          opacity: 0.62;
+          cursor: progress;
+        }
+        .kill-seven-cache-btn.secondary {
+          background: rgba(20, 184, 166, 0.12);
+          border-color: rgba(94, 234, 212, 0.28);
+          color: #99f6e4;
+        }
+        .kill-seven-cache-btn.secondary:hover {
+          background: rgba(20, 184, 166, 0.2);
+          border-color: rgba(94, 234, 212, 0.48);
+          color: #ecfeff;
         }
         .kill-seven-cache-meta {
           color: #64748b;
@@ -277,7 +317,7 @@ export default function KillSevenStats() {
           <div>
             <h1 className="kill-seven-title">7码全中统计精选</h1>
             <div className="kill-seven-subtitle">
-              汇总 HotPickPredictor 5杀、KillPredictor 10杀、NewKillPredictor 10杀，按历史回测统计筛选当前 7 个杀码。
+              汇总 HotPickPredictor 5杀、KillPredictor 10杀、NewKillPredictor 10杀。本期预测先加载，历史回测按需单独加载。
             </div>
           </div>
           <div className="kill-seven-actions">
@@ -290,6 +330,7 @@ export default function KillSevenStats() {
               type="button"
               className={`kill-seven-cache-btn ${cacheLoading ? 'busy' : ''}`}
               onClick={generateCache}
+              disabled={cacheLoading}
             >
               {cacheLoading ? '生成中...' : '生成缓存'}
             </button>
@@ -301,7 +342,7 @@ export default function KillSevenStats() {
           </div>
         </div>
 
-        {loading && <div className="kill-seven-card kill-seven-loading">正在计算历史统计...</div>}
+        {loading && <div className="kill-seven-card kill-seven-loading">正在加载本期预测...</div>}
         {error && <div className="kill-seven-error">{error}</div>}
 
         {!loading && !error && result && (
@@ -309,14 +350,14 @@ export default function KillSevenStats() {
             <div className="kill-seven-card">
               <div className="kill-seven-stats">
                 <div className="kill-seven-stat">
-                  <div className="kill-seven-stat-value">{formatPercent(result.backtest?.allCorrectRate)}</div>
-                  <div className="kill-seven-stat-label">7码整组全中率</div>
+                  <div className="kill-seven-stat-value">{formatPercent(result.estimate?.allCorrectRate)}</div>
+                  <div className="kill-seven-stat-label">本期轻量估算</div>
                 </div>
                 <div className="kill-seven-stat">
                   <div className="kill-seven-stat-value">
-                    {result.backtest?.allCorrectPeriods}/{result.backtest?.calcPeriods}
+                    {result.estimate?.allCorrectPeriods ?? '--'}/{result.estimate?.calcPeriods ?? '--'}
                   </div>
-                  <div className="kill-seven-stat-label">全中期数</div>
+                  <div className="kill-seven-stat-label">估算期数</div>
                 </div>
                 <div className="kill-seven-stat">
                   <div className="kill-seven-stat-value">{formatPercent(result.targetAllCorrectRate, 0)}</div>
@@ -346,7 +387,7 @@ export default function KillSevenStats() {
                   <div key={source.key} className="kill-seven-source">
                     <div className="kill-seven-source-top">
                       <span>{source.name}</span>
-                      <span>{formatPercent(source.stats?.allCorrectRate)}</span>
+                      <span>{source.stats ? formatPercent(source.stats.allCorrectRate) : '本期'}</span>
                     </div>
                     <div className="kill-seven-small-nums">
                       {(source.numbers || []).map((n) => (
@@ -361,7 +402,9 @@ export default function KillSevenStats() {
                       ))}
                     </div>
                     <div className="kill-seven-muted">
-                      单号准确率 {formatPercent(source.stats?.singleAccuracy)} · 全中 {source.stats?.allCorrectPeriods}/{source.stats?.calcPeriods}
+                      {source.stats
+                        ? `单号准确率 ${formatPercent(source.stats.singleAccuracy)} · 全中 ${source.stats.allCorrectPeriods}/${source.stats.calcPeriods}`
+                        : '这里只展示本期来源结果；回测统计请单独加载。'}
                     </div>
                   </div>
                 ))}
@@ -369,31 +412,68 @@ export default function KillSevenStats() {
             </div>
 
             <div className="kill-seven-card">
-              <div className="kill-seven-section-title">近10期7码回测明细</div>
-              <div className="kill-seven-detail-grid">
-                {(result.backtest?.details || []).map((item) => (
-                  <div key={item.periodOffset} className="kill-seven-detail">
-                    <div className="kill-seven-detail-top">
-                      <span>倒数第 {item.periodOffset} 期</span>
-                      <span>{item.correctCount}/7 · {formatPercent(item.accuracy)}</span>
+              <div className="kill-seven-section-title">历史回测数据</div>
+              <button
+                type="button"
+                className={`kill-seven-cache-btn secondary ${backtestLoading ? 'busy' : ''}`}
+                onClick={loadBacktest}
+                disabled={backtestLoading}
+              >
+                {backtestLoading ? '加载中...' : backtestResult ? '重新加载回测' : '加载回测数据'}
+              </button>
+              {backtestData?.cacheMeta && (
+                <div className="kill-seven-muted">
+                  回测缓存 {backtestData.cacheMeta.store}{backtestData.cacheMeta.hit ? ' 命中' : ' 已生成'}
+                </div>
+              )}
+              {backtestError && <div className="kill-seven-error" style={{ marginTop: 12 }}>{backtestError}</div>}
+
+              {backtestResult && (
+                <>
+                  <div className="kill-seven-stats" style={{ marginTop: 16 }}>
+                    <div className="kill-seven-stat">
+                      <div className="kill-seven-stat-value">{formatPercent(backtestResult.backtest?.allCorrectRate)}</div>
+                      <div className="kill-seven-stat-label">7码整组全中率</div>
                     </div>
-                    <div className="kill-seven-small-nums">
-                      {(item.predicted || []).map((n) => (
-                        <span
-                          key={n}
-                          className={`kill-seven-small-num ${(item.failed || []).includes(n) ? 'failed' : ''}`}
-                        >
-                          {n}
-                        </span>
-                      ))}
+                    <div className="kill-seven-stat">
+                      <div className="kill-seven-stat-value">
+                        {backtestResult.backtest?.allCorrectPeriods}/{backtestResult.backtest?.calcPeriods}
+                      </div>
+                      <div className="kill-seven-stat-label">全中期数</div>
                     </div>
-                    <div className="kill-seven-muted">
-                      实际 {item.actual?.join(', ')}
-                      {(item.failed || []).length > 0 ? ` · 误杀 ${item.failed.join(', ')}` : ' · 无误杀'}
+                    <div className="kill-seven-stat">
+                      <div className="kill-seven-stat-value">{formatPercent(backtestResult.targetAllCorrectRate, 0)}</div>
+                      <div className="kill-seven-stat-label">目标阈值</div>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  <div className="kill-seven-section-title">近10期7码回测明细</div>
+                  <div className="kill-seven-detail-grid">
+                    {(backtestResult.backtest?.details || []).map((item) => (
+                      <div key={item.periodOffset} className="kill-seven-detail">
+                        <div className="kill-seven-detail-top">
+                          <span>倒数第 {item.periodOffset} 期</span>
+                          <span>{item.correctCount}/7 · {formatPercent(item.accuracy)}</span>
+                        </div>
+                        <div className="kill-seven-small-nums">
+                          {(item.predicted || []).map((n) => (
+                            <span
+                              key={n}
+                              className={`kill-seven-small-num ${(item.failed || []).includes(n) ? 'failed' : ''}`}
+                            >
+                              {n}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="kill-seven-muted">
+                          实际 {item.actual?.join(', ')}
+                          {(item.failed || []).length > 0 ? ` · 误杀 ${item.failed.join(', ')}` : ' · 无误杀'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             <a href="/fe/kill/new" className="kill-seven-back">返回杀码主页面</a>

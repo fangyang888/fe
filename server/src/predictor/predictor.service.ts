@@ -174,6 +174,7 @@ export class PredictorService implements OnModuleDestroy {
   private memoHistoricalLearning = new BoundedCache<number, any>(500);
   private memoKillPredictionResponse = new BoundedCache<string, any>(20);
   private memoKillSevenResponse = new BoundedCache<string, any>(20);
+  private memoKillSevenBacktestResponse = new BoundedCache<string, any>(20);
   private lastHistLength = 0;
   private lastHistorySource: HistorySourceType = 'default';
   private readonly predictorRedisTtlSeconds = 12 * 60 * 60;
@@ -277,6 +278,7 @@ export class PredictorService implements OnModuleDestroy {
       this.memoHistoricalLearning.clear();
       this.memoKillPredictionResponse.clear();
       this.memoKillSevenResponse.clear();
+      this.memoKillSevenBacktestResponse.clear();
     }
     this.lastHistLength = currentHistLength;
     this.lastHistorySource = source;
@@ -299,7 +301,11 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private getKillSevenResponseCacheKey(rawHist: any[]) {
-    return `predictor:kill-seven:v1:default:${this.getHistoryCacheKey(rawHist)}`;
+    return `predictor:kill-seven:v2:default:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
+  private getKillSevenBacktestCacheKey(rawHist: any[]) {
+    return `predictor:kill-seven-backtest:v1:default:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getHistArrayCacheKey(hist: number[][]) {
@@ -612,7 +618,7 @@ export class PredictorService implements OnModuleDestroy {
 
     const response = {
       historyMeta: this.getHistoryMeta(rawHist, 'default'),
-      killSeven: this.buildKillSevenStats(hist),
+      killSeven: this.buildKillSevenCurrent(hist),
       generatedAt: new Date().toISOString(),
       cacheMeta: {
         hit: false,
@@ -634,6 +640,86 @@ export class PredictorService implements OnModuleDestroy {
 
   async refreshKillSevenCache() {
     const response = await this.getKillSevenStats({ forceRefresh: true });
+    return {
+      ...response,
+      cacheMeta: {
+        ...(response.cacheMeta || {}),
+        action: 'refreshed',
+      },
+    };
+  }
+
+  async getKillSevenBacktest(options: { forceRefresh?: boolean } = {}) {
+    const rawHist = await this.historyService.findAll();
+    this.checkAndClearCache(rawHist.length, 'default');
+    if (options.forceRefresh) {
+      this.memoKillSevenBacktestResponse.clear();
+    }
+    const responseCacheKey = this.getKillSevenBacktestCacheKey(rawHist);
+    const memoCacheKey = this.getHistoryCacheKey(rawHist);
+
+    if (!options.forceRefresh && this.memoKillSevenBacktestResponse.has(memoCacheKey)) {
+      const cached = this.memoKillSevenBacktestResponse.get(memoCacheKey);
+      return {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'memory',
+          key: responseCacheKey,
+        },
+      };
+    }
+
+    const cached = options.forceRefresh ? null : await this.getJsonCache<any>(responseCacheKey);
+    if (cached) {
+      const response = {
+        ...cached,
+        cacheMeta: {
+          ...(cached.cacheMeta || {}),
+          hit: true,
+          store: 'redis',
+          key: responseCacheKey,
+        },
+      };
+      this.memoKillSevenBacktestResponse.set(memoCacheKey, response);
+      return response;
+    }
+
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+
+    const response = {
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
+      killSevenBacktest: this.buildKillSevenStats(hist),
+      generatedAt: new Date().toISOString(),
+      cacheMeta: {
+        hit: false,
+        store: 'redis',
+        key: responseCacheKey,
+        ttlSeconds: this.predictorRedisTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    const cachedInRedis = await this.setJsonCache(
+      responseCacheKey,
+      response,
+      this.predictorRedisTtlSeconds,
+    );
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoKillSevenBacktestResponse.set(memoCacheKey, response);
+    return response;
+  }
+
+  async refreshKillSevenBacktestCache() {
+    const response = await this.getKillSevenBacktest({ forceRefresh: true });
     return {
       ...response,
       cacheMeta: {
@@ -755,6 +841,156 @@ export class PredictorService implements OnModuleDestroy {
         numbers: this.getNewKillPredictor10Numbers(hist),
       },
     ];
+  }
+
+  private buildKillSevenCurrent(hist: number[][]) {
+    const targetCount = 7;
+    const targetAllCorrectRate = 90;
+    if (hist.length < 30) {
+      return {
+        targetCount,
+        targetAllCorrectRate,
+        selected: [],
+        thresholdMet: false,
+        reason: '历史不足30期，暂不生成本期7码组合。',
+        sources: [],
+        candidates: [],
+        estimate: { calcPeriods: 0, allCorrectRate: 0, allCorrectPeriods: 0 },
+        backtest: null,
+      };
+    }
+
+    const evalPeriods = Math.min(80, Math.max(30, hist.length - 100));
+    const start = Math.max(60, hist.length - evalPeriods);
+    const actualEvalPeriods = Math.max(0, hist.length - start);
+    const currentSources = this.getKillSevenSources(hist);
+    const currentCandidateSet = new Set<number>();
+    currentSources.forEach((source) =>
+      source.numbers.forEach((n) => currentCandidateSet.add(n)),
+    );
+
+    const currentSourceByNum = new Map<number, string[]>();
+    for (const source of currentSources) {
+      for (const n of source.numbers) {
+        const list = currentSourceByNum.get(n) || [];
+        list.push(source.name);
+        currentSourceByNum.set(n, list);
+      }
+    }
+
+    const candidates = [...currentCandidateSet]
+      .map((n) => {
+        let periodAbsences = 0;
+        for (let i = start; i < hist.length; i++) {
+          if (!hist[i].includes(n)) periodAbsences++;
+        }
+        const sources = currentSourceByNum.get(n) || [];
+        const periodKillRate =
+          actualEvalPeriods > 0 ? (periodAbsences / actualEvalPeriods) * 100 : 0;
+        const score = periodKillRate * 0.85 + Math.min(15, sources.length * 5);
+        return {
+          n,
+          periodKillRate,
+          sourceKillRate: 0,
+          sourceSamples: 0,
+          sourceSuccesses: 0,
+          sources,
+          sourceHits: {},
+          score,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.periodKillRate - a.periodKillRate ||
+          b.sources.length - a.sources.length ||
+          a.n - b.n,
+      )
+      .slice(0, 20);
+
+    const evaluateCombo = (combo: number[]) => {
+      let allCorrectPeriods = 0;
+      for (let i = start; i < hist.length; i++) {
+        const actualSet = new Set(hist[i]);
+        if (combo.every((n) => !actualSet.has(n))) allCorrectPeriods++;
+      }
+      return {
+        allCorrectPeriods,
+        allCorrectRate:
+          actualEvalPeriods > 0 ? (allCorrectPeriods / actualEvalPeriods) * 100 : 0,
+      };
+    };
+
+    let bestCombo: number[] = [];
+    let bestEval: any = { allCorrectRate: -1, allCorrectPeriods: 0 };
+    let bestAvgScore = -1;
+    const pool = candidates.map((item) => item.n);
+    const visit = (startIndex: number, combo: number[]) => {
+      if (combo.length === targetCount) {
+        const evaluated = evaluateCombo(combo);
+        const avgScore =
+          combo.reduce(
+            (sum, n) => sum + (candidates.find((item) => item.n === n)?.score || 0),
+            0,
+          ) / combo.length;
+        if (
+          evaluated.allCorrectRate > bestEval.allCorrectRate ||
+          (evaluated.allCorrectRate === bestEval.allCorrectRate && avgScore > bestAvgScore)
+        ) {
+          bestCombo = [...combo];
+          bestEval = evaluated;
+          bestAvgScore = avgScore;
+        }
+        return;
+      }
+      const remaining = targetCount - combo.length;
+      for (let i = startIndex; i <= pool.length - remaining; i++) {
+        combo.push(pool[i]);
+        visit(i + 1, combo);
+        combo.pop();
+      }
+    };
+    visit(0, []);
+
+    const selected = bestCombo
+      .map((n, index) => {
+        const candidate = candidates.find((item) => item.n === n);
+        return {
+          ...candidate,
+          rank: index + 1,
+          sourceKillRate: Math.round((candidate?.sourceKillRate || 0) * 10) / 10,
+          periodKillRate: Math.round((candidate?.periodKillRate || 0) * 10) / 10,
+          score: Math.round((candidate?.score || 0) * 10) / 10,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      targetCount,
+      targetAllCorrectRate,
+      thresholdMet: bestEval.allCorrectRate >= targetAllCorrectRate,
+      selected,
+      candidates: candidates.map((item) => ({
+        ...item,
+        sourceKillRate: Math.round(item.sourceKillRate * 10) / 10,
+        periodKillRate: Math.round(item.periodKillRate * 10) / 10,
+        score: Math.round(item.score * 10) / 10,
+      })),
+      sources: currentSources.map((source) => ({
+        key: source.key,
+        name: source.name,
+        count: source.count,
+        numbers: source.numbers,
+        stats: null,
+      })),
+      estimate: {
+        calcPeriods: actualEvalPeriods,
+        allCorrectPeriods: bestEval.allCorrectPeriods,
+        allCorrectRate: Math.round(bestEval.allCorrectRate * 10) / 10,
+      },
+      backtest: null,
+      note: '本期号码预测已生成；历史回测数据已拆分为单独接口，需要时再加载。',
+    };
   }
 
   private buildKillSevenStats(hist: number[][]) {

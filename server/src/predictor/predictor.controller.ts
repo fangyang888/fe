@@ -30,9 +30,19 @@ export class PredictorController {
     return this.predictorService.getKillSevenStats();
   }
 
+  @Get('kill-seven/backtest')
+  async getKillSevenBacktest() {
+    return this.predictorService.getKillSevenBacktest();
+  }
+
   @Post('kill-seven/cache/refresh')
   async refreshKillSevenCache() {
     return this.predictorService.refreshKillSevenCache();
+  }
+
+  @Post('kill-seven/backtest/cache/refresh')
+  async refreshKillSevenBacktestCache() {
+    return this.predictorService.refreshKillSevenBacktestCache();
   }
 
   @Post('hot-pick/cache/clear')

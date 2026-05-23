@@ -13,6 +13,7 @@ export default function HistoryManager() {
   const [noInput, setNoInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(null);
+  const [cacheAction, setCacheAction] = useState(null);
   const [msg, setMsg] = useState(null);
   const [activeTab, setActiveTab] = useState("default");
   const [queryYear, setQueryYear] = useState(new Date().getFullYear());
@@ -50,14 +51,47 @@ export default function HistoryManager() {
     fetchRecords();
   }, [activeTab, queryYear]);
 
-  const refreshHotPickCache = async () => {
-    const query = activeTab === "hk" ? "?type=hk" : "";
-    const res = await fetch(`/api/predictor/hot-pick/cache/refresh${query}`, {
-      method: "POST",
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(await getErrorMessage(res, "HotPickPredictor 缓存刷新失败"));
-    return res.json();
+  const cacheActions = [
+    {
+      key: "killSeven",
+      label: "生成 /kill/seven 缓存",
+      endpoint: "/api/predictor/kill-seven/cache/refresh",
+      success: "/kill/seven 缓存已生成",
+      error: "/kill/seven 缓存生成失败",
+    },
+    {
+      key: "hotPick",
+      label: `生成 /hot-pick${activeTab === "hk" ? " 香港" : ""} 缓存`,
+      endpoint: `/api/predictor/hot-pick/cache/refresh${activeTab === "hk" ? "?type=hk" : ""}`,
+      success: `/hot-pick${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
+      error: "/hot-pick 缓存生成失败",
+    },
+    {
+      key: "killNew",
+      label: "生成 /kill/new 缓存",
+      endpoint: "/api/predictor/kill/cache/refresh",
+      success: "/kill/new 缓存已生成",
+      error: "/kill/new 缓存生成失败",
+    },
+  ];
+
+  const generateCache = async (action) => {
+    setCacheAction(action.key);
+    setMsg(null);
+    try {
+      const res = await fetch(action.endpoint, {
+        method: "POST",
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(await getErrorMessage(res, action.error));
+      const data = await res.json();
+      const store = data.cacheMeta?.store ? `（${data.cacheMeta.store}）` : "";
+      setMsg({ type: "success", text: `✅ ${action.success}${store}` });
+    } catch (e) {
+      setMsg({ type: "error", text: "❌ " + e.message });
+    } finally {
+      setCacheAction(null);
+    }
   };
 
   // 新增
@@ -116,23 +150,15 @@ export default function HistoryManager() {
       });
       if (!res.ok) throw new Error(await getErrorMessage(res, "同步失败"));
       const data = await res.json();
-      let cacheText = "";
-      if (data.inserted > 0) {
-        const cacheResult = await refreshHotPickCache();
-        const persisted = cacheResult.cacheMeta?.persisted !== false;
-        cacheText = persisted
-          ? "；HotPickPredictor Redis 缓存已更新"
-          : "；HotPickPredictor Redis 缓存写入失败";
-      }
       if (mode === "year") {
         setMsg({
           type: "success",
-          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期${cacheText}`,
+          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期`,
         });
       } else {
         setMsg({
           type: data.inserted > 0 ? "success" : "error",
-          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}${cacheText}`,
+          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}`,
         });
       }
       fetchRecords();
@@ -265,6 +291,10 @@ export default function HistoryManager() {
       background: "linear-gradient(135deg, #3498db, #2980b9)",
       color: "#fff",
     },
+    cacheBtn: {
+      background: "linear-gradient(135deg, #8e44ad, #6c5ce7)",
+      color: "#fff",
+    },
     deleteBtn: {
       background: "transparent",
       color: "#e74c3c",
@@ -363,7 +393,28 @@ export default function HistoryManager() {
           </button>
         </div>
         <p style={{ fontSize: 12, color: "#667788", margin: 0 }}>
-          当前同步源：{activeTab === "hk" ? "香港数据 hkUrl" : "默认数据"}；如果 year + No 已存在会自动忽略。
+          当前同步源：{activeTab === "hk" ? "香港数据 hkUrl" : "默认数据"}；如果 year + No 已存在会自动忽略。同步数据不会自动刷新 Redis 缓存。
+        </p>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardTitle}>
+          <span>⚡</span> 页面缓存
+        </div>
+        <div style={styles.inputRow}>
+          {cacheActions.map((action) => (
+            <button
+              key={action.key}
+              onClick={() => generateCache(action)}
+              disabled={Boolean(cacheAction)}
+              style={{ ...styles.btn, ...styles.cacheBtn, opacity: cacheAction ? 0.6 : 1 }}
+            >
+              {cacheAction === action.key ? "生成中..." : action.label}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: "#667788", margin: 0 }}>
+          手动生成 Redis 缓存；新增或同步数据后，如需页面立刻变快，请在这里按需生成对应缓存。
         </p>
       </div>
 

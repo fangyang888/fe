@@ -19,7 +19,7 @@ export class HistoryService {
     }
     return this.historyRepo.find({
       where,
-      order: { id: 'ASC' },
+      order: { year: 'ASC', No: 'ASC', id: 'ASC' },
     });
   }
 

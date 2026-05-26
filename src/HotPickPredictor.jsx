@@ -1011,7 +1011,7 @@ export default function HotPickPredictor() {
 
             {hotPickKill5 && (
               <>
-                <div className="hot-pick-section-title">94%+ 高置信 5杀</div>
+                <div className="hot-pick-section-title">组合优化 5杀</div>
                 <div className="hot-pick-kill-panel">
                   <div className="hot-pick-kill-head">
                     <div>

@@ -61,9 +61,12 @@ export default function HistoryManager() {
     },
     {
       key: "hotPick",
-      label: `生成 /hot-pick${activeTab === "hk" ? " 香港" : ""} 缓存`,
-      endpoint: `/api/predictor/hot-pick/cache/refresh${activeTab === "hk" ? "?type=hk" : ""}`,
-      success: `/hot-pick${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
+      label: `生成 HotPick${activeTab === "hk" ? " 香港" : ""} 缓存`,
+      endpoints: [
+        `/api/predictor/hot-pick/cache/refresh${activeTab === "hk" ? "?type=hk" : ""}`,
+        `/api/predictor-opt/hot-pick/cache/refresh${activeTab === "hk" ? "?type=hk" : ""}`,
+      ],
+      success: `HotPick${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
       error: "/hot-pick 缓存生成失败",
     },
     {
@@ -79,13 +82,20 @@ export default function HistoryManager() {
     setCacheAction(action.key);
     setMsg(null);
     try {
-      const res = await fetch(action.endpoint, {
-        method: "POST",
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error(await getErrorMessage(res, action.error));
-      const data = await res.json();
-      const store = data.cacheMeta?.store ? `（${data.cacheMeta.store}）` : "";
+      const endpoints = action.endpoints || [action.endpoint];
+      const results = [];
+      for (const endpoint of endpoints) {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(await getErrorMessage(res, action.error));
+        results.push(await res.json());
+      }
+      const stores = results
+        .map((data) => data.cacheMeta?.store)
+        .filter(Boolean);
+      const store = stores.length ? `（${[...new Set(stores)].join(" + ")}）` : "";
       setMsg({ type: "success", text: `✅ ${action.success}${store}` });
     } catch (e) {
       setMsg({ type: "error", text: "❌ " + e.message });

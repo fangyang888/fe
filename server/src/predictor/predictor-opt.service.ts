@@ -713,15 +713,439 @@ export class PredictorOptService implements OnModuleDestroy {
     return stats;
   }
 
+  private getLikelyAppearanceCandidates(hist: number[][], count = 22): any[] {
+    const scores = [];
+    const lastRow = new Set(hist[hist.length - 1] || []);
+
+    for (let n = 1; n <= 49; n++) {
+      let score = 0;
+      const reasons = [];
+      const appearances = [];
+      for (let i = 0; i < hist.length; i++) {
+        if (hist[i].includes(n)) appearances.push(i);
+      }
+      if (appearances.length === 0) continue;
+
+      const currentGap = hist.length - 1 - appearances[appearances.length - 1];
+      const gaps = [];
+      for (let i = 1; i < appearances.length; i++) {
+        gaps.push(appearances[i] - appearances[i - 1]);
+      }
+      const avgGap =
+        gaps.length > 0
+          ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length
+          : 49 / 7;
+      const gapRatio = avgGap > 0 ? currentGap / avgGap : 1;
+
+      if (gapRatio >= 2.0) {
+        score += 3.0;
+        reasons.push('迟到回归');
+      } else if (gapRatio >= 1.5) {
+        score += 2.0;
+        reasons.push('即将回归');
+      } else if (gapRatio >= 1.2) {
+        score += 1.2;
+        reasons.push('接近回归');
+      } else if (gapRatio >= 0.9) {
+        score += 0.5;
+      }
+
+      if (lastRow.has(n)) {
+        let repeatTotal = 0;
+        let repeatHits = 0;
+        for (let i = 0; i < hist.length - 1; i++) {
+          if (!hist[i].includes(n)) continue;
+          repeatTotal++;
+          if (hist[i + 1].includes(n)) repeatHits++;
+        }
+        const repeatRate = repeatTotal > 1 ? repeatHits / repeatTotal : this.randomAppearProb;
+        score += repeatRate * 2.5;
+        reasons.push('上期重复');
+      }
+
+      if (
+        hist.length >= 2 &&
+        hist[hist.length - 2].includes(n) &&
+        !lastRow.has(n)
+      ) {
+        score += 0.4;
+      }
+
+      const recent3 = hist.slice(-3).filter((row) => row.includes(n)).length;
+      if (recent3 >= 2) {
+        score += recent3 * 0.5;
+        reasons.push('近3期热');
+      }
+
+      if (gaps.length >= 2) {
+        const variance =
+          gaps.reduce((sum, gap) => sum + (gap - avgGap) ** 2, 0) / gaps.length;
+        const cv = avgGap > 0 ? Math.sqrt(variance) / avgGap : 1;
+        if (cv < 0.5 && currentGap >= avgGap * 0.8 && currentGap <= avgGap * 1.5) {
+          score += (1 - cv) * 1.2;
+          reasons.push('周期性');
+        }
+      }
+
+      if ([...lastRow].some((last) => Math.abs(last - n) === 1) && currentGap >= 2) {
+        score += 0.3;
+      }
+
+      if (score > 0) {
+        scores.push({
+          n,
+          score,
+          currentGap,
+          avgGap,
+          gapRatio,
+          reasons,
+        });
+      }
+    }
+
+    return scores
+      .sort((a, b) => b.score - a.score || a.n - b.n)
+      .slice(0, count)
+      .map((item, index) => ({
+        ...item,
+        rank: index + 1,
+      }));
+  }
+
+  private getHistoricalKillLearningStats(hist: number[][], evalPeriods = 120) {
+    const start = Math.max(80, hist.length - evalPeriods);
+    const stats = new Map<
+      number,
+      {
+        periods: number;
+        absences: number;
+        likelySamples: number;
+        likelyAbsences: number;
+      }
+    >();
+
+    for (let n = 1; n <= 49; n++) {
+      stats.set(n, {
+        periods: 0,
+        absences: 0,
+        likelySamples: 0,
+        likelyAbsences: 0,
+      });
+    }
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const actualSet = new Set(hist[i]);
+      const likelySet = new Set(this.getLikelyAppearanceCandidates(subHist, 22).map((item) => item.n));
+
+      for (let n = 1; n <= 49; n++) {
+        const row = stats.get(n)!;
+        const absent = !actualSet.has(n);
+        row.periods++;
+        if (absent) row.absences++;
+        if (likelySet.has(n)) {
+          row.likelySamples++;
+          if (absent) row.likelyAbsences++;
+        }
+      }
+    }
+
+    return stats;
+  }
+
+  private getSimilarFeatureKillLearningRates(hist: number[][], occurrenceStats: any, evalPeriods = 120) {
+    const cacheKey = `similar-feature-kill:${this.getHistArrayCacheKey(hist)}:${evalPeriods}`;
+    if (this.memoHistoricalLearning.has(cacheKey as any)) {
+      return this.memoHistoricalLearning.get(cacheKey as any);
+    }
+
+    const currentOccurrenceByNum = new Map(
+      (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
+    );
+    const currentLikelyByNum = new Map(
+      this.getLikelyAppearanceCandidates(hist, 22).map((item) => [item.n, item]),
+    );
+    const currentFeatureByNum = new Map(
+      this.getHotPickFeatureRows(hist).map((row) => [row.n, row.features]),
+    );
+
+    const currentRows = new Map<number, any>();
+    for (let n = 1; n <= 49; n++) {
+      const occurrence = currentOccurrenceByNum.get(n) as any;
+      const likely = currentLikelyByNum.get(n) as any;
+      const features = currentFeatureByNum.get(n) || {};
+      currentRows.set(n, {
+        recentCount: occurrence?.count || 0,
+        heatRank: occurrence?.rank || 49,
+        likelyRank: likely?.rank || 30,
+        gapRatio: features.gapRatio || 1,
+        currentGap: features.currentGap || 0,
+        freq10: features.freq10 || 0,
+        freq30: features.freq30 || 0,
+      });
+    }
+
+    const examples = [];
+    const start = Math.max(80, hist.length - evalPeriods);
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const subOccurrence = this.getRecentOccurrenceStatsFromHist(subHist, 30);
+      const subOccurrenceByNum = new Map(
+        (subOccurrence?.numbers || []).map((item: any) => [item.n, item]),
+      );
+      const subLikelyByNum = new Map(
+        this.getLikelyAppearanceCandidates(subHist, 22).map((item) => [item.n, item]),
+      );
+      const subFeatureByNum = new Map(
+        this.getHotPickFeatureRows(subHist).map((row) => [row.n, row.features]),
+      );
+      const actualSet = new Set(hist[i]);
+
+      for (let n = 1; n <= 49; n++) {
+        const occurrence = subOccurrenceByNum.get(n) as any;
+        const likely = subLikelyByNum.get(n) as any;
+        const features = subFeatureByNum.get(n) || {};
+        examples.push({
+          n,
+          recentCount: occurrence?.count || 0,
+          heatRank: occurrence?.rank || 49,
+          likelyRank: likely?.rank || 30,
+          gapRatio: features.gapRatio || 1,
+          currentGap: features.currentGap || 0,
+          freq10: features.freq10 || 0,
+          freq30: features.freq30 || 0,
+          absent: !actualSet.has(n),
+        });
+      }
+    }
+
+    const distance = (a: any, b: any) =>
+      Math.abs(a.recentCount - b.recentCount) / 6 +
+      Math.abs(a.heatRank - b.heatRank) / 49 +
+      Math.abs(a.likelyRank - b.likelyRank) / 30 +
+      Math.abs(Math.min(5, a.gapRatio) - Math.min(5, b.gapRatio)) / 5 +
+      Math.abs(a.freq10 - b.freq10) * 1.5 +
+      Math.abs(a.freq30 - b.freq30);
+
+    const rates = new Map<number, any>();
+    for (let n = 1; n <= 49; n++) {
+      const current = currentRows.get(n);
+      const similar = examples
+        .map((example) => {
+          const d = distance(current, example);
+          return {
+            ...example,
+            distance: d,
+            weight: 1 / (0.08 + d),
+          };
+        })
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 80);
+
+      const weightSum = similar.reduce((sum, item) => sum + item.weight, 0) || 1;
+      const absentWeight = similar.reduce(
+        (sum, item) => sum + (item.absent ? item.weight : 0),
+        0,
+      );
+      const learnedKillRate = (absentWeight / weightSum) * 100;
+      const closeSamples = similar.filter((item) => item.distance <= 0.55).length;
+      rates.set(n, {
+        learnedKillRate,
+        samples: similar.length,
+        closeSamples,
+      });
+    }
+
+    this.memoHistoricalLearning.set(cacheKey as any, rates);
+    return rates;
+  }
+
+  private getMisKillClassifierFeatures(
+    hist: number[][],
+    n: number,
+    featureByNum?: Map<number, any>,
+  ) {
+    const features = featureByNum?.get(n) || {};
+
+    return [
+      1,
+      Math.min(1, (features.freq10 || 0) / 0.5),
+      Math.min(1, (features.freq30 || 0) / 0.35),
+      Math.min(1, (features.currentGap || 0) / 25),
+      Math.min(1, (features.gapRatio || 0) / 4),
+      features.lastHit || 0,
+      Math.min(1, (features.markov || this.randomAppearProb) / 0.35),
+      Math.min(1, (features.markov2 || this.randomAppearProb) / 0.35),
+    ];
+  }
+
+  private getMisKillClassifierRiskRates(hist: number[][], evalPeriods = 220) {
+    const cacheKey = `miskill-classifier:${this.getHistArrayCacheKey(hist)}:${evalPeriods}`;
+    if (this.memoHistoricalLearning.has(cacheKey as any)) {
+      return this.memoHistoricalLearning.get(cacheKey as any);
+    }
+
+    const start = Math.max(80, hist.length - evalPeriods);
+    const examples: Array<{ x: number[]; y: number }> = [];
+
+    for (let i = start; i < hist.length; i++) {
+      const subHist = hist.slice(0, i);
+      const actualSet = new Set(hist[i]);
+      const subOccurrence = this.getRecentOccurrenceStatsFromHist(subHist, 30);
+      const subOccurrenceByNum = new Map(
+        (subOccurrence?.numbers || []).map((item: any) => [item.n, item]),
+      );
+      const featureByNum = new Map(
+        this.getHotPickFeatureRows(subHist).map((row) => [row.n, row.features]),
+      );
+
+      for (let n = 1; n <= 49; n++) {
+        const occurrence = subOccurrenceByNum.get(n) as any;
+        const features = featureByNum.get(n) || {};
+        const avgGap = features.avgGap || 7;
+        const isExtremeGap = avgGap > 0 && ((features.currentGap || 0) / avgGap) >= 4.5;
+        const candidateLike =
+          (occurrence?.count || 0) <= 5 &&
+          (occurrence?.rank || 49) >= 16 &&
+          !isExtremeGap;
+        if (!candidateLike) continue;
+
+        examples.push({
+          x: this.getMisKillClassifierFeatures(subHist, n, featureByNum),
+          y: actualSet.has(n) ? 1 : 0,
+        });
+      }
+    }
+
+    const dim = examples[0]?.x.length || 0;
+    const weights = new Array(dim).fill(0);
+    const positiveWeight = 42 / 7;
+    const learningRate = 0.035;
+    const l2 = 0.0008;
+
+    const sigmoid = (z: number) => {
+      if (z < -35) return 0;
+      if (z > 35) return 1;
+      return 1 / (1 + Math.exp(-z));
+    };
+
+    for (let epoch = 0; epoch < 90; epoch++) {
+      for (const example of examples) {
+        const z = example.x.reduce((sum, value, idx) => sum + value * weights[idx], 0);
+        const p = sigmoid(z);
+        const sampleWeight = example.y === 1 ? positiveWeight : 1;
+        const error = (p - example.y) * sampleWeight;
+        for (let j = 0; j < dim; j++) {
+          weights[j] -= learningRate * (error * example.x[j] + l2 * weights[j]);
+        }
+      }
+    }
+
+    const currentFeatureByNum = new Map(
+      this.getHotPickFeatureRows(hist).map((row) => [row.n, row.features]),
+    );
+    const riskRates = new Map<number, any>();
+
+    for (let n = 1; n <= 49; n++) {
+      const x = this.getMisKillClassifierFeatures(
+        hist,
+        n,
+        currentFeatureByNum,
+      );
+      const z = x.reduce((sum, value, idx) => sum + value * weights[idx], 0);
+      const rawRisk = sigmoid(z) * 100;
+      riskRates.set(n, {
+        misKillRisk: rawRisk,
+        killRate: 100 - rawRisk,
+        weights,
+        samples: examples.length,
+      });
+    }
+
+    this.memoHistoricalLearning.set(cacheKey as any, riskRates);
+    return riskRates;
+  }
+
+  private getRecentAttractionRisk(hist: number[][], n: number) {
+    const recent = hist.slice(Math.max(0, hist.length - 3));
+    const recentNums = recent.flat();
+    const zone = Math.floor((n - 1) / 10);
+    let neighborHits = 0;
+    let tailHits = 0;
+    let zoneHits = 0;
+
+    for (const x of recentNums) {
+      if (Math.abs(x - n) === 1) neighborHits++;
+      if (x !== n && x % 10 === n % 10) tailHits++;
+      if (Math.floor((x - 1) / 10) === zone) zoneHits++;
+    }
+
+    const recentPeriods = Math.max(1, recent.length);
+    const zonePressure = zoneHits / (recentPeriods * 7);
+    const tailPressure = tailHits / recentPeriods;
+    const neighborPressure = neighborHits / recentPeriods;
+    const attractionRisk = Math.min(
+      100,
+      neighborPressure * 18 + tailPressure * 8 + zonePressure * 26,
+    );
+
+    return {
+      attractionRisk,
+      neighborHits,
+      tailHits,
+      zoneHits,
+    };
+  }
+
+  private getRecentHotPickKill5FailureStats(hist: number[][], lookback = 12) {
+    const start = Math.max(0, hist.length - lookback);
+    const stats = new Map<
+      number,
+      {
+        samples: number;
+        failures: number;
+        lastFailureDistance: number;
+      }
+    >();
+
+    for (let n = 1; n <= 49; n++) {
+      stats.set(n, {
+        samples: Math.max(0, hist.length - start),
+        failures: 0,
+        lastFailureDistance: 999,
+      });
+    }
+
+    for (let i = start; i < hist.length; i++) {
+      const distance = hist.length - i;
+      for (const n of hist[i]) {
+        const row = stats.get(n);
+        if (!row) continue;
+        row.failures++;
+        row.lastFailureDistance = Math.min(row.lastFailureDistance, distance);
+      }
+    }
+
+    return stats;
+  }
+
+  private isStrictHotPickKill5Candidate(candidate: any, threshold: number): boolean {
+    return (
+      candidate.killProbability >= threshold &&
+      candidate.historyKillRate >= 80 &&
+      candidate.similarKillRate >= 82 &&
+      candidate.recentCount <= 5 &&
+      candidate.heatRank >= 16 &&
+      !candidate.isExtremeGap
+    );
+  }
+
   private getHotPickKill5Candidates(hist: number[][], occurrenceStats: any, threshold = 94.0, fastMode = false): any {
     const cacheKey = `${this.getHistArrayCacheKey(hist)}:${fastMode ? 'fast' : 'full'}`;
     if (this.memoHotPickKill5Candidates.has(cacheKey)) {
       const cached = this.memoHotPickKill5Candidates.get(cacheKey);
-      const qualified = cached.candidates.filter(
-        (candidate: any) =>
-          candidate.killProbability >= threshold &&
-          candidate.consensus >= 2 &&
-          !candidate.isExtremeGap
+      const qualified = cached.candidates.filter((candidate: any) =>
+        this.isStrictHotPickKill5Candidate(candidate, threshold),
       );
       return { candidates: cached.candidates, qualified };
     }
@@ -731,6 +1155,20 @@ export class PredictorOptService implements OnModuleDestroy {
     const enginePreds = this.runKillEngine(hist, 10, fastMode).predictions || [];
     const hybridPreds = this.buildAdaptiveHybridKill10(hist, enginePreds, fastMode).predictions || [];
     const rollingRates = this.getRecentModelKillRates(hist, 30, fastMode ? this.lastBestAppearWeights : undefined);
+    const historyStats = this.getHistoricalKillLearningStats(hist, fastMode ? 80 : 120);
+    const similarLearningRates = this.getSimilarFeatureKillLearningRates(
+      hist,
+      occurrenceStats,
+      fastMode ? 80 : 120,
+    );
+    const misKillClassifierRates = this.getMisKillClassifierRiskRates(
+      hist,
+      fastMode ? 140 : 220,
+    );
+    const failureStats = this.getRecentHotPickKill5FailureStats(hist, 12);
+    const likelyByNum = new Map(
+      this.getLikelyAppearanceCandidates(hist, 22).map((item) => [item.n, item]),
+    );
     const occurrenceByNum = new Map(
       (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
     );
@@ -764,33 +1202,93 @@ export class PredictorOptService implements OnModuleDestroy {
         rolling && rolling.samples >= 3
           ? (rolling.successes / rolling.samples) * 100
           : recentColdProbability;
+      const history = historyStats.get(n);
+      const historyKillRate =
+        history && history.periods > 0 ? (history.absences / history.periods) * 100 : 0;
+      const similarLearning = similarLearningRates.get(n);
+      const similarKillRate =
+        similarLearning && similarLearning.samples > 0
+          ? similarLearning.learnedKillRate
+          : historyKillRate;
+      const classifier = misKillClassifierRates.get(n);
+      const classifierKillRate =
+        classifier && classifier.killRate > 0 ? classifier.killRate : historyKillRate;
+      const classifierRisk =
+        classifier && classifier.misKillRisk > 0 ? classifier.misKillRisk : 100 - historyKillRate;
+      const likely = likelyByNum.get(n) as any;
+      const likelyKillRate =
+        history && history.likelySamples > 0
+          ? (history.likelyAbsences / history.likelySamples) * 100
+          : historyKillRate;
+      const likelyRank = likely?.rank || null;
+      const likelyScore = likely?.score || 0;
+      const likelyHistoricalLift =
+        likelyRank !== null ? Math.max(-8, Math.min(8, likelyKillRate - historyKillRate)) : 0;
+      const recentFailure = failureStats.get(n);
+      const recentFailureRate =
+        recentFailure && recentFailure.samples > 0
+          ? (recentFailure.failures / recentFailure.samples) * 100
+          : 0;
+      const lastFailureDistance = recentFailure?.lastFailureDistance || 999;
+      const features = featureByNum.get(n);
+      const currentGap = features?.currentGap ?? 0;
+      const avgGap = features?.avgGap ?? 7;
+      const isExtremeGap = avgGap > 0 && (currentGap / avgGap) >= 4.5;
       const consensus =
         (probability?.rank && probability.rank <= 10 ? 1 : 0) +
         (lowRisk?.rank && lowRisk.rank <= 10 ? 1 : 0) +
         (engine?.rank && engine.rank <= 10 ? 1 : 0) +
         (hybrid?.rank && hybrid.rank <= 10 ? 1 : 0);
       const consensusBonus = consensus * 0.7;
+      const attraction = this.getRecentAttractionRisk(hist, n);
+      const gapReboundRisk =
+        features?.gapRatio >= 1.15 && features?.gapRatio <= 2.45 ? 12 : 0;
+      const conflictReboundRisk =
+        likelyRank !== null && likelyRank <= 22 && likelyKillRate < 93 ? 10 : 0;
+      const reboundRisk =
+        attraction.attractionRisk * 0.55 +
+        gapReboundRisk +
+        conflictReboundRisk +
+        (consensus >= 3 && recentCount <= 1 ? 4 : 0);
       const killProbability = Math.min(
         98.5,
-        modelKillProbability * 0.44 +
-          recentColdProbability * 0.22 +
-          rankColdProbability * 0.1 +
-          rollingKillRate * 0.24 +
+        modelKillProbability * 0.28 +
+          recentColdProbability * 0.12 +
+          rankColdProbability * 0.08 +
+          rollingKillRate * 0.14 +
+          historyKillRate * 0.16 +
+          similarKillRate * 0.12 +
+          classifierKillRate * 0.08 +
+          likelyKillRate * 0.08 +
+          likelyHistoricalLift * 0.2 +
           consensusBonus,
       );
-
-      const features = featureByNum.get(n);
-      const currentGap = features?.currentGap ?? 0;
-      const avgGap = features?.avgGap ?? 7;
-      const isExtremeGap = avgGap > 0 && (currentGap / avgGap) >= 4.5;
+      const overconfidentTrapRisk =
+        killProbability >= 94 &&
+        consensus >= 3 &&
+        rollingKillRate >= 95 &&
+        recentCount <= 1
+          ? Math.max(
+              0,
+              (likelyRank !== null ? 93 - likelyKillRate : 0) +
+                (recentFailure?.failures ? Math.max(0, 10 - lastFailureDistance) * 0.8 : 0),
+          )
+          : 0;
 
       const reasons = [
         `近30期${recentCount}期`,
         `热度排名#${heatRank}`,
+        `历史不出${historyKillRate.toFixed(1)}%`,
         `模型杀码${modelKillProbability.toFixed(1)}%`,
       ];
+      if (likelyRank !== null) {
+        reasons.push(`Likely22 #${likelyRank} 不出${likelyKillRate.toFixed(1)}%`);
+      }
       if (rolling?.samples) {
         reasons.push(`滚动${rolling.successes}/${rolling.samples}`);
+      }
+      if (recentFailure?.failures) {
+        reasons.push(`近期误杀${recentFailure.failures}/${recentFailure.samples}`);
       }
       if (consensus > 0) {
         reasons.push(`模型共识${consensus}`);
@@ -805,6 +1303,25 @@ export class PredictorOptService implements OnModuleDestroy {
         modelKillProbability: Math.round(modelKillProbability * 10) / 10,
         recentColdProbability: Math.round(recentColdProbability * 10) / 10,
         rollingKillRate: Math.round(rollingKillRate * 10) / 10,
+        historyKillRate: Math.round(historyKillRate * 10) / 10,
+        similarKillRate: Math.round(similarKillRate * 10) / 10,
+        similarSamples: similarLearning?.samples || 0,
+        similarCloseSamples: similarLearning?.closeSamples || 0,
+        classifierKillRate: Math.round(classifierKillRate * 10) / 10,
+        classifierRisk: Math.round(classifierRisk * 10) / 10,
+        reboundRisk: Math.round(reboundRisk * 10) / 10,
+        attractionRisk: Math.round(attraction.attractionRisk * 10) / 10,
+        neighborHits: attraction.neighborHits,
+        tailHits: attraction.tailHits,
+        zoneHits: attraction.zoneHits,
+        likelyKillRate: Math.round(likelyKillRate * 10) / 10,
+        recentFailureRate: Math.round(recentFailureRate * 10) / 10,
+        recentFailureCount: recentFailure?.failures || 0,
+        recentFailureSamples: recentFailure?.samples || 0,
+        lastFailureDistance,
+        overconfidentTrapRisk: Math.round(overconfidentTrapRisk * 10) / 10,
+        likelyRank,
+        likelyScore: Math.round(likelyScore * 1000) / 1000,
         recentCount,
         recentRate,
         heatRank,
@@ -826,11 +1343,8 @@ export class PredictorOptService implements OnModuleDestroy {
         b.heatRank - a.heatRank,
     );
 
-    const qualified = candidates.filter(
-      (candidate) =>
-        candidate.killProbability >= threshold &&
-        candidate.consensus >= 2 &&
-        !candidate.isExtremeGap
+    const qualified = candidates.filter((candidate) =>
+      this.isStrictHotPickKill5Candidate(candidate, threshold),
     );
 
     const res = { candidates, qualified };
@@ -850,7 +1364,7 @@ export class PredictorOptService implements OnModuleDestroy {
 
     const evalWindow = 12;
     const start = hist.length - evalWindow;
-    const thresholds = [93.0, 93.5, 94.0, 94.5, 95.0, 95.5, 96.0];
+    const thresholds = [86.0, 87.0, 88.0, 89.0, 90.0, 91.0];
 
     const periodsData = [];
     for (let i = start; i < hist.length; i++) {
@@ -861,7 +1375,7 @@ export class PredictorOptService implements OnModuleDestroy {
       periodsData.push({ candidates, actualSet });
     }
 
-    let bestThreshold = 94.0;
+    let bestThreshold = 88.0;
     let bestScore = -1;
 
     for (const t of thresholds) {
@@ -869,19 +1383,19 @@ export class PredictorOptService implements OnModuleDestroy {
       let totalPredicted = 0;
 
       for (const data of periodsData) {
-        const qualified = data.candidates.filter(
-          (c: any) => c.killProbability >= t && c.consensus >= 2 && !c.isExtremeGap
+        const qualified = data.candidates.filter((c: any) =>
+          this.isStrictHotPickKill5Candidate(c, t),
         );
-        const displayed = qualified.slice(0, 5);
+        const displayed = this.selectHotPickKill5Group(qualified, 5);
         const failed = displayed.filter((item: any) => data.actualSet.has(item.n));
 
         totalPredicted += displayed.length;
-        if (displayed.length > 0 && failed.length === 0) {
+        if (displayed.length === 5 && failed.length === 0) {
           allCorrectPeriods++;
         }
       }
 
-      const score = allCorrectPeriods + totalPredicted * 0.001;
+      const score = allCorrectPeriods * 100 + totalPredicted * 0.001 + t * 0.01;
       if (score > bestScore) {
         bestScore = score;
         bestThreshold = t;
@@ -893,9 +1407,219 @@ export class PredictorOptService implements OnModuleDestroy {
   }
 
   private getHotPickKill5Displayed(result: any): any[] {
-    return result.predictions?.length > 0
-      ? result.predictions
-      : result.candidates?.slice(0, 5) || [];
+    return result.predictions || [];
+  }
+
+  private getKill5SourceKeys(item: any): string[] {
+    const sources = item.sources || {};
+    return Object.entries(sources)
+      .filter(([, rank]) => typeof rank === 'number' && rank <= 10)
+      .map(([key]) => key);
+  }
+
+  private getKill5PairPenalty(a: any, b: any): number {
+    const aKeys = new Set(this.getKill5SourceKeys(a));
+    const sharedSources = this.getKill5SourceKeys(b).filter((key) => aKeys.has(key)).length;
+    const sameTail = a.n % 10 === b.n % 10 ? 0.45 : 0;
+    const sameZone = Math.floor((a.n - 1) / 10) === Math.floor((b.n - 1) / 10) ? 0.25 : 0;
+    const sameRecentBand = Math.abs((a.recentCount || 0) - (b.recentCount || 0)) <= 1 ? 0.15 : 0;
+    return sharedSources * 0.35 + sameTail + sameZone + sameRecentBand;
+  }
+
+  private scoreHotPickKill5Group(group: any[]): number {
+    const probabilityScore = group.reduce(
+      (sum, item) => sum + Math.log(Math.max(0.01, item.killProbability / 100)),
+      0,
+    ) * 100;
+    let pairPenalty = 0;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        pairPenalty += this.getKill5PairPenalty(group[i], group[j]);
+      }
+    }
+    const weakRollingPenalty = group.reduce(
+      (sum, item) => sum + Math.max(0, 96 - (item.rollingKillRate || 0)) * 0.08,
+      0,
+    );
+    const historyScore = group.reduce(
+      (sum, item) => sum + ((item.historyKillRate || 0) - this.randomKillProb * 100) * 0.22,
+      0,
+    );
+    const likelyHistoryScore = group.reduce(
+      (sum, item) => sum + Math.max(0, (item.likelyKillRate || 0) - 82) * 0.12,
+      0,
+    );
+    return probabilityScore + historyScore + likelyHistoryScore - pairPenalty - weakRollingPenalty;
+  }
+
+  private selectHotPickKill5Group(qualified: any[], targetCount = 5): any[] {
+    if (qualified.length < targetCount) return [];
+
+    const pool = qualified
+      .slice()
+      .sort(
+        (a, b) =>
+          b.killProbability - a.killProbability ||
+          b.historyKillRate - a.historyKillRate ||
+          b.rollingKillRate - a.rollingKillRate ||
+          b.consensus - a.consensus ||
+          a.recentCount - b.recentCount,
+      )
+      .slice(0, 16);
+
+    let bestGroup: any[] = [];
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    const walk = (start: number, group: any[]) => {
+      if (group.length === targetCount) {
+        const score = this.scoreHotPickKill5Group(group);
+        if (score > bestScore) {
+          bestScore = score;
+          bestGroup = group.slice();
+        }
+        return;
+      }
+
+      for (let i = start; i <= pool.length - (targetCount - group.length); i++) {
+        group.push(pool[i]);
+        walk(i + 1, group);
+        group.pop();
+      }
+    };
+
+    walk(0, []);
+    return bestGroup.sort((a, b) => b.killProbability - a.killProbability || a.n - b.n);
+  }
+
+  private selectHistoricalHotPickKill5Group(
+    hist: number[][],
+    qualified: any[],
+    targetCount = 5,
+    evalPeriods = 80,
+  ): any[] {
+    if (qualified.length < targetCount) return [];
+
+    const start = Math.max(80, hist.length - evalPeriods);
+    const actualEvalPeriods = Math.max(0, hist.length - start);
+    if (actualEvalPeriods <= 0) {
+      return this.selectHotPickKill5Group(qualified, targetCount);
+    }
+
+    const pool = qualified
+      .slice()
+      .sort(
+        (a, b) =>
+          b.historyKillRate - a.historyKillRate ||
+          b.killProbability - a.killProbability ||
+          b.rollingKillRate - a.rollingKillRate ||
+          a.recentCount - b.recentCount,
+      )
+      .slice(0, 14);
+
+    let bestGroup: any[] = [];
+    let bestAllCorrect = -1;
+    let bestTotalCorrect = -1;
+    let bestAvgScore = Number.NEGATIVE_INFINITY;
+
+    const groupSimilarityScore = (group: any[]) => {
+      const nums = group.map((item) => item.n);
+      const tails = new Set(nums.map((n) => n % 10)).size;
+      const zones = new Set(nums.map((n) => Math.floor((n - 1) / 10))).size;
+      const avgSimilar =
+        group.reduce((sum, item) => sum + (item.similarKillRate || 0), 0) / group.length;
+      const avgHistory =
+        group.reduce((sum, item) => sum + (item.historyKillRate || 0), 0) / group.length;
+      const avgLikely =
+        group.reduce((sum, item) => sum + (item.likelyKillRate || 0), 0) / group.length;
+      const avgClassifier =
+        group.reduce((sum, item) => sum + (item.classifierKillRate || 0), 0) / group.length;
+      const lowHeatCount = group.filter((item) => (item.heatRank || 0) >= 40).length;
+      const strongSimilarCount = group.filter((item) => (item.similarKillRate || 0) >= 88).length;
+      const weakSimilarCount = group.filter((item) => (item.similarKillRate || 0) < 84).length;
+      const likelyTopRiskCount = group.filter(
+        (item) =>
+          item.likelyRank !== null &&
+          item.likelyRank <= 5 &&
+          (item.likelyKillRate || 0) < 92,
+      ).length;
+      const concentrationPenalty =
+        Math.max(0, 4 - tails) * 1.8 +
+        Math.max(0, 4 - zones) * 1.2 +
+        Math.max(0, lowHeatCount - 4) * 1.5;
+
+      return (
+        (avgSimilar - 82) * 0.8 +
+        (avgClassifier - 65) * 0.18 +
+        (avgHistory - 86) * 0.35 +
+        (avgLikely - 86) * 0.25 +
+        strongSimilarCount * 1.6 -
+        weakSimilarCount * 2.4 -
+        likelyTopRiskCount * 2.2 -
+        concentrationPenalty
+      );
+    };
+
+    const evaluate = (group: any[]) => {
+      const nums = group.map((item) => item.n);
+      let allCorrect = 0;
+      let totalCorrect = 0;
+
+      for (let i = start; i < hist.length; i++) {
+        const actualSet = new Set(hist[i]);
+        const failed = nums.filter((n) => actualSet.has(n)).length;
+        if (failed === 0) allCorrect++;
+        totalCorrect += nums.length - failed;
+      }
+
+      const avgScore =
+        group.reduce(
+          (sum, item) =>
+            sum +
+            (item.killProbability || 0) * 0.42 +
+            (item.historyKillRate || 0) * 0.30 +
+            (item.similarKillRate || 0) * 0.18 +
+            (item.classifierKillRate || 0) * 0.08 +
+            (item.rollingKillRate || 0) * 0.10 +
+            Math.max(0, (item.likelyKillRate || 0) - 82) * 0.04 -
+            Math.max(0, (item.classifierRisk || 0) - 35) * 0.12 -
+            (item.overconfidentTrapRisk || 0) * 2.4,
+          0,
+        ) /
+          group.length +
+        groupSimilarityScore(group);
+
+      return { allCorrect, totalCorrect, avgScore };
+    };
+
+    const walk = (startIndex: number, group: any[]) => {
+      if (group.length === targetCount) {
+        const evaluated = evaluate(group);
+        if (
+          evaluated.allCorrect > bestAllCorrect ||
+          (evaluated.allCorrect === bestAllCorrect &&
+            evaluated.totalCorrect > bestTotalCorrect) ||
+          (evaluated.allCorrect === bestAllCorrect &&
+            evaluated.totalCorrect === bestTotalCorrect &&
+            evaluated.avgScore > bestAvgScore)
+        ) {
+          bestAllCorrect = evaluated.allCorrect;
+          bestTotalCorrect = evaluated.totalCorrect;
+          bestAvgScore = evaluated.avgScore;
+          bestGroup = group.slice();
+        }
+        return;
+      }
+
+      const remaining = targetCount - group.length;
+      for (let i = startIndex; i <= pool.length - remaining; i++) {
+        group.push(pool[i]);
+        walk(i + 1, group);
+        group.pop();
+      }
+    };
+
+    walk(0, []);
+    return bestGroup.sort((a, b) => b.killProbability - a.killProbability || a.n - b.n);
   }
 
   private backtestHotPickKill5(hist: number[][], displayPeriods = 10): any {
@@ -926,7 +1650,7 @@ export class PredictorOptService implements OnModuleDestroy {
 
       totalCorrect += correctCount;
       totalPredicted += displayed.length;
-      if (displayed.length > 0 && failed.length === 0) allCorrectPeriods++;
+      if (displayed.length === 5 && failed.length === 0) allCorrectPeriods++;
 
       details.push({
         periodOffset: hist.length - i,
@@ -976,14 +1700,29 @@ export class PredictorOptService implements OnModuleDestroy {
       };
     }
 
-    const threshold = this.getAdaptiveHotPickKill5Threshold(hist);
-    const { candidates, qualified } = this.getHotPickKill5Candidates(
-      hist,
-      occurrenceStats,
+    let threshold = this.getAdaptiveHotPickKill5Threshold(hist);
+    let candidates: any[] = [];
+    let qualified: any[] = [];
+    let predictions: any[] = [];
+
+    for (const candidateThreshold of [
       threshold,
-      fastMode,
-    );
-    const predictions = qualified.slice(0, 5);
+      88.0,
+      87.0,
+      86.0,
+    ].filter((value, index, arr) => arr.indexOf(value) === index && value <= threshold)) {
+      const candidateResult = this.getHotPickKill5Candidates(
+        hist,
+        occurrenceStats,
+        candidateThreshold,
+        fastMode,
+      );
+      candidates = candidateResult.candidates;
+      qualified = candidateResult.qualified;
+      predictions = this.selectHistoricalHotPickKill5Group(hist, qualified, 5, 80);
+      threshold = candidateThreshold;
+      if (predictions.length === 5) break;
+    }
 
     return {
       threshold,
@@ -994,8 +1733,8 @@ export class PredictorOptService implements OnModuleDestroy {
       backtest: includeBacktest ? this.backtestHotPickKill5(hist, 10) : null,
       note:
         predictions.length >= 5
-          ? `已筛出${predictions.length}个置信度 >= ${threshold}% 且满足共识和遗漏保护的杀码。`
-          : `当前只有${predictions.length}个号码满足 ${threshold}% 阈值、共识和遗漏保护，未硬凑。`,
+          ? `已筛出${predictions.length}个置信度 >= ${threshold}% 的分散组合杀码。`
+          : `当前未形成完整5码组合：需同时满足 ${threshold}% 阈值、滚动稳定、冷度和共识条件，未硬凑。`,
     };
   }
 

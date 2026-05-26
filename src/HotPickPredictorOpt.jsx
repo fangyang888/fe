@@ -1077,6 +1077,10 @@ export default function HotPickPredictorOpt() {
                           近30期 {item.recentCount} 期 · 出现率 {formatPercent(item.recentRate)}
                           <br />
                           热度排名 #{item.heatRank} · 滚动杀码 {formatPercent(item.rollingKillRate)}
+                          <br />
+                          相似学习 {formatPercent(item.similarKillRate)} · 误杀分类 {formatPercent(item.classifierKillRate)}
+                          <br />
+                          反弹风险 {formatPercent(item.reboundRisk)} · 吸引风险 {formatPercent(item.attractionRisk)}
                         </div>
                         <div className="hot-pick-kill-reasons">
                           {item.reasons?.slice(0, 4).map((reason) => (

@@ -1016,7 +1016,9 @@ export default function HotPickPredictor() {
                   <div className="hot-pick-kill-head">
                     <div>
                       <div className="hot-pick-kill-title">
-                        {hotPickKill5.sourceAlgorithm === 'hk-kill5-independent'
+                        {hotPickKill5.sourceAlgorithm === 'default-kill5-independent-group-engine'
+                          ? '默认独立组合引擎 5杀算法'
+                          : hotPickKill5.sourceAlgorithm === 'hk-kill5-independent'
                           ? '香港独立 5杀算法'
                           : '基于近30期热度 + NewKill 多模型算法'}
                       </div>
@@ -1026,6 +1028,77 @@ export default function HotPickPredictor() {
                       {hotPickKill5.selectedCount}/{hotPickKill5.targetCount} 达标
                     </div>
                   </div>
+
+                  {hotPickKill5.groupStats && (
+                    <div className="hot-pick-kill-backtest-summary">
+                      <div className="hot-pick-kill-backtest-stat">
+                        <div className="hot-pick-kill-backtest-value">
+                          {formatPercent(hotPickKill5.groupStats.allCorrectRate)}
+                        </div>
+                        <div className="hot-pick-kill-backtest-label">
+                          组合引擎近{hotPickKill5.groupStats.calcPeriods}期全中率
+                        </div>
+                      </div>
+                      <div className="hot-pick-kill-backtest-stat">
+                        <div className="hot-pick-kill-backtest-value">
+                          {formatPercent(hotPickKill5.groupStats.singleAccuracy)}
+                        </div>
+                        <div className="hot-pick-kill-backtest-label">组合单号准确率</div>
+                      </div>
+                      <div className="hot-pick-kill-backtest-stat">
+                        <div className="hot-pick-kill-backtest-value">
+                          {formatPercent(hotPickKill5.groupStats.groupConfidence)}
+                        </div>
+                        <div className="hot-pick-kill-backtest-label">组合置信度</div>
+                      </div>
+                      {typeof hotPickKill5.groupStats.recentCalibrationAdjustment ===
+                        'number' && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {hotPickKill5.groupStats.recentCalibrationAdjustment > 0 ? '+' : ''}
+                            {formatPercent(hotPickKill5.groupStats.recentCalibrationAdjustment)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">近况校准</div>
+                        </div>
+                      )}
+                      {typeof hotPickKill5.groupStats.avgRecentMathRisk === 'number' && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {formatPercent(hotPickKill5.groupStats.avgRecentMathRisk)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">近5数学风险</div>
+                        </div>
+                      )}
+                      {typeof hotPickKill5.groupStats.avgRegularityRisk === 'number' && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {formatPercent(hotPickKill5.groupStats.avgRegularityRisk)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">规律风险</div>
+                        </div>
+                      )}
+                      {hotPickKill5.groupStats.fusionQualityPass && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">通过</div>
+                          <div className="hot-pick-kill-backtest-label">融合质量门</div>
+                        </div>
+                      )}
+                      {hotPickKill5.groupStats.forcedMinimum && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">最小</div>
+                          <div className="hot-pick-kill-backtest-label">单号兜底</div>
+                        </div>
+                      )}
+                      {typeof hotPickKill5.groupStats.newKillOverlapCount === 'number' && (
+                        <div className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {hotPickKill5.groupStats.newKillOverlapCount}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">NewKill覆盖</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="hot-pick-kill-grid">
                     {(hotPickKill5.predictions?.length > 0
@@ -1040,10 +1113,34 @@ export default function HotPickPredictor() {
                           </span>
                         </div>
                         <div className="hot-pick-kill-meta">
+                          {typeof item.singleKillProbability === 'number' && (
+                            <>
+                              单号原始 {formatPercent(item.singleKillProbability)}
+                              <br />
+                            </>
+                          )}
+                          {typeof item.rawGroupConfidence === 'number' && (
+                            <>
+                              原始组合 {formatPercent(item.rawGroupConfidence)} · 近况校准{' '}
+                              {item.recentCalibrationAdjustment > 0 ? '+' : ''}
+                              {formatPercent(item.recentCalibrationAdjustment)}
+                              <br />
+                            </>
+                          )}
                           近30期 {item.recentCount} 期 · 出现率 {formatPercent(item.recentRate)}
                           <br />
                           热度排名 #{item.heatRank} · 滚动杀码 {formatPercent(item.rollingKillRate)}
                           <br />
+                          近5数学投影 {formatPercent(item.recentMathRisk)}
+                          <br />
+                          规律风险 {formatPercent(item.regularityRisk)}
+                          <br />
+                          {item.inNewKill10 && (
+                            <>
+                              NewKill10 第 {item.newKillRank} 位
+                              <br />
+                            </>
+                          )}
                           相似学习 {formatPercent(item.similarKillRate)} · 误杀分类 {formatPercent(item.classifierKillRate)}
                           <br />
                           反弹风险 {formatPercent(item.reboundRisk)} · 吸引风险 {formatPercent(item.attractionRisk)}

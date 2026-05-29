@@ -1417,6 +1417,832 @@ export class PredictorService implements OnModuleDestroy {
       : result.candidates?.slice(0, 5) || [];
   }
 
+  private getDefaultKill5AbsenceStats(hist: number[][], n: number) {
+    const countInWindow = (window: number) => {
+      const start = Math.max(0, hist.length - window);
+      let count = 0;
+      for (let i = start; i < hist.length; i++) {
+        if (hist[i].includes(n)) count++;
+      }
+      const periods = hist.length - start;
+      return {
+        periods,
+        count,
+        rate: periods > 0 ? (count / periods) * 100 : 0,
+        killRate: periods > 0 ? (1 - count / periods) * 100 : 0,
+      };
+    };
+
+    const appearances = [];
+    for (let i = 0; i < hist.length; i++) {
+      if (hist[i].includes(n)) appearances.push(i);
+    }
+    const currentGap =
+      appearances.length > 0 ? hist.length - 1 - appearances[appearances.length - 1] : hist.length;
+    const gaps = [];
+    for (let i = 1; i < appearances.length; i++) {
+      gaps.push(appearances[i] - appearances[i - 1]);
+    }
+    const avgGap =
+      gaps.length > 0
+        ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length
+        : 49 / 7;
+    const gapRatio = avgGap > 0 ? currentGap / avgGap : 1;
+
+    return {
+      window5: countInWindow(5),
+      window10: countInWindow(10),
+      window20: countInWindow(20),
+      window30: countInWindow(30),
+      window50: countInWindow(50),
+      window80: countInWindow(80),
+      window120: countInWindow(120),
+      currentGap,
+      avgGap,
+      gapRatio,
+    };
+  }
+
+  private getDefaultKill5MarketDepth(hist: number[][]) {
+    const counts = new Array(50).fill(0);
+    const start = Math.max(0, hist.length - 30);
+    for (let i = start; i < hist.length; i++) {
+      for (const n of new Set(hist[i])) {
+        if (n >= 1 && n <= 49) counts[n]++;
+      }
+    }
+
+    let zeroCount = 0;
+    let oneCount = 0;
+    let twoCount = 0;
+    for (let n = 1; n <= 49; n++) {
+      if (counts[n] === 0) zeroCount++;
+      else if (counts[n] === 1) oneCount++;
+      else if (counts[n] === 2) twoCount++;
+    }
+
+    return {
+      zeroCount,
+      oneCount,
+      twoCount,
+      depth: Math.max(0, Math.min(1, (zeroCount * 1.5 + oneCount * 0.8 + twoCount * 0.3) / 8)),
+    };
+  }
+
+  private getDefaultKill5ColdHitPressure(hist: number[][], lookback = 5) {
+    const pressureByNum = new Map<number, number>();
+    const details: any[] = [];
+    const start = Math.max(30, hist.length - lookback);
+
+    for (let i = start; i < hist.length; i++) {
+      const prior = hist.slice(0, i);
+      const actual = hist[i] || [];
+      const coldHits = actual
+        .map((n) => ({
+          n,
+          absence: this.getDefaultKill5AbsenceStats(prior, n),
+        }))
+        .filter(({ absence }) => absence.window30.count <= 2)
+        .map(({ n, absence }) => ({
+          n,
+          coldCount: absence.window30.count,
+          gapRatio: absence.gapRatio,
+        }));
+
+      for (const hit of coldHits) {
+        for (let n = 1; n <= 49; n++) {
+          const sameTail = n % 10 === hit.n % 10;
+          const sameZone = Math.floor((n - 1) / 10) === Math.floor((hit.n - 1) / 10);
+          const exact = n === hit.n;
+          const add =
+            (exact ? 2.2 : 0) +
+            (sameTail ? 1.1 : 0) +
+            (sameZone ? 0.7 : 0) +
+            (hit.coldCount === 0 ? 1.2 : hit.coldCount === 1 ? 0.8 : 0.4);
+          if (add > 0) {
+            pressureByNum.set(n, (pressureByNum.get(n) || 0) + add);
+          }
+        }
+      }
+
+      if (coldHits.length > 0) {
+        details.push({
+          offset: hist.length - i,
+          coldHits,
+        });
+      }
+    }
+
+    for (const [n, value] of pressureByNum.entries()) {
+      pressureByNum.set(n, Math.min(8, value));
+    }
+
+    return {
+      pressureByNum,
+      details,
+      coldHitCount: details.reduce((sum, item) => sum + item.coldHits.length, 0),
+    };
+  }
+
+  private getDefaultKill5RecentMathRisk(hist: number[][], n: number, lookback = 5) {
+    const recent = hist.slice(Math.max(0, hist.length - lookback));
+    const flat = recent.flat();
+    const last = recent[recent.length - 1] || [];
+    const prev = recent[recent.length - 2] || [];
+    let risk = 0;
+    const signals: string[] = [];
+
+    const tailCount = flat.filter((x) => x % 10 === n % 10).length;
+    if (tailCount >= 3) {
+      risk += Math.min(4.5, (tailCount - 2) * 1.3);
+      signals.push('tail');
+    }
+
+    const zoneCount = flat.filter(
+      (x) => Math.floor((x - 1) / 10) === Math.floor((n - 1) / 10),
+    ).length;
+    if (zoneCount >= 6) {
+      risk += Math.min(3.5, (zoneCount - 5) * 0.7);
+      signals.push('zone');
+    }
+
+    const neighborCount = flat.filter((x) => Math.abs(x - n) <= 2).length;
+    if (neighborCount >= 2) {
+      risk += Math.min(4, (neighborCount - 1) * 1.1);
+      signals.push('near');
+    }
+
+    const sumProjection = new Set<number>();
+    const diffProjection = new Set<number>();
+    for (const a of last) {
+      for (const b of prev) {
+        sumProjection.add(((a + b - 1) % 49) + 1);
+        diffProjection.add(Math.abs(a - b) || 49);
+      }
+    }
+
+    if (sumProjection.has(n)) {
+      risk += 3.2;
+      signals.push('sum');
+    }
+    if (diffProjection.has(n)) {
+      risk += 2.7;
+      signals.push('diff');
+    }
+
+    const lastSumMod = (last.reduce((sum, x) => sum + x, 0) % 49) + 1;
+    if (Math.abs(lastSumMod - n) <= 1) {
+      risk += 2.4;
+      signals.push('sumMod');
+    }
+
+    return {
+      risk: Math.round(Math.min(9, risk) * 10) / 10,
+      signals,
+      tailCount,
+      zoneCount,
+      neighborCount,
+    };
+  }
+
+  private getDefaultKill5RegularityRisk(hist: number[][], n: number, absence: any) {
+    const recent5 = hist.slice(Math.max(0, hist.length - 5));
+    const recent10 = hist.slice(Math.max(0, hist.length - 10));
+    const recent20 = hist.slice(Math.max(0, hist.length - 20));
+    const flat5 = recent5.flat();
+    const flat10 = recent10.flat();
+    const flat20 = recent20.flat();
+    let risk = 0;
+    const signals: string[] = [];
+
+    const zoneOf = (x: number) => Math.floor((x - 1) / 10);
+    const sameTail5 = flat5.filter((x) => x % 10 === n % 10).length;
+    const sameTail20 = flat20.filter((x) => x % 10 === n % 10).length;
+    const tailMomentum = sameTail5 - (sameTail20 / Math.max(1, recent20.length)) * recent5.length;
+    if (tailMomentum >= 1.2) {
+      risk += Math.min(3.2, tailMomentum * 0.9);
+      signals.push('tailMomentum');
+    }
+
+    const sameZone5 = flat5.filter((x) => zoneOf(x) === zoneOf(n)).length;
+    const sameZone20 = flat20.filter((x) => zoneOf(x) === zoneOf(n)).length;
+    const zoneMomentum = sameZone5 - (sameZone20 / Math.max(1, recent20.length)) * recent5.length;
+    if (zoneMomentum >= 1.8) {
+      risk += Math.min(3.4, zoneMomentum * 0.55);
+      signals.push('zoneMomentum');
+    }
+
+    const near5 = flat5.filter((x) => Math.abs(x - n) <= 2).length;
+    if (near5 >= 2) {
+      risk += Math.min(3.6, (near5 - 1) * 0.95);
+      signals.push('nearMomentum');
+    }
+
+    const gapRatio = absence.gapRatio || 1;
+    if (gapRatio >= 0.75 && gapRatio <= 1.45) {
+      risk += 2.6;
+      signals.push('gapResonance');
+    } else if (gapRatio > 2.4) {
+      risk += Math.min(4.2, (gapRatio - 2.4) * 1.4);
+      signals.push('overdueRebound');
+    }
+
+    const odd20 = flat20.filter((x) => x % 2 === 1).length;
+    const small20 = flat20.filter((x) => x <= 24).length;
+    const oddRate20 = flat20.length > 0 ? odd20 / flat20.length : 0.5;
+    const smallRate20 = flat20.length > 0 ? small20 / flat20.length : 0.5;
+    if (n % 2 === 1 && oddRate20 < 0.43) {
+      risk += 1.4;
+      signals.push('oddBackfill');
+    } else if (n % 2 === 0 && oddRate20 > 0.57) {
+      risk += 1.4;
+      signals.push('evenBackfill');
+    }
+    if (n <= 24 && smallRate20 < 0.43) {
+      risk += 1.3;
+      signals.push('smallBackfill');
+    } else if (n > 24 && smallRate20 > 0.57) {
+      risk += 1.3;
+      signals.push('bigBackfill');
+    }
+
+    const last = hist[hist.length - 1] || [];
+    const lastTailHit = last.some((x) => x % 10 === n % 10);
+    const lastZoneHit = last.some((x) => zoneOf(x) === zoneOf(n));
+    if (lastTailHit && lastZoneHit) {
+      risk += 1.6;
+      signals.push('lastTailZone');
+    }
+
+    return {
+      risk: Math.round(Math.min(9.5, risk) * 10) / 10,
+      signals,
+      sameTail5,
+      sameZone5,
+      near5,
+    };
+  }
+
+  private getDefaultKill5IndependentCandidates(hist: number[][], occurrenceStats: any): any {
+    const occurrenceByNum = new Map(
+      (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
+    );
+    const transitions = this.getHotPickTransitionScores(hist);
+    const market = this.getDefaultKill5MarketDepth(hist);
+    const coldPressure = this.getDefaultKill5ColdHitPressure(hist, 5);
+
+    const candidates = Array.from({ length: 49 }, (_, i) => {
+      const n = i + 1;
+      const absence = this.getDefaultKill5AbsenceStats(hist, n);
+      const occurrence = occurrenceByNum.get(n) as any;
+      const recentRate = occurrence?.rate || absence.window30.rate;
+      const recentCount = occurrence?.count ?? absence.window30.count;
+      const heatRank = occurrence?.rank || 49;
+      const transitionAppear = transitions.markov[n] || this.randomAppearProb;
+      const transitionRisk = Math.max(0, transitionAppear - this.randomAppearProb) * 100;
+      const stableAbsenceRate =
+        absence.window10.killRate * 0.08 +
+        absence.window20.killRate * 0.17 +
+        absence.window30.killRate * 0.18 +
+        absence.window50.killRate * 0.2 +
+        absence.window80.killRate * 0.2 +
+        absence.window120.killRate * 0.17;
+      const shortAppearRisk =
+        absence.window5.count * 1.8 +
+        Math.max(0, absence.window10.count - 1) * 1.1 +
+        Math.max(0, absence.window20.count - 3) * 0.55;
+      const overdueReboundRisk =
+        Math.max(0, Math.min(1, (absence.gapRatio - 1.7) / 2.6)) * 6.5;
+      const tooFreshRisk = absence.gapRatio <= 0.28 ? 3.8 : 0;
+      const temporaryColdRisk =
+        recentCount <= 1 && absence.window80.count >= 8
+          ? 4.2
+          : recentCount <= 1 && absence.window120.count >= 14
+            ? 2.8
+            : 0;
+      const shallowMarketRisk =
+        (1 - market.depth) * (recentCount <= 1 ? 3.6 : recentCount === 2 ? 1.6 : 0);
+      const coldHitPressureRisk = coldPressure.pressureByNum.get(n) || 0;
+      const recentMathRisk = this.getDefaultKill5RecentMathRisk(hist, n, 5);
+      const regularityRisk = this.getDefaultKill5RegularityRisk(hist, n, absence);
+      const reboundRisk =
+        shortAppearRisk +
+        overdueReboundRisk +
+        tooFreshRisk +
+        temporaryColdRisk +
+        shallowMarketRisk +
+        coldHitPressureRisk +
+        transitionRisk * 0.28;
+      const rankColdProbability = ((heatRank - 1) / 48) * 100;
+      const killProbability = Math.max(
+        80,
+        Math.min(
+          98.5,
+          stableAbsenceRate * 0.66 +
+            rankColdProbability * 0.12 +
+            (100 - recentRate) * 0.22 -
+            reboundRisk,
+        ),
+      );
+
+      return {
+        n,
+        killProbability: Math.round(killProbability * 10) / 10,
+        singleKillProbability: Math.round(killProbability * 10) / 10,
+        modelKillProbability: Math.round(stableAbsenceRate * 10) / 10,
+        recentColdProbability: Math.round((100 - recentRate) * 10) / 10,
+        rollingKillRate: Math.round(stableAbsenceRate * 10) / 10,
+        stableAbsenceRate: Math.round(stableAbsenceRate * 10) / 10,
+        reboundRisk: Math.round(reboundRisk * 10) / 10,
+        coldHitPressureRisk: Math.round(coldHitPressureRisk * 10) / 10,
+        recentMathRisk: recentMathRisk.risk,
+        recentMathSignals: recentMathRisk.signals,
+        regularityRisk: regularityRisk.risk,
+        regularitySignals: regularityRisk.signals,
+        transitionRisk: Math.round(transitionRisk * 10) / 10,
+        marketDepth: Math.round(market.depth * 1000) / 1000,
+        recentCount,
+        recentRate,
+        heatRank,
+        consensus: 0,
+        sources: {
+          probabilityRank: null,
+          lowRiskRank: null,
+          engineRank: null,
+          hybridRank: null,
+        },
+        reasons: [
+          `近30期${recentCount}期`,
+          `稳定缺席${stableAbsenceRate.toFixed(1)}%`,
+          `反弹风险${reboundRisk.toFixed(1)}%`,
+          `冷号压力${coldHitPressureRisk.toFixed(1)}%`,
+          `数学投影${recentMathRisk.risk.toFixed(1)}%`,
+          `规律风险${regularityRisk.risk.toFixed(1)}%`,
+          `遗漏${absence.currentGap}期`,
+        ],
+      };
+    }).sort(
+      (a, b) =>
+        b.killProbability - a.killProbability ||
+        a.reboundRisk - b.reboundRisk ||
+        a.recentCount - b.recentCount ||
+        b.heatRank - a.heatRank,
+    );
+
+    return {
+      candidates,
+      qualified: candidates.filter((candidate) => candidate.killProbability >= 94),
+      market,
+      coldPressure: {
+        coldHitCount: coldPressure.coldHitCount,
+        details: coldPressure.details,
+      },
+    };
+  }
+
+  private getKill5GroupStats(
+    hist: number[][],
+    nums: number[],
+    evalPeriods = 80,
+  ) {
+    const start = Math.max(60, hist.length - evalPeriods);
+    let totalCorrect = 0;
+    let totalPredicted = 0;
+    let allCorrectPeriods = 0;
+    let failedPeriods = 0;
+    let maxFailed = 0;
+
+    for (let i = start; i < hist.length; i++) {
+      const actualSet = new Set(hist[i]);
+      const failedCount = nums.filter((n) => actualSet.has(n)).length;
+      const correctCount = nums.length - failedCount;
+      totalCorrect += correctCount;
+      totalPredicted += nums.length;
+      if (failedCount === 0) allCorrectPeriods++;
+      else failedPeriods++;
+      maxFailed = Math.max(maxFailed, failedCount);
+    }
+
+    const calcPeriods = Math.max(0, hist.length - start);
+    return {
+      calcPeriods,
+      allCorrectPeriods,
+      allCorrectRate:
+        calcPeriods > 0 ? (allCorrectPeriods / calcPeriods) * 100 : 0,
+      failedPeriods,
+      singleAccuracy:
+        totalPredicted > 0 ? (totalCorrect / totalPredicted) * 100 : 0,
+      maxFailed,
+    };
+  }
+
+  private getKill5GroupOverlapScore(hist: number[][], nums: number[], lookback = 120) {
+    const start = Math.max(0, hist.length - lookback);
+    const periods = Math.max(1, hist.length - start);
+    let appearanceSum = 0;
+    let unionPeriods = 0;
+
+    for (let i = start; i < hist.length; i++) {
+      const actualSet = new Set(hist[i]);
+      const failedCount = nums.filter((n) => actualSet.has(n)).length;
+      appearanceSum += failedCount;
+      if (failedCount > 0) unionPeriods++;
+    }
+
+    const expectedUnion = Math.min(periods, appearanceSum);
+    return expectedUnion > 0
+      ? Math.max(0, (expectedUnion - unionPeriods) / expectedUnion) * 100
+      : 0;
+  }
+
+  private getKill5GroupConfidence(
+    stats: {
+      allCorrectRate: number;
+      singleAccuracy: number;
+      maxFailed: number;
+    },
+    avgKillProbability: number,
+    overlapScore: number,
+  ) {
+    const randomAllCorrectRate = this.getRandomAllKillRate(5) * 100;
+    const allCorrectLift = Math.max(0, stats.allCorrectRate - randomAllCorrectRate);
+    const confidence =
+      84 +
+      allCorrectLift * 0.35 +
+      Math.max(-8, stats.singleAccuracy - 85) * 0.35 +
+      Math.max(-8, avgKillProbability - 88) * 0.45 +
+      overlapScore * 0.08 -
+      Math.max(0, stats.maxFailed - 1) * 1.2;
+
+    return Math.max(0, Math.min(98.8, confidence));
+  }
+
+  private getKill5GroupRecentCalibration(hist: number[][], nums: number[]) {
+    const summarize = (window: number) => {
+      const start = Math.max(0, hist.length - window);
+      let allCorrectPeriods = 0;
+      let totalCorrect = 0;
+      let totalPredicted = 0;
+      let failedPeriods = 0;
+      let maxFailed = 0;
+
+      for (let i = start; i < hist.length; i++) {
+        const actualSet = new Set(hist[i]);
+        const failedCount = nums.filter((n) => actualSet.has(n)).length;
+        const correctCount = nums.length - failedCount;
+        totalCorrect += correctCount;
+        totalPredicted += nums.length;
+        if (failedCount === 0) allCorrectPeriods++;
+        else failedPeriods++;
+        maxFailed = Math.max(maxFailed, failedCount);
+      }
+
+      const periods = Math.max(0, hist.length - start);
+      return {
+        periods,
+        allCorrectPeriods,
+        failedPeriods,
+        allCorrectRate: periods > 0 ? (allCorrectPeriods / periods) * 100 : 0,
+        singleAccuracy: totalPredicted > 0 ? (totalCorrect / totalPredicted) * 100 : 0,
+        maxFailed,
+      };
+    };
+
+    let failureStreak = 0;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const actualSet = new Set(hist[i]);
+      const failedCount = nums.filter((n) => actualSet.has(n)).length;
+      if (failedCount === 0) break;
+      failureStreak++;
+    }
+
+    const w10 = summarize(10);
+    const w20 = summarize(20);
+    const w40 = summarize(40);
+    const recentFailedDensity = w10.periods > 0 ? w10.failedPeriods / w10.periods : 1;
+    const recentAllCorrectScore =
+      w10.allCorrectRate * 0.48 + w20.allCorrectRate * 0.34 + w40.allCorrectRate * 0.18;
+    const recentSingleScore =
+      w10.singleAccuracy * 0.5 + w20.singleAccuracy * 0.32 + w40.singleAccuracy * 0.18;
+
+    const penalty =
+      Math.max(0, 58 - recentAllCorrectScore) * 0.18 +
+      Math.max(0, 84 - recentSingleScore) * 0.22 +
+      Math.min(5, failureStreak) * 1.65 +
+      recentFailedDensity * 4.2 +
+      Math.max(0, w10.maxFailed - 1) * 1.8;
+    const bonus =
+      (w10.allCorrectRate >= 70 ? 1.8 : 0) +
+      (w20.allCorrectRate >= 65 ? 1.2 : 0) +
+      (failureStreak === 0 ? 1.1 : 0);
+
+    return {
+      w10,
+      w20,
+      w40,
+      failureStreak,
+      recentAllCorrectScore,
+      recentSingleScore,
+      penalty,
+      bonus,
+      adjustment: bonus - penalty,
+    };
+  }
+
+  private selectHotPickKill5Group(
+    hist: number[][],
+    candidates: any[],
+    threshold: number,
+    newKill10Nums: number[] = [],
+  ) {
+    const newKillSet = new Set(newKill10Nums);
+    const singleQualified = candidates.filter(
+      (candidate) => candidate.killProbability >= threshold,
+    );
+    const mergePool = (items: any[], limit: number) => {
+      const seen = new Set<number>();
+      const merged: any[] = [];
+      for (const item of items) {
+        if (!item || seen.has(item.n)) continue;
+        seen.add(item.n);
+        merged.push(item);
+        if (merged.length >= limit) break;
+      }
+      return merged;
+    };
+    const newKillCandidates = candidates
+      .filter((candidate) => newKillSet.has(candidate.n))
+      .sort(
+        (a, b) =>
+          (a.newKillRank || 99) - (b.newKillRank || 99) ||
+          a.recentMathRisk - b.recentMathRisk ||
+          a.regularityRisk - b.regularityRisk,
+      );
+    const fallbackPool = mergePool(
+      [
+        ...newKillCandidates,
+        ...candidates,
+      ],
+      16,
+    );
+    const pool = mergePool(
+      [
+        ...newKillCandidates,
+        ...candidates.filter((candidate) => candidate.killProbability >= 84),
+      ],
+      14,
+    );
+
+    if (fallbackPool.length === 0) {
+      return {
+        qualified: [],
+        singleQualified,
+        predictions: [],
+        groupStats: null,
+        groupOptions: [],
+      };
+    }
+
+    const groupOptions: any[] = [];
+    let best: any = null;
+    const buildOption = (group: any[], forcedMinimum = false) => {
+      const nums = group.map((item) => item.n);
+      const stats = this.getKill5GroupStats(hist, nums, 80);
+      const overlapScore = this.getKill5GroupOverlapScore(hist, nums, 120);
+      const avgKillProbability =
+        group.reduce((sum, item) => sum + item.killProbability, 0) / group.length;
+      const avgConsensus =
+        group.reduce((sum, item) => sum + (item.consensus || 0), 0) / group.length;
+      const newKillOverlapCount = group.filter((item) => newKillSet.has(item.n)).length;
+      const avgNewKillRank =
+        group.reduce((sum, item) => sum + (item.newKillRank || 12), 0) / group.length;
+      const avgRecentMathRisk =
+        group.reduce((sum, item) => sum + (item.recentMathRisk || 0), 0) / group.length;
+      const highRecentMathRiskCount = group.filter(
+        (item) => (item.recentMathRisk || 0) >= 8,
+      ).length;
+      const avgRegularityRisk =
+        group.reduce((sum, item) => sum + (item.regularityRisk || 0), 0) / group.length;
+      const highRegularityRiskCount = group.filter(
+        (item) => (item.regularityRisk || 0) >= 7,
+      ).length;
+      const fusionRiskScore =
+        avgRecentMathRisk * 0.55 +
+        highRecentMathRiskCount * 2.6 +
+        avgRegularityRisk * 0.75 +
+        highRegularityRiskCount * 2.8;
+      const groupConfidence =
+        group.length === 5
+          ? this.getKill5GroupConfidence(stats, avgKillProbability, overlapScore)
+          : Math.max(
+              0,
+              Math.min(
+                98.8,
+                avgKillProbability +
+                  Math.max(-6, stats.singleAccuracy - 88) * 0.18 +
+                  Math.max(-6, stats.allCorrectRate - 84) * 0.12 -
+                  fusionRiskScore * 0.55,
+              ),
+            );
+      const calibration = this.getKill5GroupRecentCalibration(hist, nums);
+      const calibratedConfidence = Math.max(
+        0,
+        Math.min(98.8, groupConfidence + calibration.adjustment),
+      );
+      const score =
+        calibratedConfidence * 2.2 +
+        stats.allCorrectRate * 0.8 +
+        stats.singleAccuracy * 0.45 +
+        calibration.recentAllCorrectScore * 0.65 +
+        calibration.recentSingleScore * 0.28 +
+        avgKillProbability * 0.35 +
+        overlapScore * 0.28 +
+        avgConsensus * 0.9 -
+        stats.maxFailed * 4.5 -
+        calibration.failureStreak * 3.2 -
+        fusionRiskScore * 2.7 +
+        newKillOverlapCount * 4.2 -
+        Math.max(0, avgNewKillRank - 5.5) * 0.8 +
+        (forcedMinimum ? 500 : 0);
+
+      return {
+        nums,
+        group,
+        stats,
+        overlapScore,
+        avgKillProbability,
+        avgRecentMathRisk,
+        highRecentMathRiskCount,
+        avgRegularityRisk,
+        highRegularityRiskCount,
+        fusionRiskScore,
+        newKillOverlapCount,
+        avgNewKillRank,
+        rawGroupConfidence: groupConfidence,
+        groupConfidence: calibratedConfidence,
+        calibration,
+        score,
+        forcedMinimum,
+        outputMode: forcedMinimum ? 'minimum-single' : group.length === 5 ? 'kill5' : 'partial',
+      };
+    };
+
+    const visit = (start: number, group: any[]) => {
+      if (group.length === 5) {
+        const option = buildOption([...group]);
+        groupOptions.push(option);
+        if (
+          !best ||
+          option.score > best.score ||
+          (option.score === best.score && option.stats.allCorrectRate > best.stats.allCorrectRate)
+        ) {
+          best = option;
+        }
+        return;
+      }
+
+      for (let i = start; i <= pool.length - (5 - group.length); i++) {
+        group.push(pool[i]);
+        visit(i + 1, group);
+        group.pop();
+      }
+    };
+
+    if (pool.length >= 5) {
+      visit(0, []);
+    }
+    groupOptions.sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.groupConfidence - a.groupConfidence ||
+        b.stats.allCorrectRate - a.stats.allCorrectRate ||
+        b.avgKillProbability - a.avgKillProbability,
+    );
+
+    const qualified = groupOptions.filter((option) => option.groupConfidence >= threshold);
+    const isFusionQualityPass = (option: any) =>
+      option.fusionRiskScore <= 12 &&
+      option.highRecentMathRiskCount <= 1 &&
+      option.highRegularityRiskCount <= 1 &&
+      option.avgRegularityRisk <= 5.2;
+    const fallbackSingle = buildOption(
+      [
+        [...fallbackPool].sort(
+          (a, b) =>
+            (
+              b.killProbability +
+              (b.inNewKill10 ? 7 : 0) -
+              b.recentMathRisk * 1.8 -
+              b.regularityRisk * 2.2 -
+              b.reboundRisk -
+              Math.max(0, (b.newKillRank || 12) - 5) * 0.6
+            ) -
+              (
+                a.killProbability +
+                (a.inNewKill10 ? 7 : 0) -
+                a.recentMathRisk * 1.8 -
+                a.regularityRisk * 2.2 -
+                a.reboundRisk -
+                Math.max(0, (a.newKillRank || 12) - 5) * 0.6
+              ) ||
+            a.recentMathRisk - b.recentMathRisk ||
+            a.regularityRisk - b.regularityRisk,
+        )[0],
+      ],
+      true,
+    );
+    const selected = qualified.find(isFusionQualityPass) || fallbackSingle;
+    const selectedNums = new Set(selected?.nums || []);
+    const predictions = fallbackPool
+      .filter((candidate) => selectedNums.has(candidate.n))
+      .sort((a, b) => (selected?.nums || []).indexOf(a.n) - (selected?.nums || []).indexOf(b.n))
+      .map((candidate, index) => ({
+        ...candidate,
+        singleKillProbability: candidate.killProbability,
+        killProbability: Math.round((selected?.groupConfidence || 0) * 10) / 10,
+        rank: index + 1,
+        groupSelected: true,
+        groupConfidence: Math.round((selected?.groupConfidence || 0) * 10) / 10,
+        rawGroupConfidence: Math.round((selected?.rawGroupConfidence || 0) * 10) / 10,
+        recentCalibrationAdjustment:
+          Math.round((selected?.calibration.adjustment || 0) * 10) / 10,
+        avgRecentMathRisk: Math.round((selected?.avgRecentMathRisk || 0) * 10) / 10,
+        highRecentMathRiskCount: selected?.highRecentMathRiskCount || 0,
+        avgRegularityRisk: Math.round((selected?.avgRegularityRisk || 0) * 10) / 10,
+        highRegularityRiskCount: selected?.highRegularityRiskCount || 0,
+        fusionRiskScore: Math.round((selected?.fusionRiskScore || 0) * 10) / 10,
+        fusionQualityPass: Boolean(selected && isFusionQualityPass(selected)),
+        forcedMinimum: Boolean(selected?.forcedMinimum),
+        outputMode: selected?.outputMode || 'kill5',
+        inNewKill10: Boolean(candidate.inNewKill10),
+        newKillRank: candidate.newKillRank || null,
+        recentFailureStreak: selected?.calibration.failureStreak || 0,
+        recentAllCorrectScore:
+          Math.round((selected?.calibration.recentAllCorrectScore || 0) * 10) / 10,
+        groupAllCorrectRate: Math.round((selected?.stats.allCorrectRate || 0) * 10) / 10,
+        groupSingleAccuracy: Math.round((selected?.stats.singleAccuracy || 0) * 10) / 10,
+        groupOverlapScore: Math.round((selected?.overlapScore || 0) * 10) / 10,
+      }));
+
+    return {
+      qualified,
+      singleQualified,
+      predictions,
+      groupStats: selected
+        ? {
+            calcPeriods: selected.stats.calcPeriods,
+            allCorrectPeriods: selected.stats.allCorrectPeriods,
+            allCorrectRate: Math.round(selected.stats.allCorrectRate * 10) / 10,
+            singleAccuracy: Math.round(selected.stats.singleAccuracy * 10) / 10,
+            overlapScore: Math.round(selected.overlapScore * 10) / 10,
+            avgKillProbability: Math.round(selected.avgKillProbability * 10) / 10,
+            groupConfidence: Math.round(selected.groupConfidence * 10) / 10,
+            rawGroupConfidence: Math.round(selected.rawGroupConfidence * 10) / 10,
+            recentCalibrationAdjustment:
+              Math.round(selected.calibration.adjustment * 10) / 10,
+            avgRecentMathRisk: Math.round(selected.avgRecentMathRisk * 10) / 10,
+            highRecentMathRiskCount: selected.highRecentMathRiskCount,
+            avgRegularityRisk: Math.round(selected.avgRegularityRisk * 10) / 10,
+            highRegularityRiskCount: selected.highRegularityRiskCount,
+            fusionRiskScore: Math.round(selected.fusionRiskScore * 10) / 10,
+            fusionQualityPass: isFusionQualityPass(selected),
+            forcedMinimum: Boolean(selected.forcedMinimum),
+            outputMode: selected.outputMode,
+            newKillOverlapCount: selected.newKillOverlapCount,
+            avgNewKillRank: Math.round(selected.avgNewKillRank * 10) / 10,
+            recentAllCorrectScore:
+              Math.round(selected.calibration.recentAllCorrectScore * 10) / 10,
+            recentSingleScore: Math.round(selected.calibration.recentSingleScore * 10) / 10,
+            recentFailureStreak: selected.calibration.failureStreak,
+            score: Math.round(selected.score * 10) / 10,
+            nums: selected.nums,
+          }
+        : null,
+      groupOptions: groupOptions.slice(0, 6).map((option) => ({
+        nums: option.nums,
+        score: Math.round(option.score * 10) / 10,
+        groupConfidence: Math.round(option.groupConfidence * 10) / 10,
+        rawGroupConfidence: Math.round(option.rawGroupConfidence * 10) / 10,
+        recentCalibrationAdjustment:
+          Math.round(option.calibration.adjustment * 10) / 10,
+        avgRecentMathRisk: Math.round(option.avgRecentMathRisk * 10) / 10,
+        highRecentMathRiskCount: option.highRecentMathRiskCount,
+        avgRegularityRisk: Math.round(option.avgRegularityRisk * 10) / 10,
+        highRegularityRiskCount: option.highRegularityRiskCount,
+        fusionRiskScore: Math.round(option.fusionRiskScore * 10) / 10,
+        newKillOverlapCount: option.newKillOverlapCount,
+        avgNewKillRank: Math.round(option.avgNewKillRank * 10) / 10,
+        recentAllCorrectScore:
+          Math.round(option.calibration.recentAllCorrectScore * 10) / 10,
+        recentFailureStreak: option.calibration.failureStreak,
+        allCorrectRate: Math.round(option.stats.allCorrectRate * 10) / 10,
+        singleAccuracy: Math.round(option.stats.singleAccuracy * 10) / 10,
+        overlapScore: Math.round(option.overlapScore * 10) / 10,
+        avgKillProbability: Math.round(option.avgKillProbability * 10) / 10,
+      })),
+    };
+  }
+
   private backtestHotPickKill5(hist: number[][], displayPeriods = 10): any {
     const start = Math.max(60, hist.length - displayPeriods);
     const details = [];
@@ -1495,23 +2321,50 @@ export class PredictorService implements OnModuleDestroy {
     }
 
     const threshold = 94;
-    const { candidates, qualified } = this.getHotPickKill5Candidates(
+    const { candidates, market, coldPressure } = this.getDefaultKill5IndependentCandidates(
       hist,
       occurrenceStats,
     );
-    const predictions = qualified.slice(0, 5);
+    const newKill10Nums = this.getNewKillPredictor10Numbers(hist);
+    const newKillRankByNum = new Map(newKill10Nums.map((n, index) => [n, index + 1]));
+    const fusedCandidates = candidates.map((candidate: any) => ({
+      ...candidate,
+      inNewKill10: newKillRankByNum.has(candidate.n),
+      newKillRank: newKillRankByNum.get(candidate.n) || null,
+      reasons: [
+        ...(candidate.reasons || []),
+        ...(newKillRankByNum.has(candidate.n)
+          ? [`NewKill10第${newKillRankByNum.get(candidate.n)}位`]
+          : []),
+      ],
+    }));
+    const groupResult = this.selectHotPickKill5Group(
+      hist,
+      fusedCandidates,
+      threshold,
+      newKill10Nums,
+    );
+    const predictions = groupResult.predictions;
 
     return {
       threshold,
       selectedCount: predictions.length,
       targetCount: 5,
       predictions,
-      candidates: candidates.slice(0, 12),
+      candidates: fusedCandidates.slice(0, 12),
+      qualifiedCount: groupResult.qualified.length,
+      singleQualifiedCount: groupResult.singleQualified.length,
+      groupStats: groupResult.groupStats,
+      groupOptions: groupResult.groupOptions,
+      market,
+      coldPressure,
+      newKill10Nums,
+      sourceAlgorithm: 'default-kill5-independent-group-engine',
       backtest: includeBacktest ? this.backtestHotPickKill5(hist, 10) : null,
       note:
         predictions.length >= 5
-          ? '已筛出5个94%+高置信杀码。'
-          : `当前只有${predictions.length}个号码达到94%阈值，未硬凑。`,
+          ? `独立组合引擎已筛出整组94%+置信度5杀；近30冷池深度${Math.round(market.depth * 100)}%。`
+          : `当前没有组合达到94%置信度；近30冷池深度${Math.round(market.depth * 100)}%，组合引擎未硬凑。`,
     };
   }
 

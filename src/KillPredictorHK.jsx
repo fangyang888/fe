@@ -1500,10 +1500,13 @@ export default function KillPredictorHK() {
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
         <a href="/" style={styles.backLink}>
-          ← 返回主页1
+          ← 返回主页
         </a>
         <a href="/fe/history" style={styles.backLink}>
           📋 历史数据管理
+        </a>
+        <a href="/fe/kill/math3" style={{ ...styles.backLink, background: 'linear-gradient(135deg, #4f46e5, #6366f1)', color: '#fff', border: 'none' }}>
+          📊 数学排除预测 (95%+)
         </a>
       </div>
       <div style={styles.header}>

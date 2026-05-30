@@ -1159,8 +1159,9 @@ export default function NewKillPredictor() {
           </div>
         )} */}
 
-        <div className="action-container">
+        <div className="action-container" style={{ display: 'flex', gap: '15px', justifyContent: 'center' }}>
           <a href="/" className="btn-back">返回主页</a>
+          <a href="/fe/kill/math3" className="btn-back" style={{ background: 'linear-gradient(135deg, #4f46e5, #6366f1)', border: 'none' }}>数学排除预测 (95%+)</a>
         </div>
       </div>
     </div>

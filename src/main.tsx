@@ -23,6 +23,8 @@ import HistoryManager from './HistoryManager.jsx';
 import KillPredictorHK from './KillPredictorHK.jsx';
 // @ts-ignore
 import KillSevenStats from './KillSevenStats.jsx';
+// @ts-ignore
+import MathKillPredictor from './MathKillPredictor.jsx';
 // fabu
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter basename="/fe">
@@ -30,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
       <Route path="/" element={<KillPredictorHK />} />
       <Route path="/kill" element={<KillPredictor />} />
       <Route path="/kill/new" element={<NewKillPredictor />} />
+      <Route path="/kill/math3" element={<MathKillPredictor />} />
       <Route path="/hot-pick" element={<HotPickPredictor />} />
       <Route path="/hot-pick/opt" element={<HotPickPredictorOpt />} />
       <Route path="/kill/seven" element={<KillSevenStats />} />

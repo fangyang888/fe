@@ -154,27 +154,27 @@ export class PredictorService implements OnModuleDestroy {
   private readonly randomKillProb = 42 / 49;
   private readonly randomAppearProb = 7 / 49;
 
-  // 性能优化：缓存高频计算结果，防止内存泄漏，设置最大容量 500
-  private memoKill10 = new BoundedCache<string, any>(500);
-  private memoKillRepulsion = new BoundedCache<string, any>(500);
-  private memoAdaptiveOpts = new BoundedCache<number, any>(500);
-  private memoStrategy = new BoundedCache<number, any>(500);
-  private memoApriori = new BoundedCache<number, any>(500);
-  private memoCrossRepulsion = new BoundedCache<string, any>(500);
-  private memoKnn = new BoundedCache<number, any>(500);
-  private memoNB = new BoundedCache<number, any>(500);
-  private memoMarkov2 = new BoundedCache<number, any>(500);
-  private memoExpertWeights = new BoundedCache<number, any>(500);
-  private memoAppearScores = new BoundedCache<number, AppearScore[]>(500);
-  private memoAppearWeights = new BoundedCache<number, any>(500);
-  private memoKillEngine = new BoundedCache<string, KillEngineResult>(120);
-  private memoHybridKill10 = new BoundedCache<string, any>(100);
-  private memoCoreKillOne = new BoundedCache<string, any>(100);
-  private memoHotPick = new BoundedCache<string, any>(100);
-  private memoHistoricalLearning = new BoundedCache<number, any>(500);
-  private memoKillPredictionResponse = new BoundedCache<string, any>(20);
-  private memoKillSevenResponse = new BoundedCache<string, any>(20);
-  private memoKillSevenBacktestResponse = new BoundedCache<string, any>(20);
+  // 性能优化：缓存高频计算结果，加大缓存容量防止回测时频繁驱逐
+  private memoKill10 = new BoundedCache<string, any>(2000);
+  private memoKillRepulsion = new BoundedCache<string, any>(2000);
+  private memoAdaptiveOpts = new BoundedCache<number, any>(2000);
+  private memoStrategy = new BoundedCache<number, any>(2000);
+  private memoApriori = new BoundedCache<number, any>(2000);
+  private memoCrossRepulsion = new BoundedCache<string, any>(2000);
+  private memoKnn = new BoundedCache<number, any>(2000);
+  private memoNB = new BoundedCache<number, any>(2000);
+  private memoMarkov2 = new BoundedCache<number, any>(2000);
+  private memoExpertWeights = new BoundedCache<number, any>(2000);
+  private memoAppearScores = new BoundedCache<number, AppearScore[]>(2000);
+  private memoAppearWeights = new BoundedCache<number, any>(2000);
+  private memoKillEngine = new BoundedCache<string, KillEngineResult>(2000);
+  private memoHybridKill10 = new BoundedCache<string, any>(2000);
+  private memoCoreKillOne = new BoundedCache<string, any>(2000);
+  private memoHotPick = new BoundedCache<string, any>(2000);
+  private memoHistoricalLearning = new BoundedCache<number, any>(2000);
+  private memoKillPredictionResponse = new BoundedCache<string, any>(100);
+  private memoKillSevenResponse = new BoundedCache<string, any>(100);
+  private memoKillSevenBacktestResponse = new BoundedCache<string, any>(100);
   private lastHistLength = 0;
   private lastHistorySource: HistorySourceType = 'default';
   private readonly predictorRedisTtlSeconds = 12 * 60 * 60;
@@ -1759,6 +1759,7 @@ export class PredictorService implements OnModuleDestroy {
         recentMathSignals: recentMathRisk.signals,
         regularityRisk: regularityRisk.risk,
         regularitySignals: regularityRisk.signals,
+        gap: absence.currentGap,
         transitionRisk: Math.round(transitionRisk * 10) / 10,
         marketDepth: Math.round(market.depth * 1000) / 1000,
         recentCount,
@@ -2338,13 +2339,16 @@ export class PredictorService implements OnModuleDestroy {
           : []),
       ],
     }));
-    const groupResult = this.selectHotPickKill5Group(
-      hist,
-      fusedCandidates,
-      threshold,
-      newKill10Nums,
-    );
-    const predictions = groupResult.predictions;
+    const qualified = fusedCandidates.filter((c: any) => {
+      return (
+        c.killProbability >= 83.0 && // Strategy 3: No NewKill10, threshold set to 83.0
+        c.recentMathRisk < 8.0 &&    // Standard high-risk threshold (8.0)
+        c.regularityRisk < 7.0 &&    // Standard high-risk threshold (7.0)
+        c.gap > 1                    // Exclude numbers appearing in the last draw only
+      );
+    }).sort((a: any, b: any) => b.killProbability - a.killProbability);
+
+    const predictions = qualified.slice(0, 5);
 
     return {
       threshold,
@@ -2352,19 +2356,16 @@ export class PredictorService implements OnModuleDestroy {
       targetCount: 5,
       predictions,
       candidates: fusedCandidates.slice(0, 12),
-      qualifiedCount: groupResult.qualified.length,
-      singleQualifiedCount: groupResult.singleQualified.length,
-      groupStats: groupResult.groupStats,
-      groupOptions: groupResult.groupOptions,
+      qualifiedCount: qualified.length,
+      singleQualifiedCount: qualified.length,
+      groupStats: null,
+      groupOptions: [],
       market,
       coldPressure,
       newKill10Nums,
-      sourceAlgorithm: 'default-kill5-independent-group-engine',
+      sourceAlgorithm: 'default-kill5-optimized-independent-engine',
       backtest: includeBacktest ? this.backtestHotPickKill5(hist, 10) : null,
-      note:
-        predictions.length >= 5
-          ? `独立组合引擎已筛出整组94%+置信度5杀；近30冷池深度${Math.round(market.depth * 100)}%。`
-          : `当前没有组合达到94%置信度；近30冷池深度${Math.round(market.depth * 100)}%，组合引擎未硬凑。`,
+      note: `已移除组合引擎，直出 ${predictions.length} 个优化候选预测。`,
     };
   }
 
@@ -3496,7 +3497,8 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private getTrainedAppearWeights(hist: number[][]) {
-    const key = hist.length;
+    // 性能优化：每 20 期才重新训练一次权重，避免回测时由于历史长度微小变化导致频繁重训
+    const key = Math.floor(hist.length / 20) * 20;
     if (this.memoAppearWeights.has(key)) return this.memoAppearWeights.get(key);
     const res = this.trainAppearWeights(hist);
     this.memoAppearWeights.set(key, res);
@@ -6125,7 +6127,8 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private buildAdaptiveHybridKill10(hist: number[][], modelPredictions: any[]) {
-    const cacheKey = `${hist.length}:${hist[hist.length - 1]?.join(',') || ''}`;
+    // 性能优化：每 20 期才进行一次超参数网格搜索，避免回测时频繁重算
+    const cacheKey = `${Math.floor(hist.length / 20) * 20}`;
     if (this.memoHybridKill10.has(cacheKey)) {
       return this.memoHybridKill10.get(cacheKey);
     }

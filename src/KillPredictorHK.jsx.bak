@@ -1505,9 +1505,6 @@ export default function KillPredictorHK() {
         <a href="/fe/history" style={styles.backLink}>
           📋 历史数据管理
         </a>
-        <a href="/fe/kill/two" style={{ ...styles.backLink, background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)', color: '#fff', border: 'none', marginRight: '8px' }}>
-          100% 滚动2排除
-        </a>
         <a href="/fe/kill/math3" style={{ ...styles.backLink, background: 'linear-gradient(135deg, #4f46e5, #6366f1)', color: '#fff', border: 'none' }}>
           📊 数学排除预测 (95%+)
         </a>

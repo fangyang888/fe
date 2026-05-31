@@ -5,12 +5,10 @@ import { PredictorController } from './predictor.controller';
 import { PredictorService } from './predictor.service';
 import { PredictorOptController } from './predictor-opt.controller';
 import { PredictorOptService } from './predictor-opt.service';
-import { PredictorKill2Controller } from './predictor-kill2.controller';
-import { PredictorKill2Service } from './predictor-kill2.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
-  controllers: [PredictorController, PredictorOptController, PredictorKill2Controller],
-  providers: [PredictorService, PredictorOptService, PredictorKill2Service],
+  controllers: [PredictorController, PredictorOptController],
+  providers: [PredictorService, PredictorOptService],
 })
 export class PredictorModule {}

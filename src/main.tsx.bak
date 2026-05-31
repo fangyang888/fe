@@ -20,8 +20,6 @@ import HotPickPredictorOpt from './HotPickPredictorOpt.jsx';
 // @ts-ignore
 import HistoryManager from './HistoryManager.jsx';
 // @ts-ignore
-import KillTwoPredictor from './KillTwoPredictor.jsx';
-// @ts-ignore
 import KillPredictorHK from './KillPredictorHK.jsx';
 // @ts-ignore
 import KillSevenStats from './KillSevenStats.jsx';
@@ -41,7 +39,6 @@ createRoot(document.getElementById('root')!).render(
       <Route path="/kill/hk" element={<KillPredictorHK />} />
       <Route path="/crawler" element={<Crawler />} />
       <Route path="/history" element={<HistoryManager />} />
-      <Route path="/kill/two" element={<KillTwoPredictor />} />
     </Routes>
   </BrowserRouter>,
 );

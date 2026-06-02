@@ -1102,7 +1102,24 @@ export default function HotPickPredictor() {
 
                   {hotPickKill5.predictions?.length === 0 && (
                     <div className="hot-pick-kill-note">
-                      本期没有通过 94% 单号校准和近 15 期 90% 整组全中率门槛的号码。
+                      本期没有通过长期稳定性门槛的号码。
+                    </div>
+                  )}
+
+                  {hotPickKill5.longTermValidation && (
+                    <div className="hot-pick-kill-backtest-summary">
+                      {[
+                        ['近60期', hotPickKill5.longTermValidation.recent60],
+                        ['近120期', hotPickKill5.longTermValidation.recent120],
+                        ['近300期', hotPickKill5.longTermValidation.recent300],
+                      ].map(([label, stats]) => (
+                        <div key={label} className="hot-pick-kill-backtest-stat">
+                          <div className="hot-pick-kill-backtest-value">
+                            {formatPercent(stats.allCorrectRate)}
+                          </div>
+                          <div className="hot-pick-kill-backtest-label">{label}整组全中率</div>
+                        </div>
+                      ))}
                     </div>
                   )}
 

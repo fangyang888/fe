@@ -293,7 +293,7 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private getHotPickResponseCacheKey(sourceType: HistorySourceType, rawHist: any[]) {
-    return `predictor:hot-pick:v5:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
+    return `predictor:hot-pick:v6:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getKillResponseCacheKey(rawHist: any[]) {
@@ -1695,7 +1695,7 @@ export class PredictorService implements OnModuleDestroy {
         const absence = this.getDefaultKill5AbsenceStats(subHist, n);
         return {
           n,
-          recentCount: absence.window20.count,
+          recentCount: absence.window30.count,
           lastHit: last.has(n),
         };
       })
@@ -1705,7 +1705,7 @@ export class PredictorService implements OnModuleDestroy {
             a.recentCount - b.recentCount ||
             a.n - b.n,
         )
-        .slice(0, 5)
+        .slice(0, 1)
         .map((candidate) => candidate.n);
     };
     const rollingStart = Math.max(30, hist.length - 120);
@@ -1747,6 +1747,7 @@ export class PredictorService implements OnModuleDestroy {
         stableAbsenceRate: Math.round(absence.window20.killRate * 10) / 10,
         gap: absence.currentGap,
         recent20Count: absence.window20.count,
+        recent30Count: absence.window30.count,
         recent50Count: absence.window50.count,
         recent120Count: absence.window120.count,
         rollingSamples: rolling.samples,
@@ -1756,7 +1757,7 @@ export class PredictorService implements OnModuleDestroy {
         recentRate,
         heatRank,
         reasons: [
-          `近20期出现${absence.window20.count}次`,
+          `近30期出现${absence.window30.count}次`,
           `近50期出现${absence.window50.count}次`,
           `滚动验证${rolling.successes}/${rolling.samples}`,
           lastRow.has(n) ? '上期已出现，不参与5杀' : '上期未出现',
@@ -1765,8 +1766,7 @@ export class PredictorService implements OnModuleDestroy {
     }).sort(
       (a, b) =>
         Number(a.lastHit) - Number(b.lastHit) ||
-        a.recent20Count - b.recent20Count ||
-        b.killProbability - a.killProbability ||
+        a.recent30Count - b.recent30Count ||
         a.n - b.n,
     );
 
@@ -2221,6 +2221,33 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
+  private getStableHotPickKillNumbers(hist: number[][], count = 1): number[] {
+    const recentCounts = new Array(50).fill(0);
+    for (const row of hist.slice(-30)) {
+      for (const n of row) recentCounts[n]++;
+    }
+    const lastRow = new Set(hist[hist.length - 1] || []);
+    return Array.from({ length: 49 }, (_, i) => i + 1)
+      .filter((n) => !lastRow.has(n))
+      .map((n) => {
+        let gap = hist.length;
+        for (let i = hist.length - 1; i >= 0; i--) {
+          if (hist[i].includes(n)) {
+            gap = hist.length - 1 - i;
+            break;
+          }
+        }
+        return { n, recent30Count: recentCounts[n], gap };
+      })
+      .sort(
+        (a, b) =>
+          a.recent30Count - b.recent30Count ||
+          a.n - b.n,
+      )
+      .slice(0, count)
+      .map((candidate) => candidate.n);
+  }
+
   private backtestHotPickKill5(hist: number[][], displayPeriods = 15): any {
     const start = Math.max(60, hist.length - displayPeriods);
     const details = [];
@@ -2230,9 +2257,10 @@ export class PredictorService implements OnModuleDestroy {
 
     for (let i = start; i < hist.length; i++) {
       const subHist = hist.slice(0, i);
-      const occurrenceStats = this.getRecentOccurrenceStatsFromHist(subHist, 30);
-      const result: any = this.buildHotPickKill5(subHist, occurrenceStats, false);
-      const displayed: any[] = (result.predictions || []).slice(0, 5);
+      const displayed = this.getStableHotPickKillNumbers(subHist, 1).map((n) => ({
+        n,
+        killProbability: this.randomKillProb * 100,
+      }));
       const actualSet = new Set(hist[i]);
       const failed = displayed.filter((item: any) => actualSet.has(item.n));
       const correctCount = displayed.length - failed.length;
@@ -2265,7 +2293,7 @@ export class PredictorService implements OnModuleDestroy {
         accuracy: displayed.length > 0 ? (correctCount / displayed.length) * 100 : 0,
         avgKillProbability: Math.round(avgKillProbability * 10) / 10,
         groupAllKillProbability: Math.round(groupAllKillProbability * 10) / 10,
-        qualifiedCount: result.selectedCount,
+        qualifiedCount: displayed.length,
       });
     }
 
@@ -2280,6 +2308,17 @@ export class PredictorService implements OnModuleDestroy {
       allCorrectPeriods,
       allCorrectRate:
         calcPeriods > 0 ? Math.round((allCorrectPeriods / calcPeriods) * 1000) / 10 : 0,
+    };
+  }
+
+  private summarizeHotPickKill5Backtest(backtest: any) {
+    return {
+      calcPeriods: backtest.calcPeriods,
+      totalCorrect: backtest.totalCorrect,
+      totalPredicted: backtest.totalPredicted,
+      overallAccuracy: backtest.overallAccuracy,
+      allCorrectPeriods: backtest.allCorrectPeriods,
+      allCorrectRate: backtest.allCorrectRate,
     };
   }
 
@@ -2300,22 +2339,56 @@ export class PredictorService implements OnModuleDestroy {
       };
     }
 
-    const threshold = 94;
+    const threshold = 90;
     const { candidates } = this.getDefaultKill5IndependentCandidates(
       hist,
       occurrenceStats,
     );
-    const rawPredictions = candidates
-      .filter((candidate: any) => !candidate.lastHit)
-      .filter((candidate: any) => candidate.killProbability >= threshold)
-      .slice(0, 5);
+    const stableNumbers = this.getStableHotPickKillNumbers(hist, 1);
+    const rawPredictions = candidates.filter((candidate: any) =>
+      stableNumbers.includes(candidate.n),
+    );
     const backtest = includeBacktest ? this.backtestHotPickKill5(hist, 15) : null;
     const targetAllCorrectRate = 90;
+    const longTermValidation = includeBacktest
+      ? {
+          recent60: this.summarizeHotPickKill5Backtest(
+            this.backtestHotPickKill5(hist, 60),
+          ),
+          recent120: this.summarizeHotPickKill5Backtest(
+            this.backtestHotPickKill5(hist, 120),
+          ),
+          recent300: this.summarizeHotPickKill5Backtest(
+            this.backtestHotPickKill5(hist, 300),
+          ),
+        }
+      : null;
     const thresholdMet =
       !includeBacktest ||
-      (Boolean(backtest) &&
-        backtest.allCorrectRate >= targetAllCorrectRate);
-    const predictions = thresholdMet ? rawPredictions : [];
+      Boolean(
+        longTermValidation &&
+          longTermValidation.recent60.allCorrectRate >= targetAllCorrectRate &&
+          longTermValidation.recent120.allCorrectRate >= targetAllCorrectRate &&
+          longTermValidation.recent300.allCorrectRate >= targetAllCorrectRate,
+      );
+    const longTermConfidence = longTermValidation
+      ? Math.min(
+          longTermValidation.recent60.allCorrectRate,
+          longTermValidation.recent120.allCorrectRate,
+          longTermValidation.recent300.allCorrectRate,
+        )
+      : 0;
+    const predictions = thresholdMet
+      ? rawPredictions.map((candidate: any) => ({
+          ...candidate,
+          singleKillProbability: candidate.killProbability,
+          killProbability: longTermConfidence,
+          reasons: [
+            ...(candidate.reasons || []),
+            `长期保守概率${longTermConfidence.toFixed(1)}%`,
+          ],
+        }))
+      : [];
 
     return {
       threshold,
@@ -2331,12 +2404,13 @@ export class PredictorService implements OnModuleDestroy {
       groupOptions: [],
       sourceAlgorithm: 'default-kill5-simple-history',
       backtest,
+      longTermValidation,
       note:
         rawPredictions.length === 0
-          ? `当前没有单号校准概率达到 ${threshold}% 的候选，本期不输出5杀。`
+          ? '当前没有符合长期稳定规则的候选，本期不输出。'
           : thresholdMet
-            ? `当前输出 ${predictions.length} 个高置信号码，近15期整组全中率达到 ${targetAllCorrectRate}% 目标。`
-            : `当前近15期整组全中率未达到 ${targetAllCorrectRate}% 目标，本期不输出5杀。`,
+            ? `长期稳定性验证通过，当前输出 ${predictions.length} 个号码。近15期仅作为近期健康检查。`
+            : `长期稳定性验证未达到 ${targetAllCorrectRate}% 目标，本期不输出。`,
     };
   }
 

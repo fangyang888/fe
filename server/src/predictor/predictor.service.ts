@@ -293,7 +293,7 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private getHotPickResponseCacheKey(sourceType: HistorySourceType, rawHist: any[]) {
-    return `predictor:hot-pick:v3:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
+    return `predictor:hot-pick:v5:${sourceType}:${this.getHistoryCacheKey(rawHist)}`;
   }
 
   private getKillResponseCacheKey(rawHist: any[]) {
@@ -1687,9 +1687,38 @@ export class PredictorService implements OnModuleDestroy {
     const occurrenceByNum = new Map(
       (occurrenceStats?.numbers || []).map((item: any) => [item.n, item]),
     );
-    const transitions = this.getHotPickTransitionScores(hist);
-    const market = this.getDefaultKill5MarketDepth(hist);
-    const coldPressure = this.getDefaultKill5ColdHitPressure(hist, 5);
+    const lastRow = new Set(hist[hist.length - 1] || []);
+    const getSimpleRankedNumbers = (subHist: number[][]) => {
+      const last = new Set(subHist[subHist.length - 1] || []);
+      return Array.from({ length: 49 }, (_, i) => {
+        const n = i + 1;
+        const absence = this.getDefaultKill5AbsenceStats(subHist, n);
+        return {
+          n,
+          recentCount: absence.window20.count,
+          lastHit: last.has(n),
+        };
+      })
+        .filter((candidate) => !candidate.lastHit)
+        .sort(
+          (a, b) =>
+            a.recentCount - b.recentCount ||
+            a.n - b.n,
+        )
+        .slice(0, 5)
+        .map((candidate) => candidate.n);
+    };
+    const rollingStart = Math.max(30, hist.length - 120);
+    const rollingRates = new Map<number, { samples: number; successes: number }>();
+    for (let i = rollingStart; i < hist.length; i++) {
+      const actual = new Set(hist[i]);
+      for (const n of getSimpleRankedNumbers(hist.slice(0, i))) {
+        const row = rollingRates.get(n) || { samples: 0, successes: 0 };
+        row.samples++;
+        if (!actual.has(n)) row.successes++;
+        rollingRates.set(n, row);
+      }
+    }
 
     const candidates = Array.from({ length: 49 }, (_, i) => {
       const n = i + 1;
@@ -1698,106 +1727,54 @@ export class PredictorService implements OnModuleDestroy {
       const recentRate = occurrence?.rate || absence.window30.rate;
       const recentCount = occurrence?.count ?? absence.window30.count;
       const heatRank = occurrence?.rank || 49;
-      const transitionAppear = transitions.markov[n] || this.randomAppearProb;
-      const transitionRisk = Math.max(0, transitionAppear - this.randomAppearProb) * 100;
-      const stableAbsenceRate =
-        absence.window10.killRate * 0.08 +
-        absence.window20.killRate * 0.17 +
-        absence.window30.killRate * 0.18 +
-        absence.window50.killRate * 0.2 +
-        absence.window80.killRate * 0.2 +
-        absence.window120.killRate * 0.17;
-      const shortAppearRisk =
-        absence.window5.count * 1.8 +
-        Math.max(0, absence.window10.count - 1) * 1.1 +
-        Math.max(0, absence.window20.count - 3) * 0.55;
-      const overdueReboundRisk =
-        Math.max(0, Math.min(1, (absence.gapRatio - 1.7) / 2.6)) * 6.5;
-      const tooFreshRisk = absence.gapRatio <= 0.28 ? 3.8 : 0;
-      const temporaryColdRisk =
-        recentCount <= 1 && absence.window80.count >= 8
-          ? 4.2
-          : recentCount <= 1 && absence.window120.count >= 14
-            ? 2.8
-            : 0;
-      const shallowMarketRisk =
-        (1 - market.depth) * (recentCount <= 1 ? 3.6 : recentCount === 2 ? 1.6 : 0);
-      const coldHitPressureRisk = coldPressure.pressureByNum.get(n) || 0;
-      const recentMathRisk = this.getDefaultKill5RecentMathRisk(hist, n, 5);
-      const regularityRisk = this.getDefaultKill5RegularityRisk(hist, n, absence);
-      const reboundRisk =
-        shortAppearRisk +
-        overdueReboundRisk +
-        tooFreshRisk +
-        temporaryColdRisk +
-        shallowMarketRisk +
-        coldHitPressureRisk +
-        transitionRisk * 0.28;
-      const rankColdProbability = ((heatRank - 1) / 48) * 100;
-      const killProbability = Math.max(
-        80,
-        Math.min(
-          98.5,
-          stableAbsenceRate * 0.66 +
-            rankColdProbability * 0.12 +
-            (100 - recentRate) * 0.22 -
-            reboundRisk,
-        ),
-      );
+      const rolling = rollingRates.get(n) || { samples: 0, successes: 0 };
+      const priorSamples = 8;
+      const killProbability =
+        ((rolling.successes + this.randomKillProb * priorSamples) /
+          (rolling.samples + priorSamples)) *
+        100;
 
       return {
         n,
         killProbability: Math.round(killProbability * 10) / 10,
         singleKillProbability: Math.round(killProbability * 10) / 10,
-        modelKillProbability: Math.round(stableAbsenceRate * 10) / 10,
+        modelKillProbability: Math.round(killProbability * 10) / 10,
         recentColdProbability: Math.round((100 - recentRate) * 10) / 10,
-        rollingKillRate: Math.round(stableAbsenceRate * 10) / 10,
-        stableAbsenceRate: Math.round(stableAbsenceRate * 10) / 10,
-        reboundRisk: Math.round(reboundRisk * 10) / 10,
-        coldHitPressureRisk: Math.round(coldHitPressureRisk * 10) / 10,
-        recentMathRisk: recentMathRisk.risk,
-        recentMathSignals: recentMathRisk.signals,
-        regularityRisk: regularityRisk.risk,
-        regularitySignals: regularityRisk.signals,
+        rollingKillRate:
+          rolling.samples > 0
+            ? Math.round((rolling.successes / rolling.samples) * 1000) / 10
+            : Math.round(this.randomKillProb * 1000) / 10,
+        stableAbsenceRate: Math.round(absence.window20.killRate * 10) / 10,
         gap: absence.currentGap,
-        transitionRisk: Math.round(transitionRisk * 10) / 10,
-        marketDepth: Math.round(market.depth * 1000) / 1000,
+        recent20Count: absence.window20.count,
+        recent50Count: absence.window50.count,
+        recent120Count: absence.window120.count,
+        rollingSamples: rolling.samples,
+        rollingSuccesses: rolling.successes,
+        lastHit: lastRow.has(n),
         recentCount,
         recentRate,
         heatRank,
-        consensus: 0,
-        sources: {
-          probabilityRank: null,
-          lowRiskRank: null,
-          engineRank: null,
-          hybridRank: null,
-        },
         reasons: [
-          `近30期${recentCount}期`,
-          `稳定缺席${stableAbsenceRate.toFixed(1)}%`,
-          `反弹风险${reboundRisk.toFixed(1)}%`,
-          `冷号压力${coldHitPressureRisk.toFixed(1)}%`,
-          `数学投影${recentMathRisk.risk.toFixed(1)}%`,
-          `规律风险${regularityRisk.risk.toFixed(1)}%`,
-          `遗漏${absence.currentGap}期`,
+          `近20期出现${absence.window20.count}次`,
+          `近50期出现${absence.window50.count}次`,
+          `滚动验证${rolling.successes}/${rolling.samples}`,
+          lastRow.has(n) ? '上期已出现，不参与5杀' : '上期未出现',
         ],
       };
     }).sort(
       (a, b) =>
+        Number(a.lastHit) - Number(b.lastHit) ||
+        a.recent20Count - b.recent20Count ||
         b.killProbability - a.killProbability ||
-        a.reboundRisk - b.reboundRisk ||
-        a.recentCount - b.recentCount ||
-        b.heatRank - a.heatRank,
+        a.n - b.n,
     );
 
     return {
       candidates,
       qualified: candidates.filter((candidate) => candidate.killProbability >= 94),
-      market,
-      coldPressure: {
-        coldHitCount: coldPressure.coldHitCount,
-        details: coldPressure.details,
-      },
+      market: null,
+      coldPressure: null,
     };
   }
 
@@ -2244,7 +2221,7 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
-  private backtestHotPickKill5(hist: number[][], displayPeriods = 10): any {
+  private backtestHotPickKill5(hist: number[][], displayPeriods = 15): any {
     const start = Math.max(60, hist.length - displayPeriods);
     const details = [];
     let totalCorrect = 0;
@@ -2265,10 +2242,12 @@ export class PredictorService implements OnModuleDestroy {
             displayed.length
           : 0;
       const groupAllKillProbability =
-        displayed.reduce(
-          (product: number, item: any) => product * (item.killProbability / 100),
-          1,
-        ) * 100;
+        displayed.length > 0
+          ? displayed.reduce(
+              (product: number, item: any) => product * (item.killProbability / 100),
+              1,
+            ) * 100
+          : 0;
 
       totalCorrect += correctCount;
       totalPredicted += displayed.length;
@@ -2322,50 +2301,42 @@ export class PredictorService implements OnModuleDestroy {
     }
 
     const threshold = 94;
-    const { candidates, market, coldPressure } = this.getDefaultKill5IndependentCandidates(
+    const { candidates } = this.getDefaultKill5IndependentCandidates(
       hist,
       occurrenceStats,
     );
-    const newKill10Nums = this.getNewKillPredictor10Numbers(hist);
-    const newKillRankByNum = new Map(newKill10Nums.map((n, index) => [n, index + 1]));
-    const fusedCandidates = candidates.map((candidate: any) => ({
-      ...candidate,
-      inNewKill10: newKillRankByNum.has(candidate.n),
-      newKillRank: newKillRankByNum.get(candidate.n) || null,
-      reasons: [
-        ...(candidate.reasons || []),
-        ...(newKillRankByNum.has(candidate.n)
-          ? [`NewKill10第${newKillRankByNum.get(candidate.n)}位`]
-          : []),
-      ],
-    }));
-    const qualified = fusedCandidates.filter((c: any) => {
-      return (
-        c.killProbability >= 83.0 && // Strategy 3: No NewKill10, threshold set to 83.0
-        c.recentMathRisk < 8.0 &&    // Standard high-risk threshold (8.0)
-        c.regularityRisk < 7.0 &&    // Standard high-risk threshold (7.0)
-        c.gap > 1                    // Exclude numbers appearing in the last draw only
-      );
-    }).sort((a: any, b: any) => b.killProbability - a.killProbability);
-
-    const predictions = qualified.slice(0, 5);
+    const rawPredictions = candidates
+      .filter((candidate: any) => !candidate.lastHit)
+      .filter((candidate: any) => candidate.killProbability >= threshold)
+      .slice(0, 5);
+    const backtest = includeBacktest ? this.backtestHotPickKill5(hist, 15) : null;
+    const targetAllCorrectRate = 90;
+    const thresholdMet =
+      !includeBacktest ||
+      (Boolean(backtest) &&
+        backtest.allCorrectRate >= targetAllCorrectRate);
+    const predictions = thresholdMet ? rawPredictions : [];
 
     return {
       threshold,
+      targetAllCorrectRate,
       selectedCount: predictions.length,
       targetCount: 5,
       predictions,
-      candidates: fusedCandidates.slice(0, 12),
-      qualifiedCount: qualified.length,
-      singleQualifiedCount: qualified.length,
+      candidates: candidates.slice(0, 12),
+      qualifiedCount: rawPredictions.length,
+      singleQualifiedCount: rawPredictions.length,
+      thresholdMet,
       groupStats: null,
       groupOptions: [],
-      market,
-      coldPressure,
-      newKill10Nums,
-      sourceAlgorithm: 'default-kill5-optimized-independent-engine',
-      backtest: includeBacktest ? this.backtestHotPickKill5(hist, 10) : null,
-      note: `已移除组合引擎，直出 ${predictions.length} 个优化候选预测。`,
+      sourceAlgorithm: 'default-kill5-simple-history',
+      backtest,
+      note:
+        rawPredictions.length === 0
+          ? `当前没有单号校准概率达到 ${threshold}% 的候选，本期不输出5杀。`
+          : thresholdMet
+            ? `当前输出 ${predictions.length} 个高置信号码，近15期整组全中率达到 ${targetAllCorrectRate}% 目标。`
+            : `当前近15期整组全中率未达到 ${targetAllCorrectRate}% 目标，本期不输出5杀。`,
     };
   }
 

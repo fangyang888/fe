@@ -1016,8 +1016,8 @@ export default function HotPickPredictor() {
                   <div className="hot-pick-kill-head">
                     <div>
                       <div className="hot-pick-kill-title">
-                        {hotPickKill5.sourceAlgorithm === 'default-kill5-independent-group-engine'
-                          ? '默认独立组合引擎 5杀算法'
+                        {hotPickKill5.sourceAlgorithm === 'default-kill5-simple-history'
+                          ? '默认库简化历史频率 5杀算法'
                           : hotPickKill5.sourceAlgorithm === 'hk-kill5-independent'
                           ? '香港独立 5杀算法'
                           : '基于近30期热度 + NewKill 多模型算法'}
@@ -1025,7 +1025,7 @@ export default function HotPickPredictor() {
                       <div className="hot-pick-kill-note">{hotPickKill5.note}</div>
                     </div>
                     <div className="hot-pick-kill-badge">
-                      {hotPickKill5.selectedCount}/{hotPickKill5.targetCount} 达标
+                      {hotPickKill5.selectedCount}/{hotPickKill5.targetCount} 输出
                     </div>
                   </div>
 
@@ -1100,11 +1100,14 @@ export default function HotPickPredictor() {
                     </div>
                   )}
 
+                  {hotPickKill5.predictions?.length === 0 && (
+                    <div className="hot-pick-kill-note">
+                      本期没有通过 94% 单号校准和近 15 期 90% 整组全中率门槛的号码。
+                    </div>
+                  )}
+
                   <div className="hot-pick-kill-grid">
-                    {(hotPickKill5.predictions?.length > 0
-                      ? hotPickKill5.predictions
-                      : hotPickKill5.candidates?.slice(0, 5) || []
-                    ).map((item) => (
+                    {(hotPickKill5.predictions || []).map((item) => (
                       <div key={item.n} className="hot-pick-kill-card">
                         <div className="hot-pick-kill-top">
                           <span className="hot-pick-kill-num">{item.n}</span>
@@ -1131,9 +1134,9 @@ export default function HotPickPredictor() {
                           <br />
                           热度排名 #{item.heatRank} · 滚动杀码 {formatPercent(item.rollingKillRate)}
                           <br />
-                          近5数学投影 {formatPercent(item.recentMathRisk)}
+                          近20期出现 {item.recent20Count ?? '--'} 次 · 近50期出现 {item.recent50Count ?? '--'} 次
                           <br />
-                          规律风险 {formatPercent(item.regularityRisk)}
+                          校准样本 {item.rollingSuccesses ?? '--'}/{item.rollingSamples ?? '--'}
                           <br />
                           {item.inNewKill10 && (
                             <>
@@ -1141,9 +1144,7 @@ export default function HotPickPredictor() {
                               <br />
                             </>
                           )}
-                          相似学习 {formatPercent(item.similarKillRate)} · 误杀分类 {formatPercent(item.classifierKillRate)}
-                          <br />
-                          反弹风险 {formatPercent(item.reboundRisk)} · 吸引风险 {formatPercent(item.attractionRisk)}
+                          {item.lastHit ? '上期已出现' : '上期未出现'}
                         </div>
                         <div className="hot-pick-kill-reasons">
                           {item.reasons?.slice(0, 4).map((reason) => (
@@ -1163,7 +1164,9 @@ export default function HotPickPredictor() {
                           <div className="hot-pick-kill-backtest-value">
                             {formatPercent(hotPickKill5.backtest.overallAccuracy)}
                           </div>
-                          <div className="hot-pick-kill-backtest-label">近10期单号杀码准确率</div>
+                          <div className="hot-pick-kill-backtest-label">
+                            近{hotPickKill5.backtest.calcPeriods}期单号杀码准确率
+                          </div>
                         </div>
                         <div className="hot-pick-kill-backtest-stat">
                           <div className="hot-pick-kill-backtest-value">

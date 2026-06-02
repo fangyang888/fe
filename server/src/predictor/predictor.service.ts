@@ -6127,8 +6127,9 @@ export class PredictorService implements OnModuleDestroy {
   }
 
   private buildAdaptiveHybridKill10(hist: number[][], modelPredictions: any[]) {
-    // 性能优化：每 20 期才进行一次超参数网格搜索，避免回测时频繁重算
-    const cacheKey = `${Math.floor(hist.length / 20) * 20}`;
+    // Predictions and rolling backtest details depend on the latest draw.
+    // Reusing one result for a 20-period bucket freezes the page until the next bucket.
+    const cacheKey = this.getHistArrayCacheKey(hist);
     if (this.memoHybridKill10.has(cacheKey)) {
       return this.memoHybridKill10.get(cacheKey);
     }

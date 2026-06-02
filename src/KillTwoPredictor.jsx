@@ -72,10 +72,14 @@ export default function KillTwoPredictor() {
   };
 
   const predictions = killData?.predictions || [];
+  const referencePredictions = killData?.referencePredictions || [];
   const candidates = killData?.candidates || [];
   const backtest = killData?.backtest || null;
+  const reliability = killData?.reliability || null;
   const historyMeta = killData?.historyMeta || null;
-  const strictValidation = killData?.strictValidation === true;
+  const recommendationMode = killData?.recommendationMode || 'observe';
+  const displayedPredictions =
+    predictions.length > 0 ? predictions : referencePredictions;
 
   return (
     <div className="kill-two-page">
@@ -607,18 +611,18 @@ export default function KillTwoPredictor() {
                 </div>
               </div>
               <div className="kill-two-badge">
-                {strictValidation ? '严格校验通过' : '参考模式'}
+                {recommendationMode === 'official' ? '正式推荐' : '观望模式'}
               </div>
             </div>
 
             <div className="kill-two-center-panel">
               <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem', color: '#a78bfa' }}>
-                【下期排除号码推荐】
+                {recommendationMode === 'official' ? '【下期正式排除号码】' : '【观察候选号 · 暂不建议执行】'}
               </h3>
               
-              {predictions.length > 0 ? (
+              {displayedPredictions.length > 0 ? (
                 <div className="kill-two-nums">
-                  {predictions.map((p, idx) => (
+                  {displayedPredictions.map((p, idx) => (
                     <div key={p.n} className="kill-two-num-wrapper">
                       <div className={`kill-two-num-ball ${idx === 1 ? 'cyan' : ''}`}>
                         {String(p.n).padStart(2, '0')}
@@ -643,6 +647,29 @@ export default function KillTwoPredictor() {
               </div>
             </div>
 
+            {reliability && (
+              <div className="kill-two-stats">
+                <div className="kill-two-stat-card">
+                  <div className="kill-two-stat-value">
+                    {formatPercent(reliability.allCorrectRate)}
+                  </div>
+                  <div className="kill-two-stat-label">长期 {reliability.calcPeriods} 期双号 0 误杀率</div>
+                </div>
+                <div className="kill-two-stat-card">
+                  <div className="kill-two-stat-value">
+                    {formatPercent(reliability.lowerBound)}
+                  </div>
+                  <div className="kill-two-stat-label">95% 保守置信下界</div>
+                </div>
+                <div className="kill-two-stat-card">
+                  <div className="kill-two-stat-value">
+                    {reliability.approved ? '通过' : '观望'}
+                  </div>
+                  <div className="kill-two-stat-label">正式推荐门槛：保守下界 ≥ {reliability.requiredLowerBound}%</div>
+                </div>
+              </div>
+            )}
+
             <div className="kill-two-section-title">自适应风控锁定状态</div>
             <div className="security-grid">
               <div className="security-item">
@@ -660,7 +687,7 @@ export default function KillTwoPredictor() {
               <div className="security-item">
                 <span className="security-icon">✓</span>
                 <span className="security-text">
-                  {strictValidation ? '近30期严格滚动校验已通过' : '近30期滚动回测仅供参考'}
+                  {recommendationMode === 'official' ? '长期可靠性门控已通过' : '长期可靠性门控未通过，仅供观察'}
                 </span>
               </div>
             </div>

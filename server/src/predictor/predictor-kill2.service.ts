@@ -44,7 +44,7 @@ export class PredictorKill2Service {
 
   private getHotPickKill2ResponseCacheKey(sourceType: string, rawHist: any[]) {
     const historyKey = (this.predictorOptService as any).getHistoryCacheKey(rawHist);
-    return `predictor-opt:kill2:custom-v9:${sourceType}:${historyKey}`;
+    return `predictor-opt:kill2:custom-v10:${sourceType}:${historyKey}`;
   }
 
   private parseHistorySourceType(type?: string): 'default' | 'hk' {
@@ -401,7 +401,7 @@ export class PredictorKill2Service {
     }
 
     const backtestWindow = 30;
-    const { predictions, note, finalThreshold, strictValidation } = this.selectHistoricalHotPickKill2Group(
+    const { predictions: referencePredictions, note: selectionNote, finalThreshold, strictValidation } = this.selectHistoricalHotPickKill2Group(
       hist,
       candidatesCache,
       2,
@@ -409,16 +409,68 @@ export class PredictorKill2Service {
     );
 
     const backtest = includeBacktest ? this.backtestHotPickKill2(hist, candidatesCache, backtestWindow) : null;
+    const reliabilityBacktest = includeBacktest
+      ? this.backtestHotPickKill2(hist, candidatesCache, 120)
+      : null;
+    const reliability = this.getReliabilityGate(reliabilityBacktest);
+    const recommendationMode =
+      !includeBacktest
+        ? 'raw'
+        : referencePredictions.length === 2 && reliability.approved
+          ? 'official'
+          : 'observe';
+    const predictions =
+      recommendationMode === 'observe' ? [] : referencePredictions;
+    const note =
+      recommendationMode !== 'observe'
+        ? selectionNote
+        : `长期可靠性门控未通过：最近 ${reliability.calcPeriods} 期双号 0 误杀率 ${reliability.allCorrectRate}%，保守下界 ${reliability.lowerBound}%（正式推荐要求下界 >= 90%）。当前仅展示观察候选号。`;
 
     return {
       threshold: finalThreshold,
       selectedCount: predictions.length,
       targetCount: 2,
       predictions,
+      referencePredictions,
       candidates: this.getCycleSafeCandidates(candidates).slice(0, 12),
       backtest,
+      reliability,
+      recommendationMode,
       strictValidation,
       note,
+    };
+  }
+
+  private getReliabilityGate(backtest: any) {
+    const calcPeriods = backtest?.calcPeriods || 0;
+    const allCorrectPeriods = backtest?.allCorrectPeriods || 0;
+    const allCorrectRate =
+      calcPeriods > 0
+        ? Math.round((allCorrectPeriods / calcPeriods) * 1000) / 10
+        : 0;
+    const z = 1.96;
+    const observedRate = calcPeriods > 0 ? allCorrectPeriods / calcPeriods : 0;
+    const denominator = 1 + (z * z) / Math.max(1, calcPeriods);
+    const center = observedRate + (z * z) / (2 * Math.max(1, calcPeriods));
+    const margin =
+      z *
+      Math.sqrt(
+        (observedRate * (1 - observedRate)) / Math.max(1, calcPeriods) +
+        (z * z) / (4 * Math.max(1, calcPeriods) * Math.max(1, calcPeriods)),
+      );
+    const lowerBound =
+      calcPeriods > 0
+        ? Math.round(Math.max(0, ((center - margin) / denominator) * 1000)) / 10
+        : 0;
+
+    return {
+      approved: calcPeriods >= 120 && lowerBound >= 90,
+      calcPeriods,
+      allCorrectPeriods,
+      allCorrectRate,
+      lowerBound,
+      requiredPeriods: 120,
+      requiredLowerBound: 90,
     };
   }
 

@@ -307,6 +307,38 @@ export default function FivePeriodKill() {
           font-weight: 900;
         }
 
+        .five-ball.hit {
+          background: #ffe5e8;
+          color: #b42331;
+          box-shadow: inset 0 0 0 1px #f4a8b0;
+        }
+
+        .five-predicted {
+          width: 42px;
+          height: 42px;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          background: #eefaf5;
+          color: #17634f;
+          font-size: 1rem;
+          font-weight: 900;
+        }
+
+        .five-predicted.hit {
+          background: #d9303e;
+          color: #fff;
+        }
+
+        .five-backtest-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
+          flex-wrap: wrap;
+        }
+
         .five-note {
           margin: 18px 0 0;
           color: #66788e;
@@ -481,146 +513,63 @@ export default function FivePeriodKill() {
               </section>
             )}
 
-            <div className="five-content">
-              <section className="five-panel five-section">
-                <h2>计算依据</h2>
-                <div className="five-stats">
-                  <div className="five-stat">
-                    <span>近 5 期出现次数</span>
-                    <strong>{prediction.recentAppearCount}</strong>
-                  </div>
-                  <div className="five-stat">
-                    <span>近 5 期当前遗漏</span>
-                    <strong>{prediction.currentMissInFive}</strong>
-                  </div>
-                  <div className="five-stat">
-                    <span>同尾压力</span>
-                    <strong>{prediction.tailPressure}</strong>
-                  </div>
-                  <div className="five-stat">
-                    <span>同区压力</span>
-                    <strong>{prediction.zonePressure}</strong>
-                  </div>
-                </div>
-                <p className="five-note">{data.note}</p>
-              </section>
-
-              <section className="five-panel five-section">
-                <h2>候选排行</h2>
-                <div className="five-table-wrap">
-                  <table className="five-table">
-                    <thead>
-                      <tr>
-                        <th>号码</th>
-                        <th>回测胜率</th>
-                        <th>匹配样本</th>
-                        <th>失败</th>
-                        <th>5期遗漏</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(data.rankedCandidates || []).map((item) => (
-                        <tr key={item.n}>
-                          <td>
-                            <strong>{fmtNum(item.n)}</strong>
-                          </td>
-                          <td>{fmtPct(item.accuracy)}</td>
-                          <td>{item.matchedSamples}</td>
-                          <td className={item.failureCount === 0 ? 'five-result-ok' : 'five-result-bad'}>
-                            {item.failureCount}
-                          </td>
-                          <td>{item.currentMissInFive}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-
-            <section className="five-panel five-section" style={{ marginTop: 18 }}>
-              <h2>最近 20 期滚动验证</h2>
-              <div className="five-table-wrap">
-                <table className="five-table">
-                  <thead>
-                    <tr>
-                      <th>期数</th>
-                      <th>当期开奖号码</th>
-                      <th>当时预测避开</th>
-                      <th>匹配样本</th>
-                      <th>结果</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.recentValidation || []).map((row, index) => (
-                      <tr key={`${row.year || ''}-${row.No || index}`}>
-                        <td>{row.No ? `第 ${row.No} 期` : '--'}</td>
-                        <td>
-                          <div className="five-balls">
-                            {row.actualNumbers.map((n) => (
-                              <span className="five-ball" key={`${row.No}-${n}`}>
-                                {fmtNum(n)}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>
-                          <strong>{fmtNum(row.predictedNumber)}</strong>
-                        </td>
-                        <td>{row.matchedSamples}</td>
-                        <td className={row.success ? 'five-result-ok' : 'five-result-bad'}>
-                          {row.success ? '成功避开' : '开出失败'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
-            {strictBacktest50 && (
+            {strictBacktest20 && (
               <section className="five-panel five-section" style={{ marginTop: 18 }}>
-                <h2>严格策略最近 50 期回测</h2>
-                <div className="five-status-row" style={{ marginTop: 0, marginBottom: 14 }}>
-                  <span className={`five-pill ${strictBacktest20?.isPerfect ? 'good' : ''}`}>
-                    近20期成功率 {fmtPct(strictBacktest20?.successRate)}
-                  </span>
-                  <span className={`five-pill ${strictBacktest50?.isPerfect ? 'good' : ''}`}>
-                    近50期成功率 {fmtPct(strictBacktest50?.successRate)}
-                  </span>
-                  <span className="five-pill">失败 {strictBacktest50.failureCount} 期</span>
+                <div className="five-backtest-head">
+                  <h2 style={{ margin: 0 }}>最近 20 期回测结果</h2>
+                  <div className="five-status-row" style={{ marginTop: 0 }}>
+                    <span className={`five-pill ${strictBacktest20.isPerfect ? 'good' : ''}`}>
+                      成功率 {fmtPct(strictBacktest20.successRate)}
+                    </span>
+                    <span className="five-pill">成功 {strictBacktest20.successCount}/{strictBacktest20.count}</span>
+                    <span className="five-pill">失败 {strictBacktest20.failureCount}</span>
+                  </div>
                 </div>
                 <div className="five-table-wrap">
                   <table className="five-table">
                     <thead>
                       <tr>
                         <th>期数</th>
+                        <th>预测本期数字</th>
                         <th>当期开奖号码</th>
-                        <th>严格策略避开</th>
+                        <th>概率</th>
                         <th>匹配样本</th>
                         <th>结果</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(strictBacktest50.rows || []).map((row, index) => (
+                      {(strictBacktest20.rows || []).map((row, index) => (
                         <tr key={`strict-${row.year || ''}-${row.No || index}`}>
+                          {(() => {
+                            const opened = row.actualNumbers.includes(row.predictedNumber);
+                            return (
+                              <>
                           <td>{row.No ? `第 ${row.No} 期` : '--'}</td>
+                          <td>
+                            <span className={`five-predicted ${opened ? 'hit' : ''}`}>
+                              {fmtNum(row.predictedNumber)}
+                            </span>
+                          </td>
                           <td>
                             <div className="five-balls">
                               {row.actualNumbers.map((n) => (
-                                <span className="five-ball" key={`strict-${row.No}-${n}`}>
+                                <span
+                                  className={`five-ball ${n === row.predictedNumber ? 'hit' : ''}`}
+                                  key={`strict-${row.No}-${n}`}
+                                >
                                   {fmtNum(n)}
                                 </span>
                               ))}
                             </div>
                           </td>
-                          <td>
-                            <strong>{fmtNum(row.predictedNumber)}</strong>
-                          </td>
+                          <td>{fmtPct(row.confidence)}</td>
                           <td>{row.matchedSamples}</td>
                           <td className={row.success ? 'five-result-ok' : 'five-result-bad'}>
                             {row.success ? '成功避开' : '开出失败'}
                           </td>
+                              </>
+                            );
+                          })()}
                         </tr>
                       ))}
                     </tbody>

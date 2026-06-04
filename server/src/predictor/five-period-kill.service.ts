@@ -56,6 +56,9 @@ export class FivePeriodKillService {
     const latest = history[history.length - 1];
     const validations = this.buildRecentValidations(history, selected.level, selected.n, 20);
     const rankedCandidates = this.rankCandidates(history, safeMinSamples, selected.level).slice(0, 12);
+    const strictPrediction = this.pickStrictCandidate(history, lastFive);
+    const strictBacktest20 = this.buildStrictBacktest(history, 20);
+    const strictBacktest50 = this.buildStrictBacktest(history, 50);
 
     return {
       source,
@@ -87,6 +90,23 @@ export class FivePeriodKillService {
       },
       rankedCandidates,
       recentValidation: validations,
+      strictPrediction: strictPrediction
+        ? {
+            number: strictPrediction.n,
+            display: String(strictPrediction.n).padStart(2, '0'),
+            confidence: strictPrediction.accuracy,
+            matchedSamples: strictPrediction.matchedSamples,
+            failureCount: strictPrediction.failureCount,
+            currentMissInFive: strictPrediction.currentMissInFive,
+            recentAppearCount: strictPrediction.recentAppearCount,
+            tailPressure: strictPrediction.tailPressure,
+            zonePressure: strictPrediction.zonePressure,
+            nearPressure: strictPrediction.nearPressure,
+            ruleName: '严格零失败分区压力策略',
+          }
+        : null,
+      strictBacktest20,
+      strictBacktest50,
       note:
         '这里的 100% 指“当前历史库中相同前 5 期特征的滚动样本从未开出”，不是对随机开奖的绝对保证。',
     };
@@ -244,6 +264,58 @@ export class FivePeriodKillService {
     }
 
     return rows.reverse();
+  }
+
+  private pickStrictCandidate(trainingHistory: DrawRow[], window: DrawRow[]): CandidateScore | null {
+    return this.rankForWindow(trainingHistory, window, 0)
+      .filter(
+        (item) =>
+          item.matchedSamples >= 3 &&
+          item.failureCount === 0 &&
+          !item.appearedInLatest &&
+          item.currentMissInFive >= 4,
+      )
+      .sort(
+        (a, b) =>
+          b.zonePressure - a.zonePressure ||
+          b.matchedSamples - a.matchedSamples ||
+          a.n - b.n,
+      )[0] || null;
+  }
+
+  private buildStrictBacktest(history: DrawRow[], count: number) {
+    const start = Math.max(5, history.length - count);
+    const rows: any[] = [];
+
+    for (let i = start; i < history.length; i++) {
+      const trainingHistory = history.slice(0, i);
+      const previousFive = history.slice(i - 5, i);
+      const actual = history[i];
+      const prediction = this.pickStrictCandidate(trainingHistory, previousFive);
+      const success = prediction ? !actual.numbers.includes(prediction.n) : false;
+
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        predictedNumber: prediction?.n ?? null,
+        matchedSamples: prediction?.matchedSamples ?? 0,
+        confidence: prediction?.accuracy ?? 0,
+        success,
+      });
+    }
+
+    const successCount = rows.filter((item) => item.success).length;
+    const failureCount = rows.length - successCount;
+
+    return {
+      count: rows.length,
+      successCount,
+      failureCount,
+      successRate: rows.length > 0 ? successCount / rows.length : 0,
+      isPerfect: rows.length > 0 && failureCount === 0,
+      rows: rows.reverse(),
+    };
   }
 
   private rankForWindow(trainingHistory: DrawRow[], window: DrawRow[], level: number): CandidateScore[] {

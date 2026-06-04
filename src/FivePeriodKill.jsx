@@ -53,6 +53,9 @@ export default function FivePeriodKill() {
 
   const prediction = data?.prediction;
   const isPerfect = data?.status === 'historical-100';
+  const strictPrediction = data?.strictPrediction;
+  const strictBacktest20 = data?.strictBacktest20;
+  const strictBacktest50 = data?.strictBacktest50;
 
   return (
     <div className="five-kill-page">
@@ -310,6 +313,42 @@ export default function FivePeriodKill() {
           font-size: 0.88rem;
         }
 
+        .five-strict-band {
+          margin-top: 18px;
+          padding: 20px;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 18px;
+          align-items: center;
+          border-color: #a8dcc8;
+          background: linear-gradient(135deg, rgba(240, 253, 248, 0.94), rgba(255, 255, 255, 0.9));
+        }
+
+        .five-strict-number {
+          width: 96px;
+          aspect-ratio: 1;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          color: #fff;
+          background: radial-gradient(circle at 32% 28%, #77ddb0 0%, #17956f 52%, #105745 100%);
+          font-size: 2.6rem;
+          font-weight: 900;
+        }
+
+        .five-strict-title {
+          margin: 0 0 8px;
+          color: #115743;
+          font-size: 1.28rem;
+        }
+
+        .five-strict-summary {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 12px;
+        }
+
         .five-loading,
         .five-error {
           padding: 26px;
@@ -329,7 +368,8 @@ export default function FivePeriodKill() {
           .five-topbar,
           .five-hero,
           .five-main,
-          .five-content {
+          .five-content,
+          .five-strict-band {
             grid-template-columns: 1fr;
           }
 
@@ -418,6 +458,28 @@ export default function FivePeriodKill() {
                 </div>
               </aside>
             </div>
+
+            {strictPrediction && (
+              <section className="five-panel five-strict-band">
+                <div className="five-strict-number">{strictPrediction.display}</div>
+                <div>
+                  <h2 className="five-strict-title">严格 100% 策略推荐排除 {strictPrediction.display}</h2>
+                  <p className="five-subtitle">
+                    只取当前历史同类样本 0 失败、近 5 期未开出且遗漏达到 4 期以上的候选，再按分区压力排序。
+                  </p>
+                  <div className="five-strict-summary">
+                    <span className="five-pill good">当前样本 {strictPrediction.matchedSamples} / 0 失败</span>
+                    <span className={`five-pill ${strictBacktest20?.isPerfect ? 'good' : ''}`}>
+                      近20期 {strictBacktest20?.successCount || 0}/{strictBacktest20?.count || 0}
+                    </span>
+                    <span className={`five-pill ${strictBacktest50?.isPerfect ? 'good' : ''}`}>
+                      近50期 {strictBacktest50?.successCount || 0}/{strictBacktest50?.count || 0}
+                    </span>
+                    <span className="five-pill">5期遗漏 {strictPrediction.currentMissInFive}</span>
+                  </div>
+                </div>
+              </section>
+            )}
 
             <div className="five-content">
               <section className="five-panel five-section">
@@ -515,6 +577,57 @@ export default function FivePeriodKill() {
                 </table>
               </div>
             </section>
+
+            {strictBacktest50 && (
+              <section className="five-panel five-section" style={{ marginTop: 18 }}>
+                <h2>严格策略最近 50 期回测</h2>
+                <div className="five-status-row" style={{ marginTop: 0, marginBottom: 14 }}>
+                  <span className={`five-pill ${strictBacktest20?.isPerfect ? 'good' : ''}`}>
+                    近20期成功率 {fmtPct(strictBacktest20?.successRate)}
+                  </span>
+                  <span className={`five-pill ${strictBacktest50?.isPerfect ? 'good' : ''}`}>
+                    近50期成功率 {fmtPct(strictBacktest50?.successRate)}
+                  </span>
+                  <span className="five-pill">失败 {strictBacktest50.failureCount} 期</span>
+                </div>
+                <div className="five-table-wrap">
+                  <table className="five-table">
+                    <thead>
+                      <tr>
+                        <th>期数</th>
+                        <th>当期开奖号码</th>
+                        <th>严格策略避开</th>
+                        <th>匹配样本</th>
+                        <th>结果</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(strictBacktest50.rows || []).map((row, index) => (
+                        <tr key={`strict-${row.year || ''}-${row.No || index}`}>
+                          <td>{row.No ? `第 ${row.No} 期` : '--'}</td>
+                          <td>
+                            <div className="five-balls">
+                              {row.actualNumbers.map((n) => (
+                                <span className="five-ball" key={`strict-${row.No}-${n}`}>
+                                  {fmtNum(n)}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <strong>{fmtNum(row.predictedNumber)}</strong>
+                          </td>
+                          <td>{row.matchedSamples}</td>
+                          <td className={row.success ? 'five-result-ok' : 'five-result-bad'}>
+                            {row.success ? '成功避开' : '开出失败'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </>
         )}
       </div>

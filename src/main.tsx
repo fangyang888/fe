@@ -27,6 +27,8 @@ import KillPredictorHK from './KillPredictorHK.jsx';
 import KillSevenStats from './KillSevenStats.jsx';
 // @ts-ignore
 import MathKillPredictor from './MathKillPredictor.jsx';
+// @ts-ignore
+import FivePeriodKill from './FivePeriodKill.jsx';
 // fabu
 createRoot(document.getElementById('root')!).render(
   <BrowserRouter basename="/fe">
@@ -42,6 +44,7 @@ createRoot(document.getElementById('root')!).render(
       <Route path="/crawler" element={<Crawler />} />
       <Route path="/history" element={<HistoryManager />} />
       <Route path="/kill/two" element={<KillTwoPredictor />} />
+      <Route path="/kill/five-period" element={<FivePeriodKill />} />
     </Routes>
   </BrowserRouter>,
 );

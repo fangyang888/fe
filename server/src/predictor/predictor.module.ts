@@ -7,10 +7,17 @@ import { PredictorOptController } from './predictor-opt.controller';
 import { PredictorOptService } from './predictor-opt.service';
 import { PredictorKill2Controller } from './predictor-kill2.controller';
 import { PredictorKill2Service } from './predictor-kill2.service';
+import { FivePeriodKillController } from './five-period-kill.controller';
+import { FivePeriodKillService } from './five-period-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
-  controllers: [PredictorController, PredictorOptController, PredictorKill2Controller],
-  providers: [PredictorService, PredictorOptService, PredictorKill2Service],
+  controllers: [
+    PredictorController,
+    PredictorOptController,
+    PredictorKill2Controller,
+    FivePeriodKillController,
+  ],
+  providers: [PredictorService, PredictorOptService, PredictorKill2Service, FivePeriodKillService],
 })
 export class PredictorModule {}

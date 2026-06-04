@@ -1,0 +1,291 @@
+import { Injectable } from '@nestjs/common';
+import { HistoryService } from '../history/history.service';
+import { HistoryHkService } from '../history-hk/history-hk.service';
+
+type SourceType = 'default' | 'hk';
+
+interface DrawRow {
+  id?: number;
+  year?: number;
+  No?: number;
+  numbers: number[];
+}
+
+interface CandidateScore {
+  n: number;
+  matchedSamples: number;
+  failureCount: number;
+  successCount: number;
+  accuracy: number;
+  level: number;
+  featureKey: string;
+  recentAppearCount: number;
+  currentMissInFive: number;
+  tailPressure: number;
+  zonePressure: number;
+  nearPressure: number;
+  appearedInLatest: boolean;
+}
+
+@Injectable()
+export class FivePeriodKillService {
+  constructor(
+    private readonly historyService: HistoryService,
+    private readonly historyHkService: HistoryHkService,
+  ) {}
+
+  async getNextImpossibleNumber(source: SourceType = 'default', minSamples = 8) {
+    const rawRows =
+      source === 'hk'
+        ? await this.historyHkService.findAll()
+        : await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+
+    if (history.length < 6) {
+      return {
+        source,
+        status: 'insufficient-history',
+        message: '至少需要 6 期历史数据，才能用前 5 期窗口回测下一期。',
+        historyCount: history.length,
+      };
+    }
+
+    const safeMinSamples = Math.max(3, Math.min(50, Number(minSamples) || 8));
+    const lastFive = history.slice(-5);
+    const selected = this.pickCandidate(history, safeMinSamples);
+    const latest = history[history.length - 1];
+    const validations = this.buildRecentValidations(history, selected.level, selected.n, 20);
+    const rankedCandidates = this.rankCandidates(history, safeMinSamples, selected.level).slice(0, 12);
+
+    return {
+      source,
+      status: selected.failureCount === 0 ? 'historical-100' : 'best-effort',
+      prediction: {
+        number: selected.n,
+        display: String(selected.n).padStart(2, '0'),
+        confidence: selected.accuracy,
+        confidenceLabel:
+          selected.failureCount === 0
+            ? '当前匹配样本回测 100%'
+            : `当前匹配样本回测 ${(selected.accuracy * 100).toFixed(1)}%`,
+        matchedSamples: selected.matchedSamples,
+        successCount: selected.successCount,
+        failureCount: selected.failureCount,
+        featureLevel: selected.level,
+        featureKey: selected.featureKey,
+        recentAppearCount: selected.recentAppearCount,
+        currentMissInFive: selected.currentMissInFive,
+        tailPressure: selected.tailPressure,
+        zonePressure: selected.zonePressure,
+        nearPressure: selected.nearPressure,
+        appearedInLatest: selected.appearedInLatest,
+      },
+      historyMeta: {
+        count: history.length,
+        latest,
+        lastFive,
+      },
+      rankedCandidates,
+      recentValidation: validations,
+      note:
+        '这里的 100% 指“当前历史库中相同前 5 期特征的滚动样本从未开出”，不是对随机开奖的绝对保证。',
+    };
+  }
+
+  private normalizeRows(rows: any[]): DrawRow[] {
+    return rows
+      .map((item) => {
+        const numbers = [item.n1, item.n2, item.n3, item.n4, item.n5, item.n6, item.n7]
+          .map(Number)
+          .filter((n) => Number.isFinite(n) && n >= 1 && n <= 49);
+
+        return {
+          id: item.id,
+          year: item.year,
+          No: item.No,
+          numbers,
+        };
+      })
+      .filter((item) => item.numbers.length === 7)
+      .sort((a, b) => {
+        if ((a.year || 0) !== (b.year || 0)) return (a.year || 0) - (b.year || 0);
+        if ((a.No || 0) !== (b.No || 0)) return (a.No || 0) - (b.No || 0);
+        return (a.id || 0) - (b.id || 0);
+      });
+  }
+
+  private pickCandidate(history: DrawRow[], minSamples: number): CandidateScore {
+    for (let level = 0; level <= 4; level++) {
+      const ranked = this.rankCandidates(history, minSamples, level);
+      const perfect = ranked.find((item) => item.failureCount === 0 && item.matchedSamples >= minSamples);
+      if (perfect) return perfect;
+    }
+
+    return this.rankCandidates(history, 1, 4)[0];
+  }
+
+  private rankCandidates(history: DrawRow[], minSamples: number, level: number): CandidateScore[] {
+    const lastFive = history.slice(-5);
+    const candidates: CandidateScore[] = [];
+
+    for (let n = 1; n <= 49; n++) {
+      const feature = this.buildFeature(lastFive, n, level);
+      let matchedSamples = 0;
+      let failureCount = 0;
+
+      for (let i = 5; i < history.length; i++) {
+        const previousFive = history.slice(i - 5, i);
+        if (this.buildFeature(previousFive, n, level).key !== feature.key) continue;
+        matchedSamples++;
+        if (history[i].numbers.includes(n)) failureCount++;
+      }
+
+      const successCount = matchedSamples - failureCount;
+      const accuracy = matchedSamples > 0 ? successCount / matchedSamples : 0;
+      candidates.push({
+        n,
+        matchedSamples,
+        failureCount,
+        successCount,
+        accuracy,
+        level,
+        featureKey: feature.key,
+        recentAppearCount: feature.recentAppearCount,
+        currentMissInFive: feature.currentMissInFive,
+        tailPressure: feature.tailPressure,
+        zonePressure: feature.zonePressure,
+        nearPressure: feature.nearPressure,
+        appearedInLatest: feature.appearedInLatest,
+      });
+    }
+
+    return candidates
+      .filter((item) => item.matchedSamples >= minSamples)
+      .sort(
+        (a, b) =>
+          b.accuracy - a.accuracy ||
+          a.failureCount - b.failureCount ||
+          b.matchedSamples - a.matchedSamples ||
+          b.currentMissInFive - a.currentMissInFive ||
+          a.n - b.n,
+      );
+  }
+
+  private buildFeature(window: DrawRow[], n: number, level: number) {
+    const sets = window.map((draw) => new Set(draw.numbers));
+    const flat = window.flatMap((draw) => draw.numbers);
+    const numberTail = n % 10;
+    const numberZone = Math.floor((n - 1) / 10);
+    const recentAppearCount = sets.reduce((sum, set) => sum + (set.has(n) ? 1 : 0), 0);
+    let currentMissInFive = 0;
+
+    for (let i = sets.length - 1; i >= 0; i--) {
+      if (sets[i].has(n)) break;
+      currentMissInFive++;
+    }
+
+    const tailPressure = flat.filter((item) => item % 10 === numberTail).length;
+    const zonePressure = flat.filter((item) => Math.floor((item - 1) / 10) === numberZone).length;
+    const nearPressure = flat.filter((item) => Math.abs(item - n) <= 2).length;
+    const appearedInLatest = sets[sets.length - 1].has(n);
+
+    const partsByLevel = [
+      [
+        recentAppearCount,
+        currentMissInFive,
+        Math.min(tailPressure, 4),
+        Math.min(zonePressure, 8),
+        Math.min(nearPressure, 4),
+        appearedInLatest ? 1 : 0,
+      ],
+      [
+        recentAppearCount,
+        currentMissInFive,
+        Math.min(tailPressure, 4),
+        Math.min(zonePressure, 8),
+        appearedInLatest ? 1 : 0,
+      ],
+      [recentAppearCount, currentMissInFive, Math.min(tailPressure, 4), appearedInLatest ? 1 : 0],
+      [recentAppearCount, currentMissInFive, appearedInLatest ? 1 : 0],
+      [recentAppearCount, Math.min(currentMissInFive, 3)],
+    ];
+
+    return {
+      key: partsByLevel[level].join('|'),
+      recentAppearCount,
+      currentMissInFive,
+      tailPressure,
+      zonePressure,
+      nearPressure,
+      appearedInLatest,
+    };
+  }
+
+  private buildRecentValidations(history: DrawRow[], level: number, selectedNumber: number, count: number) {
+    const start = Math.max(5, history.length - count);
+    const rows: any[] = [];
+
+    for (let i = start; i < history.length; i++) {
+      const previousFive = history.slice(i - 5, i);
+      const actual = history[i];
+      const ranked = this.rankForWindow(history.slice(0, i), previousFive, level);
+      const top = ranked[0];
+
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        predictedNumber: top?.n,
+        selectedNow: top?.n === selectedNumber,
+        success: top ? !actual.numbers.includes(top.n) : null,
+        confidence: top?.accuracy || 0,
+        matchedSamples: top?.matchedSamples || 0,
+      });
+    }
+
+    return rows.reverse();
+  }
+
+  private rankForWindow(trainingHistory: DrawRow[], window: DrawRow[], level: number): CandidateScore[] {
+    const candidates: CandidateScore[] = [];
+
+    for (let n = 1; n <= 49; n++) {
+      const feature = this.buildFeature(window, n, level);
+      let matchedSamples = 0;
+      let failureCount = 0;
+
+      for (let i = 5; i < trainingHistory.length; i++) {
+        const previousFive = trainingHistory.slice(i - 5, i);
+        if (this.buildFeature(previousFive, n, level).key !== feature.key) continue;
+        matchedSamples++;
+        if (trainingHistory[i].numbers.includes(n)) failureCount++;
+      }
+
+      const successCount = matchedSamples - failureCount;
+      candidates.push({
+        n,
+        matchedSamples,
+        failureCount,
+        successCount,
+        accuracy: matchedSamples > 0 ? successCount / matchedSamples : 0,
+        level,
+        featureKey: feature.key,
+        recentAppearCount: feature.recentAppearCount,
+        currentMissInFive: feature.currentMissInFive,
+        tailPressure: feature.tailPressure,
+        zonePressure: feature.zonePressure,
+        nearPressure: feature.nearPressure,
+        appearedInLatest: feature.appearedInLatest,
+      });
+    }
+
+    return candidates.sort(
+      (a, b) =>
+        b.accuracy - a.accuracy ||
+        a.failureCount - b.failureCount ||
+        b.matchedSamples - a.matchedSamples ||
+        b.currentMissInFive - a.currentMissInFive ||
+        a.n - b.n,
+    );
+  }
+}

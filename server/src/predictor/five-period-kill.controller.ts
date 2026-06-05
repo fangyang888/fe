@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query } from '@nestjs/common';
 import { FivePeriodKillService } from './five-period-kill.service';
 
 @Controller('api/five-period-kill')
@@ -13,5 +13,15 @@ export class FivePeriodKillController {
     const source = type === 'hk' ? 'hk' : 'default';
     const parsedMinSamples = minSamples ? parseInt(minSamples, 10) : 8;
     return this.fivePeriodKillService.getNextImpossibleNumber(source, parsedMinSamples);
+  }
+
+  @Post('cache/refresh')
+  async refreshCache(
+    @Query('type') type?: string,
+    @Query('minSamples') minSamples?: string,
+  ): Promise<any> {
+    const source = type === 'hk' ? 'hk' : 'default';
+    const parsedMinSamples = minSamples ? parseInt(minSamples, 10) : 8;
+    return this.fivePeriodKillService.refreshCache(source, parsedMinSamples);
   }
 }

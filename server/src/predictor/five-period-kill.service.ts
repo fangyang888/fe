@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, type RedisClientType } from 'redis';
 import { HistoryService } from '../history/history.service';
 import { HistoryHkService } from '../history-hk/history-hk.service';
 
@@ -28,18 +30,70 @@ interface CandidateScore {
 }
 
 @Injectable()
-export class FivePeriodKillService {
+export class FivePeriodKillService implements OnModuleDestroy {
   constructor(
     private readonly historyService: HistoryService,
     private readonly historyHkService: HistoryHkService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    if (redisUrl) {
+      this.redisClient = createClient({ url: redisUrl });
+      this.redisClient.on('error', (err) => {
+        console.warn('[five-period-cache] Redis error:', err.message);
+      });
+    }
+  }
 
-  async getNextImpossibleNumber(source: SourceType = 'default', minSamples = 8) {
+  private readonly memoryCache = new Map<string, any>();
+  private readonly cacheTtlSeconds = 12 * 60 * 60;
+  private redisClient?: RedisClientType;
+  private redisConnectPromise?: Promise<RedisClientType | null>;
+  private redisDisabled = false;
+
+  async onModuleDestroy() {
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
+  }
+
+  async getNextImpossibleNumber(source: SourceType = 'default', minSamples = 8, options: { forceRefresh?: boolean } = {}) {
     const rawRows =
       source === 'hk'
         ? await this.historyHkService.findAll()
         : await this.historyService.findAll();
     const history = this.normalizeRows(rawRows);
+    const safeMinSamples = Math.max(3, Math.min(50, Number(minSamples) || 8));
+    const cacheKey = this.getResponseCacheKey(source, rawRows, safeMinSamples);
+
+    if (!options.forceRefresh) {
+      const memoryHit = this.memoryCache.get(cacheKey);
+      if (memoryHit) {
+        return {
+          ...memoryHit,
+          cacheMeta: {
+            ...(memoryHit.cacheMeta || {}),
+            hit: true,
+            store: 'memory',
+            key: cacheKey,
+          },
+        };
+      }
+
+      const redisHit = await this.getJsonCache<any>(cacheKey);
+      if (redisHit) {
+        this.memoryCache.set(cacheKey, redisHit);
+        return {
+          ...redisHit,
+          cacheMeta: {
+            ...(redisHit.cacheMeta || {}),
+            hit: true,
+            store: 'redis',
+            key: cacheKey,
+          },
+        };
+      }
+    }
 
     if (history.length < 6) {
       return {
@@ -50,7 +104,6 @@ export class FivePeriodKillService {
       };
     }
 
-    const safeMinSamples = Math.max(3, Math.min(50, Number(minSamples) || 8));
     const lastFive = history.slice(-5);
     const selected = this.pickCandidate(history, safeMinSamples);
     const latest = history[history.length - 1];
@@ -60,7 +113,7 @@ export class FivePeriodKillService {
     const strictBacktest20 = this.buildStrictBacktest(history, 20);
     const strictBacktest50 = this.buildStrictBacktest(history, 50);
 
-    return {
+    const response = {
       source,
       status: selected.failureCount === 0 ? 'historical-100' : 'best-effort',
       prediction: {
@@ -109,7 +162,109 @@ export class FivePeriodKillService {
       strictBacktest50,
       note:
         '这里的 100% 指“当前历史库中相同前 5 期特征的滚动样本从未开出”，不是对随机开奖的绝对保证。',
+      generatedAt: new Date().toISOString(),
+      cacheMeta: {
+        hit: false,
+        store: 'redis',
+        key: cacheKey,
+        ttlSeconds: this.cacheTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
     };
+
+    const cachedInRedis = await this.setJsonCache(cacheKey, response, this.cacheTtlSeconds);
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoryCache.set(cacheKey, response);
+    return response;
+  }
+
+  async refreshCache(source: SourceType = 'default', minSamples = 8) {
+    const rawRows =
+      source === 'hk'
+        ? await this.historyHkService.findAll()
+        : await this.historyService.findAll();
+    const safeMinSamples = Math.max(3, Math.min(50, Number(minSamples) || 8));
+    const cacheKey = this.getResponseCacheKey(source, rawRows, safeMinSamples);
+    this.memoryCache.delete(cacheKey);
+    const deleted = await this.deleteJsonCache(cacheKey);
+    const response = await this.getNextImpossibleNumber(source, safeMinSamples, { forceRefresh: true });
+
+    return {
+      ...response,
+      cacheMeta: {
+        ...(response.cacheMeta || {}),
+        action: 'refreshed',
+        deletedBeforeRefresh: deleted,
+      },
+    };
+  }
+
+  private getHistoryCacheKey(rawRows: any[]) {
+    const last = rawRows[rawRows.length - 1];
+    if (!last) return 'empty';
+    const period = last.period ?? last.No ?? last.id ?? rawRows.length;
+    const nums = [last.n1, last.n2, last.n3, last.n4, last.n5, last.n6, last.n7].join(',');
+    return `${rawRows.length}:${period}:${nums}`;
+  }
+
+  private getResponseCacheKey(source: SourceType, rawRows: any[], minSamples: number) {
+    return `predictor:five-period-kill:v1:${source}:min${minSamples}:${this.getHistoryCacheKey(rawRows)}`;
+  }
+
+  private async getRedisClient() {
+    if (!this.redisClient || this.redisDisabled) return null;
+    if (this.redisClient.isReady) return this.redisClient;
+
+    if (!this.redisConnectPromise) {
+      this.redisConnectPromise = this.redisClient
+        .connect()
+        .then(() => this.redisClient || null)
+        .catch((err) => {
+          this.redisDisabled = true;
+          console.warn('[five-period-cache] Redis disabled:', err.message);
+          return null;
+        });
+    }
+
+    return this.redisConnectPromise;
+  }
+
+  private async getJsonCache<T>(key: string): Promise<T | null> {
+    const client = await this.getRedisClient();
+    if (!client) return null;
+
+    try {
+      const value = await client.get(key);
+      return value ? (JSON.parse(value) as T) : null;
+    } catch (err) {
+      console.warn('[five-period-cache] Redis read failed:', (err as Error).message);
+      return null;
+    }
+  }
+
+  private async setJsonCache(key: string, value: any, ttlSeconds: number) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      await client.set(key, JSON.stringify(value), { EX: ttlSeconds });
+      return true;
+    } catch (err) {
+      console.warn('[five-period-cache] Redis write failed:', (err as Error).message);
+      return false;
+    }
+  }
+
+  private async deleteJsonCache(key: string) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      return (await client.del(key)) > 0;
+    } catch (err) {
+      console.warn('[five-period-cache] Redis delete failed:', (err as Error).message);
+      return false;
+    }
   }
 
   private normalizeRows(rows: any[]): DrawRow[] {

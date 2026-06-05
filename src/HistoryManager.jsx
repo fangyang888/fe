@@ -76,6 +76,13 @@ export default function HistoryManager() {
       success: "/kill/new 缓存已生成",
       error: "/kill/new 缓存生成失败",
     },
+    {
+      key: "fivePeriod",
+      label: `生成 /kill/five-period${activeTab === "hk" ? " 香港" : ""} 缓存`,
+      endpoint: `/api/five-period-kill/cache/refresh?minSamples=8${activeTab === "hk" ? "&type=hk" : ""}`,
+      success: `/kill/five-period${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
+      error: "/kill/five-period 缓存生成失败",
+    },
   ];
 
   const generateCache = async (action) => {

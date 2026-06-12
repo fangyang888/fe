@@ -142,8 +142,9 @@ export class KillTenService implements OnModuleDestroy {
       },
       backtest,
       walkForwardBacktest,
-      // 两个“训练窗口100%”模型（40万模型搜索得到，权重固定）的近15期真实滚动回测
-      trainedModels: this.buildTrainedModelReports(history, 15),
+      // 两个“训练窗口100%”模型（40万模型搜索得到，权重固定）的近20期真实滚动回测
+      trainedModels: this.buildTrainedModelReports(history, 20),
+      optimizedModels: this.buildOptimizedModelReports(history, 20),
       historyMeta: {
         count: history.length,
         latest,
@@ -340,6 +341,63 @@ export class KillTenService implements OnModuleDestroy {
     };
   }
 
+  private modelScores(history: DrawRow[], t: number, weights: number[]) {
+    return Array.from({ length: 49 }, (_, i) => {
+      const n = i + 1;
+      const fv = this.buildModelFeature(history, t, n);
+      let score = 0;
+      for (let j = 0; j < fv.length; j++) score += weights[j] * fv[j];
+      return { n, score };
+    });
+  }
+
+  private normalizeScoreMap(scores: Array<{ n: number; score: number }>) {
+    const mean = scores.reduce((sum, item) => sum + item.score, 0) / scores.length;
+    const variance = scores.reduce((sum, item) => sum + (item.score - mean) ** 2, 0) / scores.length;
+    const sd = Math.sqrt(variance) || 1;
+    return new Map(scores.map((item) => [item.n, (item.score - mean) / sd]));
+  }
+
+  private optimizedModelPredict(history: DrawRow[], t: number): { numbers: number[]; topNumber: number } {
+    const [, modelB] = KillTenService.TRAINED_KILL3_MODELS;
+    const bScores = this.normalizeScoreMap(this.modelScores(history, t, modelB.weights));
+    const scored: Array<{ n: number; score: number; feature: number[] }> = [];
+
+    for (let n = 1; n <= 49; n++) {
+      const feature = this.buildModelFeature(history, t, n);
+      const freq5 = feature[1] || 0;
+      const freq10 = feature[2] || 0;
+      const lastAppeared = feature[8] || 0;
+      const score =
+        (bScores.get(n) || 0) -
+        0.15 * Math.max(0, freq10 - 1) -
+        0.1 * lastAppeared -
+        0.05 * freq5;
+      scored.push({ n, score, feature });
+    }
+
+    scored.sort((a, b) => b.score - a.score || a.n - b.n);
+    const top3 = scored.slice(0, 3);
+    const topRiskSorted = [...top3].sort((a, b) => {
+      const aRisk =
+        (a.feature[1] || 0) * 1 +
+        (a.feature[2] || 0) * 0.3 +
+        (a.feature[8] || 0) * 0.5 -
+        (Math.min(20, a.feature[0] || 0) / 20) * 0.4;
+      const bRisk =
+        (b.feature[1] || 0) * 1 +
+        (b.feature[2] || 0) * 0.3 +
+        (b.feature[8] || 0) * 0.5 -
+        (Math.min(20, b.feature[0] || 0) / 20) * 0.4;
+      return aRisk - bRisk || b.score - a.score || a.n - b.n;
+    });
+
+    return {
+      numbers: top3.map(({ n }) => n).sort((a, b) => a - b),
+      topNumber: topRiskSorted[0].n,
+    };
+  }
+
   /** 两个训练模型的下期预测 + 近 backtestCount 期真实滚动回测 */
   private buildTrainedModelReports(history: DrawRow[], backtestCount = 15) {
     if (history.length < 60 + backtestCount) return [];
@@ -389,6 +447,57 @@ export class KillTenService implements OnModuleDestroy {
         },
       };
     });
+  }
+
+  /** 优化模型：B 主模型做热号惩罚，Top1 在候选3码内按低热风险重排。 */
+  private buildOptimizedModelReports(history: DrawRow[], backtestCount = 20) {
+    if (history.length < 60 + backtestCount) return [];
+
+    const rows: any[] = [];
+    for (let t = history.length - backtestCount; t < history.length; t++) {
+      const predicted = this.optimizedModelPredict(history, t);
+      const actual = history[t];
+      const appeared = predicted.numbers.filter((n) => actual.numbers.includes(n));
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        predictedKillNumbers: predicted.numbers,
+        topKillNumber: predicted.topNumber,
+        topKillSuccess: !actual.numbers.includes(predicted.topNumber),
+        appearedKillNumbers: appeared,
+        allKilled: appeared.length === 0,
+      });
+    }
+
+    const successCount = rows.filter((r) => r.allKilled).length;
+    const topSuccessCount = rows.filter((r) => r.topKillSuccess).length;
+    const next = this.optimizedModelPredict(history, history.length);
+
+    return [
+      {
+        key: 'optimized-b-low-risk-top',
+        name: '优化B模型（热号惩罚 + ★低热重排）',
+        method: 'b-model-hot-penalty-low-risk-top',
+        killCount: 3,
+        prediction: {
+          numbers: next.numbers,
+          display: next.numbers.map((n) => String(n).padStart(2, '0')),
+          topNumber: next.topNumber,
+          topDisplay: String(next.topNumber).padStart(2, '0'),
+        },
+        backtest: {
+          kind: 'walk-forward',
+          count: rows.length,
+          successCount,
+          failureCount: rows.length - successCount,
+          successRate: rows.length > 0 ? successCount / rows.length : 0,
+          topSuccessCount,
+          topSuccessRate: rows.length > 0 ? topSuccessCount / rows.length : 0,
+          rows: [...rows].reverse(),
+        },
+      },
+    ];
   }
 
   private combination(n: number, k: number): number {
@@ -501,7 +610,7 @@ export class KillTenService implements OnModuleDestroy {
     killCount: number,
     lookback: number,
   ) {
-    return `predictor:kill-ten:v5:${source}:k${killCount}:lb${lookback}:${this.getHistoryCacheKey(rawRows)}`;
+    return `predictor:kill-ten:v8:${source}:k${killCount}:lb${lookback}:${this.getHistoryCacheKey(rawRows)}`;
   }
 
   private async getRedisClient() {

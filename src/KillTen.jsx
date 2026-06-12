@@ -59,6 +59,7 @@ export default function KillTen() {
   const backtest = data?.backtest;
   const walkForward = data?.walkForwardBacktest;
   const trainedModels = data?.trainedModels || [];
+  const optimizedModels = data?.optimizedModels || [];
   const targetMet = data?.status === 'target-met';
   const latest = data?.historyMeta?.latest;
 
@@ -332,6 +333,101 @@ export default function KillTen() {
               </p>
             </div>
           ))}
+
+          {optimizedModels.length > 0 && (
+            <div style={styles.card}>
+              <div style={styles.cardTitle}>
+                <span>⚙️</span> 优化模型 · B主导 + 热号惩罚 + ★低热重排
+                <span style={{ fontSize: 12, color: '#8899aa', fontWeight: 400 }}>
+                  目标是保住杀3，同时提高Top1
+                </span>
+              </div>
+              {optimizedModels.map((m) => (
+                <div key={m.key}>
+                  <div style={{ ...styles.cardTitle, marginBottom: 10 }}>
+                    <span>{m.name}</span>
+                    <span style={styles.badge(m.backtest?.successRate >= 0.7)}>
+                      近{m.backtest?.count}期3码全杀 {m.backtest?.successCount}/{m.backtest?.count} ·{' '}
+                      {fmtPct(m.backtest?.successRate)}
+                    </span>
+                    <span style={{ ...styles.badge(m.backtest?.topSuccessRate >= 0.9), background: 'rgba(255,213,79,0.12)', color: '#ffd54f', border: '1px solid rgba(255,213,79,0.4)' }}>
+                      ★ Top1单杀 {m.backtest?.topSuccessCount}/{m.backtest?.count} ·{' '}
+                      {fmtPct(m.backtest?.topSuccessRate)}（随机 85.7%）
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: '#8899aa', marginRight: 8 }}>下期预测：</span>
+                    {(m.prediction?.numbers || []).map((n) => (
+                      <span
+                        key={n}
+                        title={n === m.prediction?.topNumber ? '低热风险重排后的Top1' : undefined}
+                        style={{
+                          ...styles.ball,
+                          width: 38,
+                          height: 38,
+                          fontSize: 14,
+                          background: 'linear-gradient(135deg, #2e7d32, #26a69a)',
+                          boxShadow: '0 4px 12px rgba(38,166,154,0.3)',
+                          ...(n === m.prediction?.topNumber ? styles.topBall : null),
+                        }}
+                      >
+                        {n === m.prediction?.topNumber ? '★' : ''}{fmtNum(n)}
+                      </span>
+                    ))}
+                  </div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>期号</th>
+                          <th style={styles.th}>预测杀码（你预测的值）</th>
+                          <th style={styles.th}>开奖号码</th>
+                          <th style={styles.th}>被命中杀码</th>
+                          <th style={styles.th}>结果</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(m.backtest?.rows || []).map((r, i) => (
+                          <tr key={i}>
+                            <td style={styles.td}>{r.year || '-'} / {r.No || '-'}</td>
+                            <td style={{ ...styles.td, color: '#80cbc4' }}>
+                              {(r.predictedKillNumbers || []).map((n, j) => (
+                                <span key={n}>
+                                  {j > 0 ? ', ' : ''}
+                                  <span
+                                    title={n === r.topKillNumber ? '低热风险重排后的Top1' : undefined}
+                                    style={n === r.topKillNumber ? styles.topNum : undefined}
+                                  >
+                                    {n === r.topKillNumber ? '★' : ''}{fmtNum(n)}
+                                  </span>
+                                </span>
+                              ))}
+                            </td>
+                            <td style={{ ...styles.td, color: '#4fc3f7', fontWeight: 600 }}>
+                              {(r.actualNumbers || []).map(fmtNum).join(', ')}
+                            </td>
+                            <td style={{ ...styles.td, color: '#e74c3c' }}>
+                              {(r.appearedKillNumbers || []).length
+                                ? r.appearedKillNumbers.map(fmtNum).join(', ')
+                                : '—'}
+                            </td>
+                            <td style={styles.td}>
+                              {r.allKilled ? '✅ 全杀成功' : '❌ 杀错'}
+                              {r.topKillSuccess === false ? ' (★被开出)' : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+              <p style={{ ...styles.note, marginTop: 10 }}>
+                优化口径：用B模型作为主分数，对近5/10期偏热和上期刚开的号码轻微降权；
+                杀3候选确定后，★不再取最高分，而是在3个候选中按低热风险重新挑选。
+              </p>
+            </div>
+          )}
 
           <div style={styles.card}>
             <div style={styles.cardTitle}>

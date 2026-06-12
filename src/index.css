@@ -101,6 +101,8 @@ body.app-drawer-open {
   z-index: 950;
   width: min(88vw, 340px);
   min-width: 280px;
+  height: 100dvh;
+  max-height: 100dvh;
   background: #0f1717;
   color: #f8fafc;
   border-right: 1px solid rgba(148, 163, 184, 0.22);
@@ -109,6 +111,8 @@ body.app-drawer-open {
   box-shadow: 22px 0 44px rgba(0, 0, 0, 0.36);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .app-drawer.is-open {
@@ -116,11 +120,12 @@ body.app-drawer-open {
 }
 
 .app-drawer-head {
+  flex: none;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 18px 18px 14px;
+  padding: calc(16px + env(safe-area-inset-top)) 18px 14px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
 
@@ -152,8 +157,32 @@ body.app-drawer-open {
 }
 
 .app-drawer-nav {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 12px 10px calc(18px + env(safe-area-inset-bottom)) 12px;
+}
+
+.app-drawer-nav::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-drawer-nav::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.app-drawer-nav::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+}
+
+.app-drawer-nav {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.65) rgba(255, 255, 255, 0.05);
 }
 
 .app-drawer-section + .app-drawer-section {
@@ -210,6 +239,24 @@ body.app-drawer-open {
   .app-menu-button {
     top: 18px;
     left: 18px;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-drawer {
+    width: min(92vw, 360px);
+  }
+
+  .app-drawer-link {
+    min-height: 52px;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .app-drawer-link small {
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 }
 

@@ -34,17 +34,22 @@ import FivePeriodKill from './FivePeriodKill.jsx';
 import FixedHybridKillPredictor from './FixedHybridKillPredictor.jsx';
 
 const routes = [
-  { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
+  // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
   { path: '/kill', label: '基础杀码', section: '杀码', element: <KillPredictor /> },
   { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
-  { path: '/kill/h47', label: 'Hybrid 4-7 固定策略', section: '杀码', element: <FixedHybridKillPredictor /> },
+  {
+    path: '/kill/h47',
+    label: 'Hybrid 4-7 固定策略',
+    section: '杀码',
+    element: <FixedHybridKillPredictor />,
+  },
   { path: '/kill/math3', label: '数学 3 杀', section: '杀码', element: <MathKillPredictor /> },
   { path: '/kill/seven', label: '七码统计', section: '杀码', element: <KillSevenStats /> },
-  { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
+  // { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
   { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
   { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
-  { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
+  // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
   { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },
   { path: '/history', label: '历史数据管理', section: '管理', element: <HistoryManager /> },
 ];
@@ -119,9 +124,7 @@ function AppShell({ children }: { children: ReactNode }) {
                     key={route.path}
                     to={route.path}
                     end={route.path === '/'}
-                    className={({ isActive }) =>
-                      `app-drawer-link ${isActive ? 'is-active' : ''}`
-                    }
+                    className={({ isActive }) => `app-drawer-link ${isActive ? 'is-active' : ''}`}
                   >
                     <span>{route.label}</span>
                     <small>{route.path}</small>

@@ -77,6 +77,13 @@ export default function HistoryManager() {
       error: "/kill/new 缓存生成失败",
     },
     {
+      key: "hybrid47",
+      label: "生成 /kill/hybrid-4-7 缓存",
+      endpoint: "/api/fixed-hybrid-kill/probability-4-7/cache/refresh",
+      success: "/kill/hybrid-4-7 缓存已生成",
+      error: "/kill/hybrid-4-7 缓存生成失败",
+    },
+    {
       key: "fivePeriod",
       label: `生成 /kill/five-period${activeTab === "hk" ? " 香港" : ""} 缓存`,
       endpoint: `/api/five-period-kill/cache/refresh?minSamples=8${activeTab === "hk" ? "&type=hk" : ""}`,

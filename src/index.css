@@ -101,6 +101,10 @@ body.app-drawer-open {
   z-index: 950;
   width: min(88vw, 340px);
   min-width: 280px;
+  height: 100vh;
+  max-height: 100vh;
+  height: 100svh;
+  max-height: 100svh;
   height: 100dvh;
   max-height: 100dvh;
   background: #0f1717;
@@ -111,8 +115,29 @@ body.app-drawer-open {
   box-shadow: 22px 0 44px rgba(0, 0, 0, 0.36);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+
+.app-drawer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-drawer::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-drawer::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+}
+
+.app-drawer {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.65) rgba(255, 255, 255, 0.05);
 }
 
 .app-drawer.is-open {
@@ -121,12 +146,16 @@ body.app-drawer-open {
 
 .app-drawer-head {
   flex: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   padding: calc(16px + env(safe-area-inset-top)) 18px 14px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: #0f1717;
 }
 
 .app-drawer-title {
@@ -159,30 +188,8 @@ body.app-drawer-open {
 .app-drawer-nav {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  overflow: visible;
   padding: 12px 10px calc(18px + env(safe-area-inset-bottom)) 12px;
-}
-
-.app-drawer-nav::-webkit-scrollbar {
-  width: 8px;
-}
-
-.app-drawer-nav::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 999px;
-}
-
-.app-drawer-nav::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.55);
-  border-radius: 999px;
-}
-
-.app-drawer-nav {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.65) rgba(255, 255, 255, 0.05);
 }
 
 .app-drawer-section + .app-drawer-section {
@@ -199,10 +206,11 @@ body.app-drawer-open {
 
 .app-drawer-link {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  min-height: 46px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3px;
+  min-height: 52px;
   padding: 10px 10px;
   border-radius: 8px;
   color: #d6e1ea;
@@ -228,11 +236,13 @@ body.app-drawer-open {
 }
 
 .app-drawer-link small {
+  max-width: 100%;
   flex: none;
   color: inherit;
   opacity: 0.7;
   font-size: 0.72rem;
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 @media (min-width: 920px) {
@@ -245,18 +255,6 @@ body.app-drawer-open {
 @media (max-width: 520px) {
   .app-drawer {
     width: min(92vw, 360px);
-  }
-
-  .app-drawer-link {
-    min-height: 52px;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
-  }
-
-  .app-drawer-link small {
-    max-width: 100%;
-    overflow-wrap: anywhere;
   }
 }
 

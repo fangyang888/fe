@@ -48,9 +48,9 @@ const routes = [
   // { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
   { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
-  { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
+  // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
-  { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },
+  // { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },
   { path: '/history', label: '历史数据管理', section: '管理', element: <HistoryManager /> },
 ];
 

@@ -10,6 +10,32 @@ import { HistoryHk } from './history-hk/history-hk.entity';
 import { AppController } from './app.controller';
 import { PredictorModule } from './predictor/predictor.module';
 import { CrawlerModule } from './crawler/crawler.module';
+import { User } from './user/user.entity';
+import { Role } from './role/role.entity';
+import { Permission } from './permission/permission.entity';
+import { UserModule } from './user/user.module';
+import { RoleModule } from './role/role.module';
+import { PermissionModule } from './permission/permission.module';
+import { AuthModule } from './auth/auth.module';
+import { Product } from './product/product.entity';
+import { Category } from './category/category.entity';
+import { Banner } from './banner/banner.entity';
+import { ProductModule } from './product/product.module';
+import { CategoryModule } from './category/category.module';
+import { BannerModule } from './banner/banner.module';
+import { HomeModule } from './home/home.module';
+import { CartItem } from './cart/cart-item.entity';
+import { CartModule } from './cart/cart.module';
+import { Order } from './order/order.entity';
+import { OrderItem } from './order/order-item.entity';
+import { Address } from './address/address.entity';
+import { OrderModule } from './order/order.module';
+import { AddressModule } from './address/address.module';
+import { Coupon } from './coupon/coupon.entity';
+import { UserCoupon } from './coupon/user-coupon.entity';
+import { CouponModule } from './coupon/coupon.module';
+import { Favorite } from './favorite/favorite.entity';
+import { FavoriteModule } from './favorite/favorite.module';
 
 @Module({
   imports: [
@@ -30,7 +56,23 @@ import { CrawlerModule } from './crawler/crawler.module';
         username: configService.get<string>('DB_USER', 'root'),
         password: configService.get<string>('DB_PASSWORD', ''),
         database: configService.get<string>('DB_NAME', 'fe_prediction'),
-        entities: [History, HistoryHk],
+        entities: [
+          History,
+          HistoryHk,
+          User,
+          Role,
+          Permission,
+          Product,
+          Category,
+          Banner,
+          CartItem,
+          Order,
+          OrderItem,
+          Address,
+          Coupon,
+          UserCoupon,
+          Favorite,
+        ],
         synchronize: process.env.NODE_ENV !== 'production', // 生产环境关闭自动同步
       }),
     }),
@@ -47,6 +89,22 @@ import { CrawlerModule } from './crawler/crawler.module';
     HistoryHkModule,
     PredictorModule,
     CrawlerModule,
+
+    // 用户 / 角色 / 权限 / 鉴权
+    AuthModule,
+    UserModule,
+    RoleModule,
+    PermissionModule,
+
+    // 商城：首页 / 商品 / 分类 / 轮播
+    HomeModule,
+    ProductModule,
+    CategoryModule,
+    BannerModule,
+    CartModule,
+    OrderModule,
+    AddressModule,
+    CouponModule,
   ],
   controllers: [AppController],
 })

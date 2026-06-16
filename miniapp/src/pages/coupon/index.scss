@@ -1,0 +1,128 @@
+$primary-color: #ff5000;
+$primary-light: #ff8040;
+$text-primary: #1a1a1a;
+$text-secondary: #666666;
+$text-light: #999999;
+$bg-color: #f4f5f7;
+$white: #ffffff;
+
+$spacing-sm: 12px;
+$spacing-md: 16px;
+
+.coupon-page {
+  min-height: 100vh;
+  background: $bg-color;
+}
+
+.tabs {
+  display: flex;
+  background: $white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+
+  .tab-item {
+    flex: 1;
+    text-align: center;
+    padding: 24px 0;
+    position: relative;
+
+    .tab-text {
+      font-size: 28px;
+      color: $text-secondary;
+    }
+
+    &.active {
+      .tab-text {
+        color: $primary-color;
+        font-weight: 600;
+      }
+      &::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        bottom: 8px;
+        transform: translateX(-50%);
+        width: 40px;
+        height: 6px;
+        border-radius: 3px;
+        background: linear-gradient(90deg, $primary-color, $primary-light);
+      }
+    }
+  }
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 180px;
+
+  .empty-icon {
+    font-size: 110px;
+    opacity: 0.8;
+    margin-bottom: $spacing-md;
+  }
+  .empty-text {
+    font-size: 28px;
+    color: $text-light;
+  }
+}
+
+.list {
+  padding: $spacing-sm;
+}
+
+.coupon-card {
+  display: flex;
+  background: $white;
+  border-radius: 18px;
+  margin-bottom: $spacing-sm;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+
+  .coupon-left {
+    width: 220px;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, $primary-color, $primary-light);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 0;
+
+    .coupon-value {
+      font-size: 52px;
+      font-weight: 700;
+      color: $white;
+    }
+    .coupon-min {
+      font-size: 22px;
+      color: rgba(255, 255, 255, 0.9);
+      margin-top: 8px;
+    }
+  }
+
+  .coupon-right {
+    flex: 1;
+    padding: 30px $spacing-md;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+
+    .coupon-name {
+      font-size: 30px;
+      font-weight: 600;
+      color: $text-primary;
+      margin-bottom: 12px;
+    }
+    .coupon-expire {
+      font-size: 24px;
+      color: $text-light;
+    }
+  }
+
+  &.disabled {
+    .coupon-left {
+      background: #c8c8c8;
+    }
+  }
+}

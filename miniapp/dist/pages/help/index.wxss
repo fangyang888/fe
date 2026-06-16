@@ -1,0 +1,114 @@
+/*!************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/.pnpm/css-loader@6.11.0_webpack@5.78.0/node_modules/css-loader/dist/cjs.js??ruleSet[1].rules[1].oneOf[0].use[1]!./node_modules/.pnpm/postcss-loader@7.3.4_urpozmj2xk4vxj7msbtktvzx4i/node_modules/postcss-loader/dist/cjs.js??ruleSet[1].rules[1].oneOf[0].use[2]!./node_modules/.pnpm/resolve-url-loader@5.0.0/node_modules/resolve-url-loader/index.js!./node_modules/.pnpm/sass-loader@12.4.0_sass@1.50.0+webpack@5.78.0/node_modules/sass-loader/dist/cjs.js??ruleSet[1].rules[1].oneOf[0].use[4]!./src/pages/help/index.scss ***!
+  \************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+.help-page {
+  min-height: 100vh;
+  background: #f4f5f7;
+  padding-bottom: 40rpx;
+}
+
+.banner {
+  padding: 50rpx 16rpx;
+  background: -webkit-linear-gradient(315deg, #ff5000, #ff8040);
+  background: linear-gradient(135deg, #ff5000, #ff8040);
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-flex-direction: column;
+      -ms-flex-direction: column;
+          flex-direction: column;
+}
+
+.banner .banner-title {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.banner .banner-sub {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 10rpx;
+}
+
+.faq-list {
+  margin: 12rpx;
+  background: #ffffff;
+  border-radius: 18rpx;
+  overflow: hidden;
+  -webkit-box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+          box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+}
+
+.faq-list .faq-item:not(:last-child) {
+  border-bottom: 1rpx solid #f5f5f5;
+}
+
+.faq-list .faq-item .faq-q {
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-justify-content: space-between;
+      -ms-flex-pack: justify;
+          justify-content: space-between;
+  -webkit-align-items: center;
+      -ms-flex-align: center;
+          align-items: center;
+  padding: 16rpx;
+}
+
+.faq-list .faq-item .faq-q .q-text {
+  font-size: 28rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+  -webkit-flex: 1;
+      -ms-flex: 1;
+          flex: 1;
+}
+
+.faq-list .faq-item .faq-q .q-arrow {
+  font-size: 40rpx;
+  color: #999999;
+  margin-left: 12rpx;
+}
+
+.faq-list .faq-item .faq-a {
+  padding: 0 16rpx 16rpx;
+}
+
+.faq-list .faq-item .faq-a .a-text {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.6;
+}
+
+.contact {
+  margin: 12rpx;
+  padding: 16rpx;
+  background: #ffffff;
+  border-radius: 18rpx;
+  -webkit-box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+          box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-flex-direction: column;
+      -ms-flex-direction: column;
+          flex-direction: column;
+  -webkit-align-items: center;
+      -ms-flex-align: center;
+          align-items: center;
+}
+
+.contact .contact-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 12rpx;
+}
+
+.contact .contact-info {
+  font-size: 26rpx;
+  color: #666666;
+  margin-top: 6rpx;
+}

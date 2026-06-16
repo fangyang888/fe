@@ -36,6 +36,8 @@ import FixedHybridKillPredictor from './FixedHybridKillPredictor.jsx';
 import KillTen from './KillTen.jsx';
 // @ts-ignore
 import KillOne from './KillOne.jsx';
+// @ts-ignore
+import POneKill from './POneKill.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -54,6 +56,7 @@ const routes = [
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
   { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
+  { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
   // { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },

@@ -15,6 +15,8 @@ import { KillTenController } from './kill-ten.controller';
 import { KillTenService } from './kill-ten.service';
 import { KillOneController } from './kill-one.controller';
 import { KillOneService } from './kill-one.service';
+import { POneKillController } from './p-one-kill.controller';
+import { POneKillService } from './p-one-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -26,6 +28,7 @@ import { KillOneService } from './kill-one.service';
     FixedHybridKillController,
     KillTenController,
     KillOneController,
+    POneKillController,
   ],
   providers: [
     PredictorService,
@@ -35,6 +38,7 @@ import { KillOneService } from './kill-one.service';
     FixedHybridKillService,
     KillTenService,
     KillOneService,
+    POneKillService,
   ],
 })
 export class PredictorModule {}

@@ -1,5 +1,25 @@
 # 阿里云 ECS 部署指南 (针对 Alibaba Cloud Linux 3 / CentOS)
 
+> ## 一键发布（GitHub Actions）
+>
+> push 到 `main` / `feat/v4` 会自动:构建前端 + 后端 + **admin 后台** → scp 上传 → 生成 `.env` → **初始化商城数据库表** → 创建管理员账号 → 重启 PM2 + reload Nginx。
+>
+> **需要在 GitHub 仓库 Settings → Secrets 配置:**
+>
+> | Secret | 说明 |
+> |---|---|
+> | `ECS_HOST` / `ECS_USER` / `ECS_PASSWORD` | 服务器 SSH(已有) |
+> | `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | MySQL(已有) |
+> | `REDIS_URL` | 可选(已有) |
+> | `JWT_SECRET` | **必填**,后台/小程序登录签名密钥,换成随机长字符串 |
+> | `WX_APPID` / `WX_SECRET` | 小程序真实登录(没有可留空,走 dev 兜底) |
+> | `ADMIN_USER` / `ADMIN_PASSWORD` | 后台管理员账号密码,部署时自动创建/更新 |
+>
+> 部署后访问:小程序后端 `http://你的IP/api`、**管理后台 `http://你的IP/admin`**、预测前端 `http://你的IP/fe`。
+>
+> 注:数据库建表用 `server/sql/init-tables.sql`(幂等),首批演示数据可登录服务器手动跑 `seed-test-data.sql`。
+
+
 ## 1. 购买 ECS
 
 - 推荐配置：2C4G Alibaba Cloud Linux 3

@@ -18,11 +18,14 @@ CREATE TABLE IF NOT EXISTS `user` (
   `avatar`     VARCHAR(255) NULL,
   `gender`     TINYINT NULL,
   `phone`      VARCHAR(255) NULL,
+  `username`   VARCHAR(255) NULL,
+  `password`   VARCHAR(255) NULL,
   `status`     TINYINT NOT NULL DEFAULT 1,
   `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_user_openid` (`openid`)
+  UNIQUE KEY `uq_user_openid` (`openid`),
+  UNIQUE KEY `uq_user_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------
@@ -238,6 +241,28 @@ CREATE TABLE IF NOT EXISTS `favorite` (
   KEY `idx_favorite_user` (`userId`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ---------------------------------------------------------------------
+-- 16. 埋点事件明细
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `event` (
+  `id`          BIGINT NOT NULL AUTO_INCREMENT,
+  `event_name`  VARCHAR(255) NOT NULL,
+  `event_type`  VARCHAR(255) NOT NULL DEFAULT 'custom',
+  `user_id`     INT NULL,
+  `openid`      VARCHAR(255) NULL,
+  `session_id`  VARCHAR(255) NULL,
+  `page`        VARCHAR(255) NULL,
+  `params`      JSON NULL,
+  `platform`    VARCHAR(255) NOT NULL DEFAULT 'mp-weixin',
+  `app_version` VARCHAR(255) NULL,
+  `os`          VARCHAR(255) NULL,
+  `ts`          BIGINT NOT NULL,
+  `created_at`  DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `idx_event_name_ts` (`event_name`, `ts`),
+  KEY `idx_event_openid_ts` (`openid`, `ts`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
@@ -245,6 +270,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 -- =====================================================================
 INSERT INTO `permission` (`code`, `name`, `group`) VALUES
   ('user:list',          '查看用户', 'user'),
+  ('user:create',        '创建用户', 'user'),
   ('user:update',        '编辑用户', 'user'),
   ('user:assign-role',   '分配角色', 'user'),
   ('role:list',          '查看角色', 'role'),
@@ -254,7 +280,13 @@ INSERT INTO `permission` (`code`, `name`, `group`) VALUES
   ('role:assign-perm',   '分配权限', 'role'),
   ('permission:list',    '查看权限', 'permission'),
   ('permission:create',  '新建权限', 'permission'),
-  ('permission:delete',  '删除权限', 'permission')
+  ('permission:delete',  '删除权限', 'permission'),
+  ('product:manage',     '商品管理', 'product'),
+  ('order:manage',       '订单管理', 'order'),
+  ('category:manage',    '分类管理', 'category'),
+  ('banner:manage',      '轮播管理', 'banner'),
+  ('coupon:manage',      '优惠券管理', 'coupon'),
+  ('stat:view',          '数据看板', 'stat')
 ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `group` = VALUES(`group`);
 
 INSERT INTO `role` (`code`, `name`, `is_system`) VALUES ('admin', '超级管理员', 1)

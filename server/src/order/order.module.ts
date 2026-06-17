@@ -6,6 +6,7 @@ import { CartItem } from '../cart/cart-item.entity';
 import { Product } from '../product/product.entity';
 import { OrderService } from './order.service';
 import { OrderController } from './order.controller';
+import { OrderAdminController } from './order-admin.controller';
 import { AddressModule } from '../address/address.module';
 
 @Module({
@@ -13,7 +14,7 @@ import { AddressModule } from '../address/address.module';
     TypeOrmModule.forFeature([Order, OrderItem, CartItem, Product]),
     AddressModule,
   ],
-  controllers: [OrderController],
+  controllers: [OrderController, OrderAdminController],
   providers: [OrderService],
   exports: [OrderService],
 })

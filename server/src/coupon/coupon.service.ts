@@ -35,6 +35,25 @@ export class CouponService {
     });
   }
 
+  /** 后台：全量优惠券模板 */
+  listAllAdmin() {
+    return this.couponRepo.find({ order: { id: 'DESC' } });
+  }
+
+  createCoupon(data: Partial<Coupon>) {
+    return this.couponRepo.save(this.couponRepo.create(data));
+  }
+
+  async updateCoupon(id: number, data: Partial<Coupon>) {
+    await this.couponRepo.update(id, data);
+    return this.couponRepo.findOne({ where: { id } });
+  }
+
+  async removeCoupon(id: number) {
+    await this.couponRepo.delete(id);
+    return { ok: true };
+  }
+
   /** 我的优惠券（可按状态过滤），关联模板信息 */
   async listMine(
     userId: number,

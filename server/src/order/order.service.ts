@@ -146,6 +146,34 @@ export class OrderService {
     return this.orderRepo.save(order);
   }
 
+  // ---------- 后台管理（跨用户） ----------
+
+  /** 后台全量订单列表，可按状态过滤 */
+  async adminFindAll(status?: OrderStatus, page = 1, pageSize = 20) {
+    const where: any = {};
+    if (status) where.status = status;
+    const [list, total] = await this.orderRepo.findAndCount({
+      where,
+      order: { created_at: 'DESC' },
+      skip: (Math.max(1, page) - 1) * pageSize,
+      take: pageSize,
+    });
+    return { list, total, page, pageSize };
+  }
+
+  async adminFindOne(id: number) {
+    const order = await this.orderRepo.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('订单不存在');
+    return order;
+  }
+
+  /** 后台改订单状态（不限用户）。常用于发货：shipping */
+  async adminUpdateStatus(id: number, status: OrderStatus) {
+    const order = await this.adminFindOne(id);
+    order.status = status;
+    return this.orderRepo.save(order);
+  }
+
   private genOrderNo(): string {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');

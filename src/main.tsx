@@ -54,7 +54,7 @@ const routes = [
   // { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
   { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
-  { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
+  // { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
   { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },

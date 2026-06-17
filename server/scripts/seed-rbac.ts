@@ -17,6 +17,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 // 权限点清单：code 与各 controller 上 @RequirePermissions 一一对应
 const PERMISSIONS: { code: string; name: string; group: string }[] = [
   { code: 'user:list', name: '查看用户', group: 'user' },
+  { code: 'user:create', name: '创建用户', group: 'user' },
   { code: 'user:update', name: '编辑用户', group: 'user' },
   { code: 'user:assign-role', name: '分配角色', group: 'user' },
   { code: 'role:list', name: '查看角色', group: 'role' },
@@ -27,6 +28,12 @@ const PERMISSIONS: { code: string; name: string; group: string }[] = [
   { code: 'permission:list', name: '查看权限', group: 'permission' },
   { code: 'permission:create', name: '新建权限', group: 'permission' },
   { code: 'permission:delete', name: '删除权限', group: 'permission' },
+  { code: 'product:manage', name: '商品管理', group: 'product' },
+  { code: 'order:manage', name: '订单管理', group: 'order' },
+  { code: 'category:manage', name: '分类管理', group: 'category' },
+  { code: 'banner:manage', name: '轮播管理', group: 'banner' },
+  { code: 'coupon:manage', name: '优惠券管理', group: 'coupon' },
+  { code: 'stat:view', name: '数据看板', group: 'stat' },
 ];
 
 async function seed() {

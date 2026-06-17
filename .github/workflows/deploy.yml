@@ -33,13 +33,19 @@ jobs:
           pnpm install
           pnpm run build
 
+      - name: Build Admin
+        run: |
+          cd admin
+          npm install
+          npm run build
+
       - name: Deploy to ECS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,ecosystem.config.cjs,deploy/nginx.conf'
+          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,ecosystem.config.cjs,deploy/nginx.conf'
           target: '/home/deploy/fe'
           strip_components: 0
           timeout: 120s
@@ -58,7 +64,7 @@ jobs:
             [ -s "$HOME/.nvm/nvm.sh" ] && \. "$HOME/.nvm/nvm.sh"
 
             cd /home/deploy/fe/server
-            
+
             # 动态生成 .env 文件
             echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
             echo "DB_PORT=3306" >> .env
@@ -73,7 +79,33 @@ jobs:
             fi
             echo "REDIS_URL=$REDIS_URL" >> .env
 
+            # 商城 / 鉴权相关配置（从 GitHub Secrets 读取）
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+            echo "JWT_EXPIRES_IN_SEC=604800" >> .env
+            echo "WX_APPID=${{ secrets.WX_APPID }}" >> .env
+            echo "WX_SECRET=${{ secrets.WX_SECRET }}" >> .env
+            echo "DEV_OPENID=dev_openid_0001" >> .env
+
             echo ".env file generated successfully."
+
+            # ---- 初始化/同步商城数据库表结构（幂等，可重复执行）----
+            DB_HOST="${{ secrets.DB_HOST }}"
+            DB_USER="${{ secrets.DB_USER }}"
+            DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+            DB_NAME="${{ secrets.DB_NAME }}"
+            if [ -f sql/init-tables.sql ]; then
+              mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < sql/init-tables.sql || echo "init-tables 执行有警告，继续"
+            fi
+
+            # ---- 创建/更新后台管理员账号（密码来自 Secret，哈希用 Node 内置 scrypt）----
+            ADMIN_USER="${{ secrets.ADMIN_USER }}"
+            ADMIN_PASS="${{ secrets.ADMIN_PASSWORD }}"
+            if [ -n "$ADMIN_USER" ] && [ -n "$ADMIN_PASS" ]; then
+              HASH=$(node -e "const{randomBytes,scryptSync}=require('crypto');const s=randomBytes(16).toString('hex');process.stdout.write(s+':'+scryptSync(process.argv[1],s,64).toString('hex'))" "$ADMIN_PASS")
+              ADMIN_SQL="INSERT INTO \`user\` (\`openid\`,\`username\`,\`password\`,\`nickname\`,\`status\`) VALUES ('admin_${ADMIN_USER}','${ADMIN_USER}','${HASH}','管理员',1) ON DUPLICATE KEY UPDATE \`password\`=VALUES(\`password\`),\`status\`=1; INSERT INTO \`user_roles\` (\`user_id\`,\`role_id\`) SELECT u.id, r.id FROM \`user\` u JOIN \`role\` r ON r.code='admin' WHERE u.username='${ADMIN_USER}' ON DUPLICATE KEY UPDATE \`user_id\`=\`user_roles\`.\`user_id\`;"
+              mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" -e "$ADMIN_SQL" || echo "admin seed 有警告"
+              echo "管理员账号已就绪：$ADMIN_USER"
+            fi
 
             # 安装依赖并重启服务
             corepack enable

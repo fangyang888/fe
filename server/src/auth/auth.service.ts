@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { TokenService } from './token.service';
 import { WechatService } from './wechat.service';
+import { verifyPassword } from './password.util';
 import { UserService } from '../user/user.service';
 import { User } from '../user/user.entity';
 import { AuthUser } from './decorators';
@@ -20,6 +25,22 @@ export class AuthService {
       session.openid,
       session.unionid,
     );
+    const token = this.signToken(user);
+    return { token, userInfo: this.toUserInfo(user) };
+  }
+
+  /** 后台账号密码登录 */
+  async adminLogin(username: string, password: string) {
+    if (!username || !password) {
+      throw new UnauthorizedException('账号或密码不能为空');
+    }
+    const user = await this.users.findByUsername(username);
+    if (!user || !verifyPassword(password, user.password)) {
+      throw new UnauthorizedException('账号或密码错误');
+    }
+    if (user.status !== 1) {
+      throw new ForbiddenException('账号已被禁用');
+    }
     const token = this.signToken(user);
     return { token, userInfo: this.toUserInfo(user) };
   }
@@ -54,6 +75,7 @@ export class AuthService {
     return {
       id: user.id,
       openid: user.openid,
+      username: user.username,
       nickname: user.nickname,
       avatar: user.avatar,
       gender: user.gender,

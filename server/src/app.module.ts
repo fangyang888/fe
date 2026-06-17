@@ -36,6 +36,8 @@ import { UserCoupon } from './coupon/user-coupon.entity';
 import { CouponModule } from './coupon/coupon.module';
 import { Favorite } from './favorite/favorite.entity';
 import { FavoriteModule } from './favorite/favorite.module';
+import { Event } from './track/event.entity';
+import { TrackModule } from './track/track.module';
 
 @Module({
   imports: [
@@ -72,6 +74,7 @@ import { FavoriteModule } from './favorite/favorite.module';
           Coupon,
           UserCoupon,
           Favorite,
+          Event,
         ],
         synchronize: process.env.NODE_ENV !== 'production', // 生产环境关闭自动同步
       }),
@@ -105,6 +108,8 @@ import { FavoriteModule } from './favorite/favorite.module';
     OrderModule,
     AddressModule,
     CouponModule,
+    FavoriteModule,
+    TrackModule,
   ],
   controllers: [AppController],
 })

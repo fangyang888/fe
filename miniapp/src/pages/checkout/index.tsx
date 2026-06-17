@@ -1,10 +1,11 @@
 import { View, Text, Image, ScrollView } from '@tarojs/components'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
 import { getCart } from '../../store/cartStore'
 import { CartItem } from '../../api/cart'
 import { apiGetAddresses, Address } from '../../api/address'
 import { apiCreateOrder } from '../../api/order'
+import { track } from '../../utils/tracker'
 import './index.scss'
 
 export default function Checkout() {
@@ -44,6 +45,10 @@ export default function Checkout() {
     loadAddress()
   })
 
+  useLoad(() => {
+    track('checkout_start', {}, 'action')
+  })
+
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
 
   const goPickAddress = () => {
@@ -63,6 +68,7 @@ export default function Checkout() {
     setSubmitting(true)
     try {
       const order = await apiCreateOrder({ addressId: address.id })
+      track('order_submit', { orderId: order.id, amount: totalPrice }, 'action')
       Taro.showToast({ title: '下单成功', icon: 'success' })
       setTimeout(() => {
         Taro.redirectTo({ url: `/pages/order-detail/index?id=${order.id}` })

@@ -60,4 +60,47 @@ export class ProductService {
     }
     return product;
   }
+
+  // ---------- 后台管理 ----------
+
+  /** 后台列表：含下架商品，支持关键词/分类，分页 */
+  async findAllAdmin(query: ProductQuery) {
+    const { categoryId, keyword } = query;
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize) || 20));
+
+    const where: any = {};
+    if (categoryId) where.categoryId = categoryId;
+    if (keyword) where.name = Like(`%${keyword}%`);
+
+    const [list, total] = await this.repo.findAndCount({
+      where,
+      order: { id: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { list, total, page, pageSize };
+  }
+
+  /** 后台取单个（不限状态） */
+  async findOneAdmin(id: number): Promise<Product> {
+    const product = await this.repo.findOne({ where: { id } });
+    if (!product) throw new NotFoundException('商品不存在');
+    return product;
+  }
+
+  create(data: Partial<Product>): Promise<Product> {
+    return this.repo.save(this.repo.create(data));
+  }
+
+  async update(id: number, data: Partial<Product>): Promise<Product> {
+    const product = await this.findOneAdmin(id);
+    Object.assign(product, data);
+    return this.repo.save(product);
+  }
+
+  async remove(id: number) {
+    await this.repo.delete(id);
+    return { ok: true };
+  }
 }

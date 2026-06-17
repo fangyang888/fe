@@ -39,6 +39,14 @@ export class User {
   @Column({ nullable: true })
   phone?: string;
 
+  /** 后台账号（管理员用，普通微信用户为空） */
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  username?: string;
+
+  /** 后台密码（scrypt 哈希，格式 salt:hash），select:false 默认不查出 */
+  @Column({ type: 'varchar', nullable: true, select: false })
+  password?: string;
+
   /** 1正常 0禁用 */
   @Column({ type: 'tinyint', default: 1 })
   status: number;

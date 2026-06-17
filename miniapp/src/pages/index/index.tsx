@@ -3,6 +3,7 @@ import Taro, { useLoad, useDidShow, switchTab } from '@tarojs/taro'
 import { useState } from 'react'
 import { apiGetHome, HomeData, Product } from '../../api/home'
 import { addToCart, getCartCount } from '../../store/cartStore'
+import { track, trackPageView } from '../../utils/tracker'
 import './index.scss'
 
 export default function Index() {
@@ -30,6 +31,7 @@ export default function Index() {
   useLoad(() => {
     loadHome()
     loadCartCount()
+    trackPageView('/pages/index/index')
   })
 
   useDidShow(() => {
@@ -46,12 +48,14 @@ export default function Index() {
 
   // 添加到购物车
   const handleAddToCart = async (product: Product) => {
+    track('add_to_cart', { productId: product.id, price: product.price, from: 'home' })
     await addToCart(product.id)
     loadCartCount()
   }
 
   // 进入商品详情
   const goDetail = (id: number) => {
+    track('product_click', { productId: id, from: 'home' })
     Taro.navigateTo({ url: `/pages/product-detail/index?id=${id}` })
   }
 

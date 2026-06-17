@@ -133,20 +133,57 @@ INSERT INTO `coupon` (`id`,`name`,`type`,`value`,`minSpend`,`expireAt`,`status`)
   (3,'满1000减150','amount',150,1000,'2026-12-31 23:59:59',1)
 ON DUPLICATE KEY UPDATE `name`=VALUES(`name`),`value`=VALUES(`value`),`minSpend`=VALUES(`minSpend`);
 
--- dev 用户领取 2 张券（1 未用 1 已用）
+-- dev 用户领取 3 张券（2 未用 1 已用）
 INSERT INTO `user_coupon` (`userId`,`couponId`,`status`) VALUES
   (@uid,1,'unused'),
-  (@uid,2,'used')
+  (@uid,2,'used'),
+  (@uid,3,'unused')
 ON DUPLICATE KEY UPDATE `status`=VALUES(`status`);
 
 -- ---------------------------------------------------------------------
--- 收藏（dev 用户收藏 3 个商品）
+-- 收藏（dev 用户收藏 5 个商品）
 -- ---------------------------------------------------------------------
 INSERT INTO `favorite` (`userId`,`productId`) VALUES
   (@uid,1),
   (@uid,5),
-  (@uid,9)
+  (@uid,9),
+  (@uid,12),
+  (@uid,19)
 ON DUPLICATE KEY UPDATE `userId`=`favorite`.`userId`;
 
--- 完成。查看角标预期：待付款1 待发货1 待收货1 待评价1 售后1
+-- =====================================================================
+-- 追加：更多订单（含多商品订单 + 每状态多条，角标显示 >1）
+-- =====================================================================
+INSERT INTO `order`
+  (`id`,`orderNo`,`userId`,`status`,`totalAmount`,`addressSnapshot`,`remark`,`paidAt`) VALUES
+  (7, 'TEST202606160007',@uid,'unpaid',     2998,'{"name":"方阳","phone":"13800000000","detail":"科技园路1号"}','两件套',NULL),
+  (8, 'TEST202606160008',@uid,'shipping',   5999,'{"name":"方阳","phone":"13800000000","detail":"科技园路1号"}',NULL,NOW()),
+  (9, 'TEST202606160009',@uid,'shipping',    158,'{"name":"方阳(公司)","phone":"13900000000","detail":"珠江新城CBD88号"}',NULL,NOW()),
+  (10,'TEST202606160010',@uid,'unreviewed', 1280,'{"name":"方阳","phone":"13800000000","detail":"科技园路1号"}',NULL,NOW()),
+  (11,'TEST202606160011',@uid,'completed', 16999,'{"name":"方阳","phone":"13800000000","detail":"科技园路1号"}','已签收',NOW()),
+  (12,'TEST202606160012',@uid,'completed',  4990,'{"name":"方阳","phone":"13800000000","detail":"科技园路1号"}',NULL,NOW())
+ON DUPLICATE KEY UPDATE `status`=VALUES(`status`),`totalAmount`=VALUES(`totalAmount`);
+
+-- 订单 7 多商品（小米14 + 罗技鼠标 + 优衣库外套）
+INSERT INTO `order_item` (`id`,`orderId`,`productId`,`name`,`price`,`image`,`quantity`) VALUES
+  (7, 7,13,'优衣库男士摇粒绒外套',199,@IMG,2),
+  (8, 7,8, '罗技MX Master 3S 无线鼠标',699,@IMG,1),
+  (9, 7,17,'褚橙冰糖橙 5斤装',59,@IMG,1),
+  (10,8,4, '索尼WH-1000XM5 无线降噪耳机 黑色',2299,@IMG,1),
+  (11,8,3, '小米14 Ultra 16GB+512GB 白色',5999,@IMG,1),
+  (12,9,16,'三只松鼠每日坚果 750g',89,@IMG,1),
+  (13,9,20,'费雪声光安抚海马 婴儿玩具',129,@IMG,1),
+  (14,10,14,'雅诗兰黛小棕瓶精华 50ml',780,@IMG,1),
+  (15,10,15,'兰蔻菁纯面霜 50ml',1280,@IMG,1),
+  (16,11,5, 'MacBook Pro 14英寸 M3 Pro 18GB+512GB',16999,@IMG,1),
+  (17,12,9, '戴森V15 Detect 无绳吸尘器',4990,@IMG,1)
+ON DUPLICATE KEY UPDATE `name`=VALUES(`name`),`price`=VALUES(`price`),`quantity`=VALUES(`quantity`);
+
+-- 追加购物车项（共 5 件，3 勾选 2 未勾选）
+INSERT INTO `cart_item` (`userId`,`productId`,`quantity`,`checked`) VALUES
+  (@uid,9,1,1),
+  (@uid,16,2,0)
+ON DUPLICATE KEY UPDATE `quantity`=VALUES(`quantity`),`checked`=VALUES(`checked`);
+
+-- 完成。角标预期：待付款2 待发货1 待收货3 待评价2 售后1
 SELECT '✅ 测试数据已插入' AS result, @uid AS dev_user_id;

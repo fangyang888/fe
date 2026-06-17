@@ -25,6 +25,12 @@ class AssignRolesDto {
 class SetStatusDto {
   status: number;
 }
+class CreateAccountDto {
+  username: string;
+  password: string;
+  nickname?: string;
+  isAdmin?: boolean;
+}
 
 @Controller('api/user')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -47,6 +53,13 @@ export class UserController {
   }
 
   // ---------- 以下为后台管理接口，需对应权限 ----------
+
+  /** POST /api/user — 创建后台账号（仅超管：admin 角色在守卫里放行） */
+  @Post()
+  @RequirePermissions('user:create')
+  createAccount(@Body() dto: CreateAccountDto) {
+    return this.users.createAccount(dto);
+  }
 
   /** GET /api/user — 用户列表 */
   @Get()

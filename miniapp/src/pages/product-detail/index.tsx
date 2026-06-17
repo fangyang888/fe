@@ -8,6 +8,7 @@ import {
   apiRemoveFavorite,
 } from '../../api/favorite'
 import { addToCart } from '../../store/cartStore'
+import { track } from '../../utils/tracker'
 import './index.scss'
 
 export default function ProductDetail() {
@@ -18,6 +19,7 @@ export default function ProductDetail() {
   useLoad(() => {
     const id = Number(router.params.id)
     if (!id) return
+    track('product_detail_view', { productId: id }, 'pageview')
     apiGetProduct(id)
       .then(setProduct)
       .catch(() => {})
@@ -31,10 +33,12 @@ export default function ProductDetail() {
     if (faved) {
       await apiRemoveFavorite(product.id)
       setFaved(false)
+      track('favorite_remove', { productId: product.id })
       Taro.showToast({ title: '已取消收藏', icon: 'none' })
     } else {
       await apiAddFavorite(product.id)
       setFaved(true)
+      track('favorite_add', { productId: product.id })
       Taro.showToast({ title: '已收藏', icon: 'success' })
     }
   }

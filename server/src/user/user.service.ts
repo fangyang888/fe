@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { User } from './user.entity';
 import { Role } from '../role/role.entity';
+import { hashPassword } from '../auth/password.util';
 
 @Injectable()
 export class UserService {
@@ -27,6 +32,17 @@ export class UserService {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('用户不存在');
     return user;
+  }
+
+  /** 按后台账号查询，显式带出 password（默认 select:false）+ 角色 + 权限 */
+  findByUsername(username: string): Promise<User | null> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .leftJoinAndSelect('user.roles', 'role')
+      .leftJoinAndSelect('role.permissions', 'permission')
+      .where('user.username = :username', { username })
+      .getOne();
   }
 
   /** 分页列表（后台用） */
@@ -58,5 +74,39 @@ export class UserService {
   /** 启用 / 禁用 */
   async setStatus(id: number, status: number): Promise<User> {
     return this.update(id, { status });
+  }
+
+  /** 后台创建账号（账号密码登录用）。isAdmin=true 则挂 admin 角色 */
+  async createAccount(data: {
+    username: string;
+    password: string;
+    nickname?: string;
+    isAdmin?: boolean;
+  }): Promise<User> {
+    const username = data.username?.trim();
+    if (!username || !data.password) {
+      throw new BadRequestException('账号和密码不能为空');
+    }
+    const exists = await this.userRepo.findOne({ where: { username } });
+    if (exists) throw new BadRequestException('账号已存在');
+
+    let roles: Role[] = [];
+    if (data.isAdmin) {
+      const adminRole = await this.roleRepo.findOne({
+        where: { code: 'admin' },
+      });
+      if (adminRole) roles = [adminRole];
+    }
+
+    const user = this.userRepo.create({
+      openid: `admin_${username}`,
+      username,
+      nickname: data.nickname || username,
+      password: hashPassword(data.password),
+      status: 1,
+      roles,
+    });
+    const saved = await this.userRepo.save(user);
+    return this.findById(saved.id);
   }
 }

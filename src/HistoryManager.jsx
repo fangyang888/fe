@@ -90,6 +90,20 @@ export default function HistoryManager() {
       success: `/kill/five-period${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
       error: "/kill/five-period 缓存生成失败",
     },
+    {
+      key: "killOne",
+      label: `生成 /kill/one${activeTab === "hk" ? " 香港" : ""} 缓存`,
+      endpoint: `/api/kill-one/cache/refresh?backtest=50${activeTab === "hk" ? "&type=hk" : ""}`,
+      success: `/kill/one${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
+      error: "/kill/one 缓存生成失败",
+    },
+    {
+      key: "pOneKill",
+      label: `生成 /kill/p_one${activeTab === "hk" ? " 香港" : ""} 缓存`,
+      endpoint: `/api/kill/p-one/cache/refresh${activeTab === "hk" ? "?type=hk" : ""}`,
+      success: `/kill/p_one${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
+      error: "/kill/p_one 缓存生成失败",
+    },
   ];
 
   const generateCache = async (action) => {

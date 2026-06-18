@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createClient, type RedisClientType } from 'redis';
 import { HistoryService } from '../history/history.service';
 import { HistoryHkService } from '../history-hk/history-hk.service';
 
@@ -42,25 +44,60 @@ interface PickResult {
 }
 
 @Injectable()
-export class POneKillService {
+export class POneKillService implements OnModuleDestroy {
   constructor(
     private readonly historyService: HistoryService,
     private readonly historyHkService: HistoryHkService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    const redisUrl = this.configService.get<string>('REDIS_URL');
+    if (redisUrl) {
+      this.redisClient = createClient({ url: redisUrl });
+      this.redisClient.on('error', (err) => {
+        console.warn('[p-one-kill-cache] Redis error:', err.message);
+      });
+    }
+  }
 
+  private readonly memoryCache = new Map<string, any>();
+  private readonly cacheTtlSeconds = 12 * 60 * 60;
   private metricCache = new Map<string, CandidateMetric>();
   private rankingCache = new Map<number, CandidateMetric[]>();
   private pickCache = new Map<string, PickResult | null>();
+  private redisClient?: RedisClientType;
+  private redisConnectPromise?: Promise<RedisClientType | null>;
+  private redisDisabled = false;
 
-  async getPrediction(source: SourceType = 'default') {
-    this.metricCache.clear();
-    this.rankingCache.clear();
-    this.pickCache.clear();
-
+  async getPrediction(source: SourceType = 'default', options: { forceRefresh?: boolean } = {}) {
     const rawRows =
       source === 'hk'
         ? await this.historyHkService.findAll()
         : await this.historyService.findAll();
+    const cacheKey = this.getResponseCacheKey(source, rawRows);
+
+    if (!options.forceRefresh) {
+      const memoryHit = this.memoryCache.get(cacheKey);
+      if (memoryHit) {
+        return {
+          ...memoryHit,
+          cacheMeta: { ...(memoryHit.cacheMeta || {}), hit: true, store: 'memory', key: cacheKey },
+        };
+      }
+
+      const redisHit = await this.getJsonCache<any>(cacheKey);
+      if (redisHit) {
+        this.memoryCache.set(cacheKey, redisHit);
+        return {
+          ...redisHit,
+          cacheMeta: { ...(redisHit.cacheMeta || {}), hit: true, store: 'redis', key: cacheKey },
+        };
+      }
+    }
+
+    this.metricCache.clear();
+    this.rankingCache.clear();
+    this.pickCache.clear();
+
     const history = this.normalizeRows(rawRows);
 
     if (history.length < 75) {
@@ -81,7 +118,7 @@ export class POneKillService {
     const target20 = backtest20.successRate >= 1;
     const target50 = backtest50.successRate > 0.94;
 
-    return {
+    const response = {
       source,
       status: target20 && target50 ? 'target-met' : 'best-effort',
       target: {
@@ -115,6 +152,38 @@ export class POneKillService {
       note:
         '本接口每次只从目标期之前 5 期出现过的号码里选择 1 个杀号。回测为无泄漏滚动口径：每一期只使用该期之前的数据库数据。',
       generatedAt: new Date().toISOString(),
+      cacheMeta: {
+        hit: false,
+        store: 'redis',
+        key: cacheKey,
+        ttlSeconds: this.cacheTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    const cachedInRedis = await this.setJsonCache(cacheKey, response, this.cacheTtlSeconds);
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoryCache.set(cacheKey, response);
+    return response;
+  }
+
+  async refreshCache(source: SourceType = 'default') {
+    const rawRows =
+      source === 'hk'
+        ? await this.historyHkService.findAll()
+        : await this.historyService.findAll();
+    const cacheKey = this.getResponseCacheKey(source, rawRows);
+    this.memoryCache.delete(cacheKey);
+    const deleted = await this.deleteJsonCache(cacheKey);
+    const response = await this.getPrediction(source, { forceRefresh: true });
+
+    return {
+      ...response,
+      cacheMeta: {
+        ...(response.cacheMeta || {}),
+        action: 'refreshed',
+        deletedBeforeRefresh: deleted,
+      },
     };
   }
 
@@ -411,5 +480,79 @@ export class POneKillService {
 
   private fmt(n: number) {
     return String(n).padStart(2, '0');
+  }
+
+  private getHistoryCacheKey(rawRows: any[]) {
+    const last = rawRows[rawRows.length - 1];
+    if (!last) return 'empty';
+    const period = last.period ?? last.No ?? last.id ?? rawRows.length;
+    const nums = [last.n1, last.n2, last.n3, last.n4, last.n5, last.n6, last.n7].join(',');
+    return `${rawRows.length}:${period}:${nums}`;
+  }
+
+  private getResponseCacheKey(source: SourceType, rawRows: any[]) {
+    return `predictor:p-one-kill:v1:${source}:${this.getHistoryCacheKey(rawRows)}`;
+  }
+
+  private async getRedisClient() {
+    if (!this.redisClient || this.redisDisabled) return null;
+    if (this.redisClient.isReady) return this.redisClient;
+
+    if (!this.redisConnectPromise) {
+      this.redisConnectPromise = this.redisClient
+        .connect()
+        .then(() => this.redisClient || null)
+        .catch((err) => {
+          this.redisDisabled = true;
+          console.warn('[p-one-kill-cache] Redis disabled:', err.message);
+          return null;
+        });
+    }
+
+    return this.redisConnectPromise;
+  }
+
+  private async getJsonCache<T>(key: string): Promise<T | null> {
+    const client = await this.getRedisClient();
+    if (!client) return null;
+
+    try {
+      const value = await client.get(key);
+      return value ? (JSON.parse(value) as T) : null;
+    } catch (err) {
+      console.warn('[p-one-kill-cache] Redis read failed:', (err as Error).message);
+      return null;
+    }
+  }
+
+  private async setJsonCache(key: string, value: any, ttlSeconds: number) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      await client.set(key, JSON.stringify(value), { EX: ttlSeconds });
+      return true;
+    } catch (err) {
+      console.warn('[p-one-kill-cache] Redis write failed:', (err as Error).message);
+      return false;
+    }
+  }
+
+  private async deleteJsonCache(key: string) {
+    const client = await this.getRedisClient();
+    if (!client) return false;
+
+    try {
+      return (await client.del(key)) > 0;
+    } catch (err) {
+      console.warn('[p-one-kill-cache] Redis delete failed:', (err as Error).message);
+      return false;
+    }
+  }
+
+  async onModuleDestroy() {
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
   }
 }

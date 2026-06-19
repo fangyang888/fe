@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-const DEFAULT_A = 'HC3';
-const DEFAULT_B = 'L15';
+const DEFAULT_A = 'HC1';
+const DEFAULT_B = 'S2';
 const MIN_CONFIDENCE_RATE = 0.85;
 
 function fmtPercent(value) {
@@ -52,6 +52,12 @@ export default function KillComboBacktest() {
 
   const bestRows = useMemo(() => data?.bestRows || [], [data]);
   const currentRows = useMemo(() => data?.current?.rows || [], [data]);
+  const bestNext = data?.nextPrediction?.best;
+  const currentNext = data?.nextPrediction?.current;
+
+  useEffect(() => {
+    runBacktest({ a: DEFAULT_A, b: DEFAULT_B });
+  }, []);
 
   async function runBacktest(nextValues = {}) {
     const nextA = (nextValues.a ?? a).trim().toUpperCase();
@@ -199,6 +205,21 @@ export default function KillComboBacktest() {
           font-size: 16px;
           line-height: 1.3;
         }
+        .combo-next-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+          gap: 14px;
+          align-items: start;
+        }
+        .combo-next-block {
+          display: grid;
+          gap: 8px;
+        }
+        .combo-next-label {
+          color: #9fb2c8;
+          font-size: 12px;
+          font-weight: 800;
+        }
         .combo-table-wrap {
           overflow-x: auto;
         }
@@ -317,7 +338,8 @@ export default function KillComboBacktest() {
           .combo-head,
           .combo-controls,
           .combo-grid,
-          .combo-warning {
+          .combo-warning,
+          .combo-next-grid {
             grid-template-columns: 1fr;
           }
           .combo-title {
@@ -402,6 +424,56 @@ export default function KillComboBacktest() {
                 <div className="combo-stat-label">数据库最新期</div>
               </div>
             </section>
+
+            {bestNext && (
+              <section className="combo-panel combo-section">
+                <h2 className="combo-section-title">最佳组合下一期预测：{bestNext.pair?.join(' + ')}</h2>
+                <div className="combo-next-grid">
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">预测期号</div>
+                    <div className="combo-stat-value">{bestNext.period || '--'}</div>
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">原4杀</div>
+                    <DetailList items={bestNext.baseDetails} />
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">最佳补位 + 最终6杀</div>
+                    <DetailList items={bestNext.extraDetails} />
+                    <div className="combo-num-list">
+                      {splitNums(bestNext.nums).map((num) => (
+                        <NumBall key={`best-next-${num}`} value={num} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {currentNext && currentPair !== bestPair && (
+              <section className="combo-panel combo-section">
+                <h2 className="combo-section-title">当前组合下一期预测：{currentNext.pair?.join(' + ')}</h2>
+                <div className="combo-next-grid">
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">预测期号</div>
+                    <div className="combo-stat-value">{currentNext.period || '--'}</div>
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">原4杀</div>
+                    <DetailList items={currentNext.baseDetails} />
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">当前补位 + 最终6杀</div>
+                    <DetailList items={currentNext.extraDetails} />
+                    <div className="combo-num-list">
+                      {splitNums(currentNext.nums).map((num) => (
+                        <NumBall key={`current-next-${num}`} value={num} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
 
             <section className="combo-panel combo-section">
               <h2 className="combo-section-title">当前对比：{currentPair}</h2>
@@ -565,7 +637,7 @@ export default function KillComboBacktest() {
           </>
         ) : (
           <div className="combo-panel combo-empty">
-            点“开始回测”后会完整运行三组候选点位搜索；智能7码计算较重，等待几分钟是正常的。
+            {loading ? '正在自动回测 HC1 + S2，并生成最佳组合下一期预测...' : '正在等待回测结果'}
           </div>
         )}
       </div>

@@ -13,8 +13,8 @@ export class KillComboBacktestController {
   ) {
     return this.service.search({
       count: this.parseCount(count),
-      a: a || 'HC3',
-      b: b || 'L15',
+      a: a || 'HC1',
+      b: b || 'S2',
     });
   }
 
@@ -26,8 +26,8 @@ export class KillComboBacktestController {
   ) {
     return this.service.refresh({
       count: this.parseCount(count),
-      a: a || 'HC3',
-      b: b || 'L15',
+      a: a || 'HC1',
+      b: b || 'S2',
     });
   }
 

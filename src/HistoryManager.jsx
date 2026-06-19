@@ -107,7 +107,7 @@ export default function HistoryManager() {
     {
       key: "killCombo",
       label: "生成 /kill/combo 回测缓存",
-      endpoint: "/api/kill-combo/cache/refresh?count=20&a=HC3&b=L15",
+      endpoint: "/api/kill-combo/cache/refresh?count=20&a=HC1&b=S2",
       success: "/kill/combo 回测缓存已生成",
       error: "/kill/combo 回测缓存生成失败",
     },

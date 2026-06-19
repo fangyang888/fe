@@ -30,6 +30,14 @@ interface ComboRow {
   uniqueCount: number;
 }
 
+interface PeriodSnapshot {
+  period: string;
+  actual: number[];
+  base: number[];
+  baseDetails: Array<{ key: string; label: string; value: number | null }>;
+  labels: Record<string, number>;
+}
+
 @Injectable()
 export class KillComboBacktestService {
   private readonly memoryCache = new Map<string, any>();
@@ -145,8 +153,8 @@ export class KillComboBacktestService {
       }))
       .sort((a, b) => b.ok - a.ok || a.dup - b.dup || a.key.localeCompare(b.key));
 
-    const currentA = (options.a || 'HC3').toUpperCase();
-    const currentB = (options.b || 'L15').toUpperCase();
+    const currentA = (options.a || 'HC1').toUpperCase();
+    const currentB = (options.b || 'S2').toUpperCase();
     const current = combos.find(
       (item) =>
         (item.a === currentA && item.b === currentB) ||
@@ -158,6 +166,7 @@ export class KillComboBacktestService {
     }).length;
     const best = combos[0];
     const latest = history[history.length - 1];
+    const nextSnapshot = this.buildPredictionSnapshot(history);
 
     return {
       db: {
@@ -178,6 +187,10 @@ export class KillComboBacktestService {
         dup: item.dup,
         avgUnique: Number(item.avgUnique.toFixed(2)),
       })),
+      nextPrediction: {
+        current: current ? this.formatNextPrediction(nextSnapshot, current.a, current.b) : null,
+        best: best ? this.formatNextPrediction(nextSnapshot, best.a, best.b) : null,
+      },
       current: current
         ? {
             pair: [current.a, current.b],
@@ -220,29 +233,72 @@ export class KillComboBacktestService {
     }));
   }
 
+  private buildPredictionSnapshot(history: DrawRow[]): PeriodSnapshot {
+    const baseDetails = this.buildBaseDetails(history);
+    const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
+    const labels: Record<string, number> = {};
+
+    this.highConfidence4(history).forEach((n, index) => {
+      labels[`HC${index + 1}`] = n;
+    });
+    this.likely22(history).forEach((n, index) => {
+      labels[`L${index + 1}`] = n;
+    });
+    this.smart7(history).forEach((n, index) => {
+      labels[`S${index + 1}`] = n;
+    });
+
+    const latest = history[history.length - 1];
+    return {
+      period: `${latest.year}-${String((latest.No || 0) + 1).padStart(3, '0')}`,
+      actual: [],
+      base,
+      baseDetails,
+      labels,
+    };
+  }
+
+  private formatNextPrediction(snapshot: PeriodSnapshot, a: string, b: string) {
+    const nums = [...snapshot.base, snapshot.labels[a], snapshot.labels[b]].filter((n) =>
+      Number.isFinite(n),
+    );
+    const unique = [...new Set(nums)];
+    return {
+      pair: [a, b],
+      period: snapshot.period,
+      nums: unique.map((n) => this.fmt(n)).join(' '),
+      baseDetails: snapshot.baseDetails.map((item) => ({
+        ...item,
+        value: item.value === null ? null : this.fmt(item.value),
+      })),
+      extraDetails: [
+        { key: a, value: snapshot.labels[a] ? this.fmt(snapshot.labels[a]) : null },
+        { key: b, value: snapshot.labels[b] ? this.fmt(snapshot.labels[b]) : null },
+      ],
+    };
+  }
+
+  private buildBaseDetails(training: DrawRow[]) {
+    const pOne = this.pOneKillService.pickForHistory(training)?.number ?? null;
+    const killOne = this.killOneService.pickForHistory(training);
+    const fiveMain = this.fivePeriodKillService.pickMainForHistory(training, 8)?.n ?? null;
+    const fiveStrict = this.fivePeriodKillService.pickStrictForHistory(training)?.n ?? null;
+    return [
+      { key: 'p_one', label: '/kill/p_one', value: pOne },
+      { key: 'kill_one', label: '/kill/one', value: killOne },
+      { key: 'five_main', label: '/kill/five-period 主', value: fiveMain },
+      { key: 'five_strict', label: '/kill/five-period 严', value: fiveStrict },
+    ];
+  }
+
   private buildPeriods(history: DrawRow[], count: number) {
     const start = Math.max(0, history.length - count);
-    const periods: Array<{
-      period: string;
-      actual: number[];
-      base: number[];
-      baseDetails: Array<{ key: string; label: string; value: number | null }>;
-      labels: Record<string, number>;
-    }> = [];
+    const periods: PeriodSnapshot[] = [];
 
     for (let t = start; t < history.length; t++) {
       const training = history.slice(0, t);
       const actual = history[t];
-      const pOne = this.pOneKillService.pickForHistory(training)?.number ?? null;
-      const killOne = this.killOneService.pickForHistory(training);
-      const fiveMain = this.fivePeriodKillService.pickMainForHistory(training, 8)?.n ?? null;
-      const fiveStrict = this.fivePeriodKillService.pickStrictForHistory(training)?.n ?? null;
-      const baseDetails = [
-        { key: 'p_one', label: '/kill/p_one', value: pOne },
-        { key: 'kill_one', label: '/kill/one', value: killOne },
-        { key: 'five_main', label: '/kill/five-period 主', value: fiveMain },
-        { key: 'five_strict', label: '/kill/five-period 严', value: fiveStrict },
-      ];
+      const baseDetails = this.buildBaseDetails(training);
       const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
       const labels: Record<string, number> = {};
 

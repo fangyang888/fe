@@ -25,6 +25,7 @@ interface ComboRow {
   ok: boolean;
   a: number | null;
   b: number | null;
+  c?: number | null;
   baseDetails: Array<{ key: string; label: string; value: number | null }>;
   extraDetails: Array<{ key: string; value: number | null }>;
   uniqueCount: number;
@@ -165,6 +166,8 @@ export class KillComboBacktestService {
       return nums.filter((n) => period.actual.includes(n)).length === 0;
     }).length;
     const best = combos[0];
+    const fallbackKeys = ['HC1', 'L15', 'S2'];
+    const fallbackTri = this.evalComboSet(periods, fallbackKeys);
     const latest = history[history.length - 1];
     const nextSnapshot = this.buildPredictionSnapshot(history);
 
@@ -187,9 +190,33 @@ export class KillComboBacktestService {
         dup: item.dup,
         avgUnique: Number(item.avgUnique.toFixed(2)),
       })),
+      triTarget: {
+        required: Math.min(17, count),
+        met: fallbackTri.ok >= Math.min(17, count),
+        bestOk: fallbackTri.ok,
+        count,
+        bestKeys: fallbackKeys,
+        bestRate: fallbackTri.rate,
+      },
+      fallbackTri: {
+        keys: fallbackKeys,
+        ok: fallbackTri.ok,
+        rate: fallbackTri.rate,
+        dup: fallbackTri.dup,
+        avgUnique: Number(fallbackTri.avgUnique.toFixed(2)),
+        rows: this.formatRows(fallbackTri.rows),
+        missRows: fallbackTri.rows
+          .filter((row: ComboRow) => !row.ok)
+          .map((row: ComboRow) => ({
+            period: row.period,
+            failed: row.failed.map((n) => this.fmt(n)).join(' '),
+            nums: row.nums.map((n) => this.fmt(n)).join(' '),
+          })),
+      },
       nextPrediction: {
         current: current ? this.formatNextPrediction(nextSnapshot, current.a, current.b) : null,
         best: best ? this.formatNextPrediction(nextSnapshot, best.a, best.b) : null,
+        fallbackTri: this.formatNextPredictionSet(nextSnapshot, fallbackKeys),
       },
       current: current
         ? {
@@ -259,22 +286,26 @@ export class KillComboBacktestService {
   }
 
   private formatNextPrediction(snapshot: PeriodSnapshot, a: string, b: string) {
-    const nums = [...snapshot.base, snapshot.labels[a], snapshot.labels[b]].filter((n) =>
+    return this.formatNextPredictionSet(snapshot, [a, b]);
+  }
+
+  private formatNextPredictionSet(snapshot: PeriodSnapshot, keys: string[]) {
+    const nums = [...snapshot.base, ...keys.map((key) => snapshot.labels[key])].filter((n) =>
       Number.isFinite(n),
     );
     const unique = [...new Set(nums)];
     return {
-      pair: [a, b],
+      pair: keys,
       period: snapshot.period,
       nums: unique.map((n) => this.fmt(n)).join(' '),
       baseDetails: snapshot.baseDetails.map((item) => ({
         ...item,
         value: item.value === null ? null : this.fmt(item.value),
       })),
-      extraDetails: [
-        { key: a, value: snapshot.labels[a] ? this.fmt(snapshot.labels[a]) : null },
-        { key: b, value: snapshot.labels[b] ? this.fmt(snapshot.labels[b]) : null },
-      ],
+      extraDetails: keys.map((key) => ({
+        key,
+        value: snapshot.labels[key] ? this.fmt(snapshot.labels[key]) : null,
+      })),
     };
   }
 
@@ -325,8 +356,17 @@ export class KillComboBacktestService {
   }
 
   private evalCombo(periods: any[], a: string, b: string) {
+    const combo = this.evalComboSet(periods, [a, b]);
+    return {
+      ...combo,
+      a,
+      b,
+    };
+  }
+
+  private evalComboSet(periods: any[], keys: string[]) {
     const rows: ComboRow[] = periods.map((period) => {
-      const nums = [...period.base, period.labels[a], period.labels[b]].filter((n) =>
+      const nums = [...period.base, ...keys.map((key) => period.labels[key])].filter((n) =>
         Number.isFinite(n),
       );
       const unique = [...new Set(nums)];
@@ -337,23 +377,22 @@ export class KillComboBacktestService {
         nums: unique,
         failed,
         ok: failed.length === 0,
-        a: period.labels[a] ?? null,
-        b: period.labels[b] ?? null,
+        a: period.labels[keys[0]] ?? null,
+        b: period.labels[keys[1]] ?? null,
+        c: keys[2] ? period.labels[keys[2]] ?? null : null,
         baseDetails: period.baseDetails,
-        extraDetails: [
-          { key: a, value: period.labels[a] ?? null },
-          { key: b, value: period.labels[b] ?? null },
-        ],
+        extraDetails: keys.map((key) => ({ key, value: period.labels[key] ?? null })),
         uniqueCount: unique.length,
       };
     });
     const ok = rows.filter((row) => row.ok).length;
     return {
-      a,
-      b,
+      keys,
+      a: keys[0],
+      b: keys[1],
       ok,
       rate: ok / rows.length,
-      dup: rows.filter((row) => row.uniqueCount < 6).length,
+      dup: rows.filter((row) => row.uniqueCount < Math.min(7, 4 + keys.length)).length,
       avgUnique: rows.reduce((sum, row) => sum + row.uniqueCount, 0) / rows.length,
       rows,
     };

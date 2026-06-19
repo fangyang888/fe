@@ -52,8 +52,11 @@ export default function KillComboBacktest() {
 
   const bestRows = useMemo(() => data?.bestRows || [], [data]);
   const currentRows = useMemo(() => data?.current?.rows || [], [data]);
+  const fallbackRows = useMemo(() => data?.fallbackTri?.rows || [], [data]);
   const bestNext = data?.nextPrediction?.best;
   const currentNext = data?.nextPrediction?.current;
+  const fallbackNext = data?.nextPrediction?.fallbackTri;
+  const fallbackPair = data?.fallbackTri?.keys?.join(' + ') || 'HC1 + L15 + S2';
 
   useEffect(() => {
     runBacktest({ a: DEFAULT_A, b: DEFAULT_B });
@@ -425,6 +428,27 @@ export default function KillComboBacktest() {
               </div>
             </section>
 
+            {data.fallbackTri && (
+              <section className="combo-grid">
+                <div className="combo-panel combo-stat">
+                  <div className="combo-stat-value">{fallbackPair}</div>
+                  <div className="combo-stat-label">L15 兜底备案</div>
+                </div>
+                <div className="combo-panel combo-stat">
+                  <div className="combo-stat-value">{data.fallbackTri.ok ?? '--'}/{count}</div>
+                  <div className="combo-stat-label">备案全中期数</div>
+                </div>
+                <div className="combo-panel combo-stat">
+                  <div className="combo-stat-value">{fmtPercent(data.fallbackTri.rate)}</div>
+                  <div className="combo-stat-label">备案全中率</div>
+                </div>
+                <div className="combo-panel combo-stat">
+                  <div className="combo-stat-value">{data.fallbackTri.avgUnique ?? '--'}</div>
+                  <div className="combo-stat-label">平均唯一号码</div>
+                </div>
+              </section>
+            )}
+
             {bestNext && (
               <section className="combo-panel combo-section">
                 <h2 className="combo-section-title">最佳组合下一期预测：{bestNext.pair?.join(' + ')}</h2>
@@ -468,6 +492,31 @@ export default function KillComboBacktest() {
                     <div className="combo-num-list">
                       {splitNums(currentNext.nums).map((num) => (
                         <NumBall key={`current-next-${num}`} value={num} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {fallbackNext && (
+              <section className="combo-panel combo-section">
+                <h2 className="combo-section-title">L15 兜底备案下一期预测：{fallbackNext.pair?.join(' + ')}</h2>
+                <div className="combo-next-grid">
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">预测期号</div>
+                    <div className="combo-stat-value">{fallbackNext.period || '--'}</div>
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">原4杀</div>
+                    <DetailList items={fallbackNext.baseDetails} />
+                  </div>
+                  <div className="combo-next-block">
+                    <div className="combo-next-label">备案补位 + 最终7杀</div>
+                    <DetailList items={fallbackNext.extraDetails} />
+                    <div className="combo-num-list">
+                      {splitNums(fallbackNext.nums).map((num) => (
+                        <NumBall key={`fallback-next-${num}`} value={num} />
                       ))}
                     </div>
                   </div>
@@ -532,6 +581,89 @@ export default function KillComboBacktest() {
                 </table>
               </div>
             </section>
+
+            {data.fallbackTri && (
+              <section className="combo-panel combo-section">
+                <h2 className="combo-section-title">L15 兜底备案回测：{fallbackPair}</h2>
+                <div className="combo-table-wrap">
+                  <table className="combo-table">
+                    <thead>
+                      <tr>
+                        <th>组合</th>
+                        <th>全中</th>
+                        <th>全中率</th>
+                        <th>重复期数</th>
+                        <th>错期</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{fallbackPair}</td>
+                        <td>{data.fallbackTri.ok ?? '--'}/{count}</td>
+                        <td>{fmtPercent(data.fallbackTri.rate)}</td>
+                        <td>{data.fallbackTri.dup ?? '--'}</td>
+                        <td>
+                          {(data.fallbackTri.missRows || []).map((row) => `${row.period}(${row.failed})`).join('、') || '无'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {fallbackRows.length > 0 && (
+              <section className="combo-panel combo-section">
+                <h2 className="combo-section-title">L15 兜底备案每期明细：{fallbackPair}</h2>
+                <div className="combo-table-wrap">
+                  <table className="combo-table">
+                    <thead>
+                      <tr>
+                        <th>期号</th>
+                        <th>状态</th>
+                        <th>开奖号码</th>
+                        <th>原4杀</th>
+                        <th>备案补位</th>
+                        <th>7杀号码</th>
+                        <th>误杀</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fallbackRows.map((row) => {
+                        const failed = splitNums(row.failed);
+                        return (
+                          <tr key={`fallback-${row.period}`}>
+                            <td>{row.period}</td>
+                            <td>
+                              <span className={`combo-badge ${row.result === '全中' ? '' : 'is-bad'}`}>
+                                {row.result}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="combo-num-list">
+                                {splitNums(row.actual).map((num) => (
+                                  <NumBall key={`fallback-${row.period}-actual-${num}`} value={num} />
+                                ))}
+                              </div>
+                            </td>
+                            <td><DetailList items={row.baseDetails} /></td>
+                            <td><DetailList items={row.extraDetails} /></td>
+                            <td>
+                              <div className="combo-num-list">
+                                {splitNums(row.nums).map((num) => (
+                                  <NumBall key={`fallback-${row.period}-${num}`} value={num} failed={failed.includes(num)} />
+                                ))}
+                              </div>
+                            </td>
+                            <td>{row.failed || '--'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             <section className="combo-panel combo-section">
               <h2 className="combo-section-title">当前组合每期明细：{currentPair}</h2>

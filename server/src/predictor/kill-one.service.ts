@@ -289,6 +289,10 @@ export class KillOneService implements OnModuleDestroy {
     };
   }
 
+  pickForHistory(history: DrawRow[], t = history.length): number {
+    return this.adaptivePick(history, t, KillOneService.ADAPTIVE_WINDOW);
+  }
+
   /* ---------------- 选号核心 ---------------- */
 
   private buildMetric(history: DrawRow[], t: number, n: number): NumberMetric {

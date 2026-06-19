@@ -22,6 +22,19 @@ function NumBall({ value, failed = false }) {
   );
 }
 
+function DetailList({ items = [] }) {
+  return (
+    <div className="combo-detail-list">
+      {items.map((item) => (
+        <span className="combo-chip" key={`${item.key}-${item.value ?? 'empty'}`}>
+          <span>{item.label || item.key}</span>
+          <strong>{item.value || '--'}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function KillComboBacktest() {
   const [count, setCount] = useState(20);
   const [a, setA] = useState(DEFAULT_A);
@@ -38,6 +51,7 @@ export default function KillComboBacktest() {
   const isLowConfidence = Number.isFinite(currentRate) && currentRate < MIN_CONFIDENCE_RATE;
 
   const bestRows = useMemo(() => data?.bestRows || [], [data]);
+  const currentRows = useMemo(() => data?.current?.rows || [], [data]);
 
   async function runBacktest(nextValues = {}) {
     const nextA = (nextValues.a ?? a).trim().toUpperCase();
@@ -191,7 +205,7 @@ export default function KillComboBacktest() {
         .combo-table {
           width: 100%;
           border-collapse: collapse;
-          min-width: 760px;
+          min-width: 1080px;
           font-size: 13px;
         }
         .combo-table th,
@@ -228,6 +242,28 @@ export default function KillComboBacktest() {
           background: rgba(239, 68, 68, 0.16);
           border-color: rgba(239, 68, 68, 0.5);
           color: #fecaca;
+        }
+        .combo-detail-list {
+          display: grid;
+          gap: 5px;
+        }
+        .combo-chip {
+          display: inline-flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          min-width: 132px;
+          min-height: 24px;
+          padding: 2px 8px;
+          border-radius: 7px;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          background: rgba(15, 23, 42, 0.62);
+          color: #9fb2c8;
+          box-sizing: border-box;
+        }
+        .combo-chip strong {
+          color: #e2e8f0;
+          font-size: 12px;
         }
         .combo-badge {
           display: inline-flex;
@@ -426,13 +462,67 @@ export default function KillComboBacktest() {
             </section>
 
             <section className="combo-panel combo-section">
-              <h2 className="combo-section-title">最佳组合每期明细</h2>
+              <h2 className="combo-section-title">当前组合每期明细：{currentPair}</h2>
               <div className="combo-table-wrap">
                 <table className="combo-table">
                   <thead>
                     <tr>
                       <th>期号</th>
                       <th>状态</th>
+                      <th>开奖号码</th>
+                      <th>原4杀</th>
+                      <th>补位算法</th>
+                      <th>6杀号码</th>
+                      <th>误杀</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentRows.map((row) => {
+                      const failed = splitNums(row.failed);
+                      return (
+                        <tr key={`current-${row.period}`}>
+                          <td>{row.period}</td>
+                          <td>
+                            <span className={`combo-badge ${row.result === '全中' ? '' : 'is-bad'}`}>
+                              {row.result}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="combo-num-list">
+                              {splitNums(row.actual).map((num) => (
+                                <NumBall key={`current-${row.period}-actual-${num}`} value={num} />
+                              ))}
+                            </div>
+                          </td>
+                          <td><DetailList items={row.baseDetails} /></td>
+                          <td><DetailList items={row.extraDetails} /></td>
+                          <td>
+                            <div className="combo-num-list">
+                              {splitNums(row.nums).map((num) => (
+                                <NumBall key={`current-${row.period}-${num}`} value={num} failed={failed.includes(num)} />
+                              ))}
+                            </div>
+                          </td>
+                          <td>{row.failed || '--'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="combo-panel combo-section">
+              <h2 className="combo-section-title">最佳组合每期明细：{bestPair}</h2>
+              <div className="combo-table-wrap">
+                <table className="combo-table">
+                  <thead>
+                    <tr>
+                      <th>期号</th>
+                      <th>状态</th>
+                      <th>开奖号码</th>
+                      <th>原4杀</th>
+                      <th>补位算法</th>
                       <th>6杀号码</th>
                       <th>误杀</th>
                     </tr>
@@ -448,6 +538,15 @@ export default function KillComboBacktest() {
                               {row.result}
                             </span>
                           </td>
+                          <td>
+                            <div className="combo-num-list">
+                              {splitNums(row.actual).map((num) => (
+                                <NumBall key={`${row.period}-actual-${num}`} value={num} />
+                              ))}
+                            </div>
+                          </td>
+                          <td><DetailList items={row.baseDetails} /></td>
+                          <td><DetailList items={row.extraDetails} /></td>
                           <td>
                             <div className="combo-num-list">
                               {splitNums(row.nums).map((num) => (

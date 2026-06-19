@@ -187,6 +187,13 @@ export class POneKillService implements OnModuleDestroy {
     };
   }
 
+  pickForHistory(history: DrawRow[], t = history.length): PickResult | null {
+    this.metricCache.clear();
+    this.rankingCache.clear();
+    this.pickCache.clear();
+    return this.pickAdaptive(history, t);
+  }
+
   private buildBacktest(history: DrawRow[], count: number) {
     const rows: any[] = [];
     const start = Math.max(55, history.length - count);

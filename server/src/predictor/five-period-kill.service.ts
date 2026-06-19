@@ -199,6 +199,17 @@ export class FivePeriodKillService implements OnModuleDestroy {
     };
   }
 
+  pickMainForHistory(history: DrawRow[], minSamples = 8): CandidateScore | null {
+    const safeMinSamples = Math.max(3, Math.min(50, Number(minSamples) || 8));
+    if (history.length < 6) return null;
+    return this.pickCandidate(history, safeMinSamples);
+  }
+
+  pickStrictForHistory(history: DrawRow[]): CandidateScore | null {
+    if (history.length < 6) return null;
+    return this.pickStrictCandidate(history, history.slice(-5));
+  }
+
   private getHistoryCacheKey(rawRows: any[]) {
     const last = rawRows[rawRows.length - 1];
     if (!last) return 'empty';

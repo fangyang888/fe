@@ -1,5 +1,8 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
+import { FivePeriodKillService } from './five-period-kill.service';
+import { KillOneService } from './kill-one.service';
+import { POneKillService } from './p-one-kill.service';
 
 interface SearchOptions {
   count: number;
@@ -16,19 +19,38 @@ interface DrawRow {
 
 interface ComboRow {
   period: string;
+  actual: number[];
   nums: number[];
   failed: number[];
   ok: boolean;
   a: number | null;
   b: number | null;
+  baseDetails: Array<{ key: string; label: string; value: number | null }>;
+  extraDetails: Array<{ key: string; value: number | null }>;
   uniqueCount: number;
 }
 
 @Injectable()
 export class KillComboBacktestService {
   private readonly memoryCache = new Map<string, any>();
+  private kill5AdaptiveCache: { opts: any | null; learnedAt: number; score: number } = {
+    opts: null,
+    learnedAt: -1,
+    score: 0,
+  };
+  private kill10AdaptiveCache: { opts: any | null; learnedAt: number; score: number; strategyName: string } = {
+    opts: null,
+    learnedAt: -1,
+    score: 0,
+    strategyName: '',
+  };
 
-  constructor(private readonly historyService: HistoryService) {}
+  constructor(
+    private readonly historyService: HistoryService,
+    private readonly pOneKillService: POneKillService,
+    private readonly killOneService: KillOneService,
+    private readonly fivePeriodKillService: FivePeriodKillService,
+  ) {}
 
   async search(options: SearchOptions, forceRefresh = false) {
     try {
@@ -91,6 +113,8 @@ export class KillComboBacktestService {
   }
 
   private buildResponse(history: DrawRow[], options: SearchOptions) {
+    this.kill5AdaptiveCache = { opts: null, learnedAt: -1, score: 0 };
+    this.kill10AdaptiveCache = { opts: null, learnedAt: -1, score: 0, strategyName: '' };
     const count = Math.max(5, Math.min(80, Math.floor(options.count || 20)));
     const periods = this.buildPeriods(history, count);
     const keys = Object.keys(periods[0]?.labels || {});
@@ -160,6 +184,7 @@ export class KillComboBacktestService {
             ok: current.ok,
             rate: current.rate,
             dup: current.dup,
+            rows: this.formatRows(current.rows),
             missRows: current.rows
               .filter((row: ComboRow) => !row.ok)
               .map((row: ComboRow) => ({
@@ -172,14 +197,27 @@ export class KillComboBacktestService {
           }
         : null,
       bestRows: best
-        ? best.rows.map((row: ComboRow) => ({
-            period: row.period,
-            result: row.ok ? '全中' : '未中',
-            failed: row.failed.map((n) => this.fmt(n)).join(' '),
-            nums: row.nums.map((n) => this.fmt(n)).join(' '),
-          }))
+        ? this.formatRows(best.rows)
         : [],
     };
+  }
+
+  private formatRows(rows: ComboRow[]) {
+    return rows.map((row) => ({
+      period: row.period,
+      result: row.ok ? '全中' : '未中',
+      actual: row.actual.map((n) => this.fmt(n)).join(' '),
+      baseDetails: row.baseDetails.map((item) => ({
+        ...item,
+        value: item.value === null ? null : this.fmt(item.value),
+      })),
+      extraDetails: row.extraDetails.map((item) => ({
+        ...item,
+        value: item.value === null ? null : this.fmt(item.value),
+      })),
+      failed: row.failed.map((n) => this.fmt(n)).join(' '),
+      nums: row.nums.map((n) => this.fmt(n)).join(' '),
+    }));
   }
 
   private buildPeriods(history: DrawRow[], count: number) {
@@ -188,18 +226,24 @@ export class KillComboBacktestService {
       period: string;
       actual: number[];
       base: number[];
+      baseDetails: Array<{ key: string; label: string; value: number | null }>;
       labels: Record<string, number>;
     }> = [];
 
     for (let t = start; t < history.length; t++) {
       const training = history.slice(0, t);
       const actual = history[t];
-      const base = [
-        this.pickPOne(training),
-        this.pickKillOne(training),
-        this.pickFivePeriodMain(training),
-        this.pickFivePeriodStrict(training),
-      ].filter((n): n is number => Number.isFinite(n));
+      const pOne = this.pOneKillService.pickForHistory(training)?.number ?? null;
+      const killOne = this.killOneService.pickForHistory(training);
+      const fiveMain = this.fivePeriodKillService.pickMainForHistory(training, 8)?.n ?? null;
+      const fiveStrict = this.fivePeriodKillService.pickStrictForHistory(training)?.n ?? null;
+      const baseDetails = [
+        { key: 'p_one', label: '/kill/p_one', value: pOne },
+        { key: 'kill_one', label: '/kill/one', value: killOne },
+        { key: 'five_main', label: '/kill/five-period 主', value: fiveMain },
+        { key: 'five_strict', label: '/kill/five-period 严', value: fiveStrict },
+      ];
+      const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
       const labels: Record<string, number> = {};
 
       this.highConfidence4(training).forEach((n, index) => {
@@ -216,6 +260,7 @@ export class KillComboBacktestService {
         period: `${actual.year}-${String(actual.No).padStart(3, '0')}`,
         actual: actual.numbers,
         base,
+        baseDetails,
         labels,
       });
     }
@@ -232,11 +277,17 @@ export class KillComboBacktestService {
       const failed = unique.filter((n) => period.actual.includes(n));
       return {
         period: period.period,
+        actual: period.actual,
         nums: unique,
         failed,
         ok: failed.length === 0,
         a: period.labels[a] ?? null,
         b: period.labels[b] ?? null,
+        baseDetails: period.baseDetails,
+        extraDetails: [
+          { key: a, value: period.labels[a] ?? null },
+          { key: b, value: period.labels[b] ?? null },
+        ],
         uniqueCount: unique.length,
       };
     });
@@ -254,75 +305,469 @@ export class KillComboBacktestService {
 
   private highConfidence4(history: DrawRow[]) {
     if (history.length < 10) return [];
-    const last = history[history.length - 1].numbers;
-    const protect = new Set<number>();
-    history.slice(-3).forEach((row) => row.numbers.forEach((n) => protect.add(n)));
-
-    const scored: Array<{ n: number; score: number }> = [];
-    for (let n = 1; n <= 49; n++) {
-      if (protect.has(n)) continue;
-      const recentFreq = this.freq(history, history.length, n, 12);
-      const weightedFreq = this.weightedFreq(history, n, 0.86);
-      const miss = this.missAll(history, history.length, n);
-      const nearLast = last.some((x) => Math.abs(x - n) <= 1) ? 1 : 0;
-      const score = recentFreq * 4 + weightedFreq * 0.7 + nearLast * 1.2 - Math.min(miss, 16) * 0.22;
-      scored.push({ n, score });
-    }
-    return scored
-      .sort((a, b) => a.score - b.score || b.n - a.n)
-      .slice(0, 4)
-      .map((item) => item.n);
+    const hist = this.toMatrix(history);
+    return this.killPredictWithOpts(hist, this.getAdaptiveKill5Opts(hist));
   }
 
   private likely22(history: DrawRow[]) {
+    const hist = this.toMatrix(history);
     const out: Array<{ n: number; score: number }> = [];
-    for (let n = 1; n <= 49; n++) {
-      const appearances: number[] = [];
-      history.forEach((row, index) => {
-        if (row.numbers.includes(n)) appearances.push(index);
-      });
-      if (!appearances.length) {
-        out.push({ n, score: -999 });
-        continue;
-      }
+    const lastRow = new Set(hist[hist.length - 1] || []);
 
-      const miss = history.length - 1 - appearances[appearances.length - 1];
+    for (let n = 1; n <= 49; n++) {
+      let score = 0;
+      const appearances: number[] = [];
+      let lastMiss = hist.length;
+
+      for (let i = hist.length - 1; i >= 0; i--) {
+        if (hist[i].includes(n)) {
+          lastMiss = hist.length - 1 - i;
+          break;
+        }
+      }
+      hist.forEach((row, index) => {
+        if (row.includes(n)) appearances.push(index);
+      });
+      if (!appearances.length) continue;
+
       const avgGap =
         appearances.length >= 2
           ? appearances.slice(1).reduce((sum, index, i) => sum + index - appearances[i], 0) /
             (appearances.length - 1)
-          : history.length / 7;
-      const last = new Set(history[history.length - 1].numbers);
-      const recent3 = history.slice(-3).filter((row) => row.numbers.includes(n)).length;
-      const recent8 = this.freq(history, history.length, n, 8);
-      let score = 0;
+          : hist.length / 7;
 
-      if (avgGap > 0) {
-        const ratio = miss / avgGap;
-        if (ratio >= 2) score += 3;
-        else if (ratio >= 1.5) score += 2;
-        else if (ratio >= 1.2) score += 1.2;
-        else if (ratio >= 0.9) score += 0.5;
+      if (appearances.length >= 2) {
+        const missRatio = lastMiss / avgGap;
+        if (missRatio >= 2) score += 3;
+        else if (missRatio >= 1.5) score += 2;
+        else if (missRatio >= 1.2) score += 1.2;
+        else if (missRatio >= 0.9) score += 0.5;
       }
-      if (last.has(n)) score += 1.1;
-      if (recent3 >= 2) score += recent3 * 0.55;
-      score += recent8 * 0.22;
-      if ([...last].some((x) => Math.abs(x - n) === 1) && miss >= 2) score += 0.3;
+      if (lastRow.has(n)) {
+        let rc = 0;
+        let rt = 0;
+        for (let i = 0; i < hist.length - 1; i++) {
+          if (hist[i].includes(n)) {
+            rt++;
+            if (hist[i + 1].includes(n)) rc++;
+          }
+        }
+        score += (rt > 1 ? rc / rt : 0.14) * 2.5;
+      }
+      if (hist.length >= 2 && hist[hist.length - 2].includes(n) && !lastRow.has(n)) score += 0.4;
+      const c3 = hist.slice(-3).filter((row) => row.includes(n)).length;
+      if (c3 >= 2) score += c3 * 0.5;
+      if (appearances.length >= 3) {
+        const gaps = appearances.slice(1).map((index, i) => index - appearances[i]);
+        const stdDev = Math.sqrt(gaps.reduce((sum, gap) => sum + (gap - avgGap) ** 2, 0) / gaps.length);
+        const cv = avgGap > 0 ? stdDev / avgGap : 1;
+        if (cv < 0.5 && lastMiss >= avgGap * 0.8 && lastMiss <= avgGap * 1.5) score += (1 - cv) * 1.2;
+      }
+      if ([...lastRow].some((x) => Math.abs(x - n) === 1) && lastMiss >= 2) score += 0.3;
 
-      out.push({ n, score });
+      if (score > 0) out.push({ n, score });
     }
 
     return out
-      .sort((a, b) => b.score - a.score || a.n - b.n)
+      .sort((a, b) => b.score - a.score)
       .slice(0, 22)
       .map((item) => item.n);
   }
 
   private smart7(history: DrawRow[]) {
-    const base10 = this.kill10Safe(history);
-    const hc = this.highConfidence4(history);
-    const candidates = [...base10.slice(0, 6), hc[0]].filter(Number.isFinite);
-    return [...new Set(candidates)].slice(0, 7);
+    const hist = this.toMatrix(history);
+    if (hist.length < 15) return [];
+
+    const testPeriods = Math.min(35, hist.length - 15);
+    const kill10Backtest: any[] = [];
+    const kill5Backtest: any[] = [];
+    for (let i = hist.length - testPeriods - 1; i < hist.length - 1; i++) {
+      const testHist = hist.slice(0, i + 1);
+      const nextSet = new Set(hist[i + 1]);
+      const kill5 = this.strategyKill5Matrix(testHist);
+      kill5Backtest.push({
+        actual: hist[i + 1],
+        killNums: kill5.map((item) => item.num),
+        failed: kill5.map((item) => item.num).filter((n) => nextSet.has(n)),
+      });
+
+      const subOpts = this.getAdaptiveKill10Opts(testHist).opts;
+      const kill10 = this.strategyAbsoluteSafeMatrix(testHist, subOpts);
+      kill10Backtest.push({
+        actual: hist[i + 1],
+        killNums: kill10.map((item) => item.num),
+        failed: kill10.map((item) => item.num).filter((n) => nextSet.has(n)),
+      });
+    }
+
+    const current10 = this.strategyAbsoluteSafeMatrix(hist, this.getAdaptiveKill10Opts(hist).opts);
+    const kill10ErrCount: Record<number, number> = {};
+    const kill10AppearCount: Record<number, number> = {};
+    kill10Backtest.forEach((bt) => {
+      bt.killNums.forEach((n: number) => {
+        kill10AppearCount[n] = (kill10AppearCount[n] || 0) + 1;
+        if (bt.failed.includes(n)) kill10ErrCount[n] = (kill10ErrCount[n] || 0) + 1;
+      });
+    });
+    const selected6 = current10
+      .map((item) => {
+        const appear = kill10AppearCount[item.num] || 1;
+        const errors = kill10ErrCount[item.num] || 0;
+        return { ...item, errors, appear, errorRate: errors / appear };
+      })
+      .sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors)
+      .slice(0, 6)
+      .map((item) => item.num);
+
+    const current4 = this.strategyKill5Matrix(hist);
+    const kill5ErrCount: Record<number, number> = {};
+    const kill5AppearCount: Record<number, number> = {};
+    kill5Backtest.forEach((bt) => {
+      bt.killNums.forEach((n: number) => {
+        kill5AppearCount[n] = (kill5AppearCount[n] || 0) + 1;
+        if (bt.failed.includes(n)) kill5ErrCount[n] = (kill5ErrCount[n] || 0) + 1;
+      });
+    });
+    const selected1 = current4
+      .map((item) => {
+        const appear = kill5AppearCount[item.num] || 1;
+        const errors = kill5ErrCount[item.num] || 0;
+        return { ...item, errors, appear, errorRate: errors / appear };
+      })
+      .sort((a, b) => a.errorRate - b.errorRate || a.errors - b.errors)[0]?.num;
+
+    return [...selected6, ...(selected1 ? [selected1] : [])];
+  }
+
+  private toMatrix(history: DrawRow[]) {
+    return history.map((row) => row.numbers);
+  }
+
+  private getKill5ParamGrid() {
+    const grid: any[] = [];
+    for (const overlapThresh of [1, 2, 3]) {
+      for (const decay of [0.8, 0.85, 0.9]) {
+        for (const protectWindow of [2, 3]) {
+          for (const repeatThresh of [0.15, 0.2, 0.25]) {
+            for (const skipThresh of [0.2, 0.25, 0.3]) {
+              grid.push({ overlapThresh, decay, protectWindow, repeatThresh, skipThresh });
+            }
+          }
+        }
+      }
+    }
+    return grid;
+  }
+
+  private killPredictWithOpts(hist: number[][], opts: any) {
+    const { overlapThresh, decay, protectWindow, repeatThresh, skipThresh } = opts;
+    const hn = hist.length;
+    const lastRow = hist[hn - 1];
+    const afterScore = new Array(50).fill(0);
+    let simCount = 0;
+    for (let i = 0; i < hn - 1; i++) {
+      const overlap = hist[i].filter((n) => lastRow.includes(n)).length;
+      if (overlap >= overlapThresh) {
+        hist[i + 1].forEach((n) => afterScore[n]++);
+        simCount++;
+      }
+    }
+
+    const wFreq = new Array(50).fill(0);
+    hist.forEach((row, idx) => {
+      const weight = Math.pow(decay, hn - 1 - idx);
+      row.forEach((n) => (wFreq[n] += weight));
+    });
+
+    const protect = new Set<number>();
+    hist.slice(-protectWindow).forEach((row) => row.forEach((n) => protect.add(n)));
+    for (let n = 1; n <= 49; n++) {
+      if (protect.has(n)) continue;
+      const apps: number[] = [];
+      hist.forEach((row, idx) => {
+        if (row.includes(n)) apps.push(idx);
+      });
+      if (apps.length < 3) continue;
+      const lastIdx = apps[apps.length - 1];
+      if (lastIdx === hn - 1) {
+        let rc = 0;
+        let rt = 0;
+        for (let j = 0; j < hn - 1; j++) {
+          if (hist[j].includes(n)) {
+            rt++;
+            if (hist[j + 1].includes(n)) rc++;
+          }
+        }
+        if (rt > 2 && rc / rt >= repeatThresh) protect.add(n);
+      }
+      if (lastIdx === hn - 2) {
+        let sk = 0;
+        let ap = 0;
+        for (let j = 0; j < hn - 2; j++) {
+          if (hist[j].includes(n) && !hist[j + 1].includes(n)) {
+            ap++;
+            if (hist[j + 2].includes(n)) sk++;
+          }
+        }
+        if (ap > 2 && sk / ap >= skipThresh) protect.add(n);
+      }
+    }
+
+    const scored: Array<{ n: number; score: number }> = [];
+    for (let n = 1; n <= 49; n++) {
+      if (protect.has(n)) continue;
+      const markovScore = simCount > 0 ? afterScore[n] / simCount : 0;
+      scored.push({ n, score: markovScore * 0.6 + wFreq[n] * 0.4 });
+    }
+    return scored.sort((a, b) => a.score - b.score).slice(0, 4).map((item) => item.n);
+  }
+
+  private getAdaptiveKill5Opts(hist: number[][]) {
+    const defaultOpts = {
+      overlapThresh: 1,
+      decay: 0.8,
+      protectWindow: 1,
+      repeatThresh: 0.15,
+      skipThresh: 0.2,
+    };
+    if (hist.length < 25) return defaultOpts;
+    if (this.kill5AdaptiveCache.opts && hist.length - this.kill5AdaptiveCache.learnedAt < 5) {
+      return this.kill5AdaptiveCache.opts;
+    }
+
+    let bestOpts = defaultOpts;
+    let bestScore = -1;
+    for (const opts of this.getKill5ParamGrid()) {
+      let correct = 0;
+      let total = 0;
+      const evalStart = hist.length - 20;
+      for (let i = evalStart; i < hist.length - 1; i++) {
+        const kill = this.killPredictWithOpts(hist.slice(0, i + 1), opts);
+        const nextSet = new Set(hist[i + 1]);
+        correct += kill.filter((n) => !nextSet.has(n)).length;
+        total += 4;
+      }
+      const acc = correct / total;
+      if (acc > bestScore) {
+        bestScore = acc;
+        bestOpts = opts;
+      }
+    }
+    this.kill5AdaptiveCache = { opts: bestOpts, learnedAt: hist.length, score: bestScore };
+    return bestOpts;
+  }
+
+  private strategyKill5Matrix(hist: number[][]) {
+    if (hist.length < 10) return [];
+    const kill = this.killPredictWithOpts(hist, this.getAdaptiveKill5Opts(hist));
+    return kill.map((n, i) => ({
+      num: n,
+      score: -(i + 1),
+      label: i < 2 ? '极冷' : '冷号',
+      tier: i < 2 ? 'S1' : 'S2',
+    }));
+  }
+
+  private getKill10ParamGrid() {
+    return [
+      { decay: 0.85, protectWindow: 1, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.85, protectWindow: 2, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.85, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.85, protectWindow: 3, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.85, protectWindow: 3, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.85, protectWindow: 2, missRiskMult: 3.0, tailBalance: false, altBonus: 18 },
+      { decay: 0.9, protectWindow: 1, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 1, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.0, tailBalance: true, altBonus: 12 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 24 },
+      { decay: 0.9, protectWindow: 3, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 3, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.0, tailBalance: false, altBonus: 18 },
+      { decay: 0.9, protectWindow: 2, missRiskMult: 3.5, tailBalance: false, altBonus: 18 },
+      { decay: 0.95, protectWindow: 1, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 1, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 2, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 24 },
+      { decay: 0.95, protectWindow: 3, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 3, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.95, protectWindow: 2, missRiskMult: 3.0, tailBalance: false, altBonus: 18 },
+      { decay: 0.95, protectWindow: 2, missRiskMult: 3.5, tailBalance: false, altBonus: 18 },
+      { decay: 0.8, protectWindow: 2, missRiskMult: 3.0, tailBalance: true, altBonus: 18 },
+      { decay: 0.8, protectWindow: 2, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.8, protectWindow: 3, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.8, protectWindow: 1, missRiskMult: 3.5, tailBalance: true, altBonus: 18 },
+      { decay: 0.8, protectWindow: 2, missRiskMult: 3.0, tailBalance: false, altBonus: 18 },
+    ];
+  }
+
+  private buildScoreEngineWithOpts(hist: number[][], opts: any) {
+    const { decay, protectWindow, missRiskMult } = opts;
+    const hn = hist.length;
+    const wFreq = new Array(50).fill(0);
+    hist.forEach((row, idx) => {
+      const weight = Math.pow(decay, hn - 1 - idx);
+      row.forEach((n) => (wFreq[n] += weight));
+    });
+
+    const protect = new Set<number>();
+    const extremeMissSet = new Set<number>();
+    hist.slice(-protectWindow).forEach((row) => row.forEach((n) => protect.add(n)));
+    for (let n = 1; n <= 49; n++) {
+      if (protect.has(n)) continue;
+      const apps: number[] = [];
+      hist.forEach((row, idx) => {
+        if (row.includes(n)) apps.push(idx);
+      });
+      if (apps.length < 3) continue;
+      const gaps = apps.slice(1).map((idx, i) => idx - apps[i]);
+      const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : hn / 7;
+      const lastMiss = hn - 1 - apps[apps.length - 1];
+      if (avgGap > 0 && lastMiss / avgGap >= 5) {
+        extremeMissSet.add(n);
+        continue;
+      }
+      if (lastMiss >= avgGap * missRiskMult) {
+        protect.add(n);
+        continue;
+      }
+      if (apps.length >= 4) {
+        const stdDev = Math.sqrt(gaps.reduce((sum, gap) => sum + (gap - avgGap) ** 2, 0) / gaps.length);
+        const cv = avgGap > 0 ? stdDev / avgGap : 1;
+        if (cv > 0.85 && lastMiss < avgGap * 1.5) {
+          protect.add(n);
+          continue;
+        }
+      }
+      const lastIdx = apps[apps.length - 1];
+      if (lastIdx === hn - 1) {
+        let rc = 0;
+        let rt = 0;
+        for (let j = 0; j < hist.length - 1; j++) {
+          if (hist[j].includes(n)) {
+            rt++;
+            if (hist[j + 1].includes(n)) rc++;
+          }
+        }
+        if (rt > 2 && rc / rt >= 0.2) protect.add(n);
+      }
+      if (lastIdx === hn - 2) {
+        let sk = 0;
+        let ap = 0;
+        for (let j = 0; j < hist.length - 2; j++) {
+          if (hist[j].includes(n) && !hist[j + 1].includes(n)) {
+            ap++;
+            if (hist[j + 2].includes(n)) sk++;
+          }
+        }
+        if (ap > 2 && sk / ap >= 0.25) protect.add(n);
+      }
+    }
+
+    const candidates: Array<{ n: number; w: number }> = [];
+    for (let n = 1; n <= 49; n++) {
+      if (!protect.has(n) && !extremeMissSet.has(n)) candidates.push({ n, w: wFreq[n] });
+    }
+    return candidates.sort((a, b) => a.w - b.w);
+  }
+
+  private kill10WithOptsMatrix(hist: number[][], opts: any) {
+    const scored = this.buildScoreEngineWithOpts(hist, opts).map((item) => {
+      const n = item.n;
+      const p1 = hist[hist.length - 1]?.includes(n) ? 1 : 0;
+      const p2 = hist[hist.length - 2]?.includes(n) ? 1 : 0;
+      const p3 = hist[hist.length - 3]?.includes(n) ? 1 : 0;
+      let bonus = 0;
+      if (p1 === 1 && p2 === 0 && p3 === 1) bonus = -opts.altBonus;
+      if (p1 === 0 && p2 === 1 && p3 === 0) bonus = opts.altBonus;
+      return { ...item, adjustedW: item.w + bonus };
+    }).sort((a, b) => a.adjustedW - b.adjustedW);
+
+    if (!opts.tailBalance) return scored.slice(0, 10).map((item) => item.n);
+    const selected: any[] = [];
+    const tails = Array(10).fill(0);
+    for (const item of scored) {
+      if (selected.length >= 10) break;
+      const tail = item.n % 10;
+      if (tails[tail] < 2) {
+        selected.push(item);
+        tails[tail]++;
+      }
+    }
+    for (const item of scored) {
+      if (selected.length >= 10) break;
+      if (!selected.find((x) => x.n === item.n)) selected.push(item);
+    }
+    return selected.slice(0, 10).map((item) => item.n);
+  }
+
+  private getAdaptiveKill10Opts(hist: number[][]) {
+    const defaultOpts = { decay: 0.9, protectWindow: 1, missRiskMult: 3.5, tailBalance: true, altBonus: 18 };
+    if (hist.length < 30) return { opts: defaultOpts, score: 0, learnedAt: hist.length };
+    if (this.kill10AdaptiveCache.opts && hist.length - this.kill10AdaptiveCache.learnedAt < 5) {
+      return this.kill10AdaptiveCache;
+    }
+
+    let bestOpts = defaultOpts;
+    let bestScore = -1;
+    const evalWindow = Math.min(30, hist.length - 10);
+    for (const opts of this.getKill10ParamGrid()) {
+      let correct = 0;
+      let total = 0;
+      for (let i = hist.length - evalWindow; i < hist.length - 1; i++) {
+        const kill = this.kill10WithOptsMatrix(hist.slice(0, i + 1), opts);
+        const nextSet = new Set(hist[i + 1]);
+        correct += kill.filter((n) => !nextSet.has(n)).length;
+        total += 10;
+      }
+      const acc = correct / total;
+      if (acc > bestScore) {
+        bestScore = acc;
+        bestOpts = opts;
+      }
+    }
+    this.kill10AdaptiveCache = {
+      opts: bestOpts,
+      learnedAt: hist.length,
+      score: bestScore,
+      strategyName: `decay=${bestOpts.decay} win=${bestOpts.protectWindow} miss=${bestOpts.missRiskMult} tail=${bestOpts.tailBalance} alt=${bestOpts.altBonus}`,
+    };
+    return this.kill10AdaptiveCache;
+  }
+
+  private pickLowCVFromLastRow(hist: number[][], count = 2) {
+    if (hist.length < 2) return [];
+    const scored = hist[hist.length - 1].map((n) => {
+      const apps: number[] = [];
+      hist.forEach((row, idx) => {
+        if (row.includes(n)) apps.push(idx);
+      });
+      if (apps.length < 2) return { n, cv: 1 };
+      const gaps = apps.slice(1).map((idx, i) => idx - apps[i]);
+      const avgGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      const stdDev = Math.sqrt(gaps.reduce((sum, gap) => sum + (gap - avgGap) ** 2, 0) / gaps.length);
+      return { n, cv: avgGap > 0 ? stdDev / avgGap : 1 };
+    });
+    return scored.sort((a, b) => a.cv - b.cv).slice(0, count).map((item) => item.n);
+  }
+
+  private strategyAbsoluteSafeMatrix(hist: number[][], adaptiveOpts: any) {
+    if (hist.length < 10) return [];
+    const baseNums = this.kill10WithOptsMatrix(hist, adaptiveOpts);
+    const top8 = baseNums.slice(0, 8);
+    const validPicks = this.pickLowCVFromLastRow(hist, 2).filter((n) => !top8.includes(n));
+    const finalNums = [...top8, ...validPicks];
+    if (finalNums.length < 10) {
+      finalNums.push(...baseNums.slice(8).filter((n) => !finalNums.includes(n)));
+    }
+    return finalNums.slice(0, 10).map((n, i) => ({
+      num: n,
+      score: -(i + 1),
+      label: i < 3 ? '极冷' : i < 6 ? '冷号' : i < 8 ? '低频' : '上期低CV',
+      tier: i < 3 ? 'S1' : i < 6 ? 'S2' : i < 8 ? 'S3' : 'C2',
+    }));
   }
 
   private kill10Safe(history: DrawRow[]) {
@@ -590,7 +1035,7 @@ export class KillComboBacktestService {
 
   private getCacheKey(options: SearchOptions, history: DrawRow[]) {
     const latest = history[history.length - 1];
-    return `kill-combo:v2:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
+    return `kill-combo:v5-real-base:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
   }
 
   private comb(n: number, k: number) {

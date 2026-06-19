@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 const DEFAULT_A = 'HC3';
 const DEFAULT_B = 'L15';
+const MIN_CONFIDENCE_RATE = 0.85;
 
 function fmtPercent(value) {
   if (!Number.isFinite(value)) return '--';
@@ -33,17 +34,21 @@ export default function KillComboBacktest() {
   const latest = data?.db?.latest;
   const bestPair = best?.pair?.join(' + ') || '--';
   const currentPair = data?.current?.pair?.join(' + ') || `${a.toUpperCase()} + ${b.toUpperCase()}`;
+  const currentRate = data?.current?.rate;
+  const isLowConfidence = Number.isFinite(currentRate) && currentRate < MIN_CONFIDENCE_RATE;
 
   const bestRows = useMemo(() => data?.bestRows || [], [data]);
 
-  async function runBacktest() {
+  async function runBacktest(nextValues = {}) {
+    const nextA = (nextValues.a ?? a).trim().toUpperCase();
+    const nextB = (nextValues.b ?? b).trim().toUpperCase();
     setLoading(true);
     setError('');
     try {
       const params = new URLSearchParams({
         count: String(count),
-        a: a.trim().toUpperCase(),
-        b: b.trim().toUpperCase(),
+        a: nextA,
+        b: nextB,
       });
       const response = await fetch(`/api/kill-combo/search?${params.toString()}`);
       const json = await response.json();
@@ -56,6 +61,14 @@ export default function KillComboBacktest() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function repredictCombo() {
+    const [nextA, nextB] = best?.pair || [];
+    if (!nextA || !nextB) return;
+    setA(nextA);
+    setB(nextB);
+    runBacktest({ a: nextA, b: nextB });
   }
 
   return (
@@ -139,6 +152,10 @@ export default function KillComboBacktest() {
         .combo-button:disabled {
           cursor: wait;
           opacity: 0.62;
+        }
+        .combo-button.is-secondary {
+          background: #f59e0b;
+          color: #451a03;
         }
         .combo-grid {
           display: grid;
@@ -235,6 +252,26 @@ export default function KillComboBacktest() {
           border-radius: 8px;
           margin-bottom: 16px;
         }
+        .combo-warning {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 14px;
+          align-items: center;
+          border: 1px solid rgba(245, 158, 11, 0.42);
+          background: rgba(120, 53, 15, 0.28);
+          color: #fde68a;
+          padding: 14px 16px;
+          border-radius: 8px;
+          margin-bottom: 16px;
+        }
+        .combo-warning-title {
+          font-weight: 850;
+          margin-bottom: 4px;
+        }
+        .combo-warning-text {
+          color: #fed7aa;
+          font-size: 13px;
+        }
         .combo-empty {
           color: #9fb2c8;
           padding: 18px;
@@ -243,7 +280,8 @@ export default function KillComboBacktest() {
         @media (max-width: 820px) {
           .combo-head,
           .combo-controls,
-          .combo-grid {
+          .combo-grid,
+          .combo-warning {
             grid-template-columns: 1fr;
           }
           .combo-title {
@@ -291,6 +329,25 @@ export default function KillComboBacktest() {
 
         {data ? (
           <>
+            {isLowConfidence && (
+              <section className="combo-warning">
+                <div>
+                  <div className="combo-warning-title">当前组合低于 85% 预警</div>
+                  <div className="combo-warning-text">
+                    当前 {currentPair} 是 {data.current?.ok ?? '--'}/{count}（{fmtPercent(currentRate)}），低于最低线 {fmtPercent(MIN_CONFIDENCE_RATE)}；建议切换到当前排行最优组合 {bestPair}。
+                  </div>
+                </div>
+                <button
+                  className="combo-button is-secondary"
+                  type="button"
+                  onClick={repredictCombo}
+                  disabled={loading || !best?.pair?.length}
+                >
+                  {loading ? '重新预测中...' : '重新预测组合'}
+                </button>
+              </section>
+            )}
+
             <section className="combo-grid">
               <div className="combo-panel combo-stat">
                 <div className="combo-stat-value">{bestPair}</div>

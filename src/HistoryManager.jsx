@@ -104,6 +104,13 @@ export default function HistoryManager() {
       success: `/kill/p_one${activeTab === "hk" ? " 香港" : ""} 缓存已生成`,
       error: "/kill/p_one 缓存生成失败",
     },
+    {
+      key: "killCombo",
+      label: "生成 /kill/combo 回测缓存",
+      endpoint: "/api/kill-combo/cache/refresh?count=20&a=HC3&b=L15",
+      success: "/kill/combo 回测缓存已生成",
+      error: "/kill/combo 回测缓存生成失败",
+    },
   ];
 
   const generateCache = async (action) => {

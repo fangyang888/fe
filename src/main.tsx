@@ -38,6 +38,8 @@ import KillTen from './KillTen.jsx';
 import KillOne from './KillOne.jsx';
 // @ts-ignore
 import POneKill from './POneKill.jsx';
+// @ts-ignore
+import KillComboBacktest from './KillComboBacktest.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -50,13 +52,14 @@ const routes = [
     element: <FixedHybridKillPredictor />,
   },
   { path: '/kill/math3', label: '数学 3 杀', section: '杀码', element: <MathKillPredictor /> },
-  { path: '/kill/seven', label: '七码统计', section: '杀码', element: <KillSevenStats /> },
+  // { path: '/kill/seven', label: '七码统计', section: '杀码', element: <KillSevenStats /> },
   // { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
   { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
   // { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
   { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
+  { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
   // { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },

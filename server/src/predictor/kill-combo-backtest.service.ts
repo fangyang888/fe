@@ -20,8 +20,13 @@ interface DrawRow {
 interface ComboRow {
   period: string;
   actual: number[];
+  rawNums: number[];
   nums: number[];
+  protectedNums: number[];
+  protectedRemoved: number[];
+  protectionActive: boolean;
   failed: number[];
+  rawFailed: number[];
   ok: boolean;
   a: number | null;
   b: number | null;
@@ -37,6 +42,7 @@ interface PeriodSnapshot {
   base: number[];
   baseDetails: Array<{ key: string; label: string; value: number | null }>;
   labels: Record<string, number>;
+  hotRiskNums: Set<number>;
 }
 
 @Injectable()
@@ -214,9 +220,9 @@ export class KillComboBacktestService {
           })),
       },
       nextPrediction: {
-        current: current ? this.formatNextPrediction(nextSnapshot, current.a, current.b) : null,
-        best: best ? this.formatNextPrediction(nextSnapshot, best.a, best.b) : null,
-        fallbackTri: this.formatNextPredictionSet(nextSnapshot, fallbackKeys),
+        current: current ? this.formatNextPrediction(nextSnapshot, current.a, current.b, current.rows) : null,
+        best: best ? this.formatNextPrediction(nextSnapshot, best.a, best.b, best.rows) : null,
+        fallbackTri: this.formatNextPredictionSet(nextSnapshot, fallbackKeys, fallbackTri.rows),
       },
       current: current
         ? {
@@ -256,7 +262,11 @@ export class KillComboBacktestService {
         value: item.value === null ? null : this.fmt(item.value),
       })),
       failed: row.failed.map((n) => this.fmt(n)).join(' '),
+      rawFailed: row.rawFailed.map((n) => this.fmt(n)).join(' '),
       nums: row.nums.map((n) => this.fmt(n)).join(' '),
+      rawNums: row.rawNums.map((n) => this.fmt(n)).join(' '),
+      protectedRemoved: row.protectedRemoved.map((n) => this.fmt(n)).join(' '),
+      protectionActive: row.protectionActive,
     }));
   }
 
@@ -282,22 +292,31 @@ export class KillComboBacktestService {
       base,
       baseDetails,
       labels,
+      hotRiskNums: this.buildHotRiskSet(history),
     };
   }
 
-  private formatNextPrediction(snapshot: PeriodSnapshot, a: string, b: string) {
-    return this.formatNextPredictionSet(snapshot, [a, b]);
+  private formatNextPrediction(snapshot: PeriodSnapshot, a: string, b: string, rows: ComboRow[] = []) {
+    return this.formatNextPredictionSet(snapshot, [a, b], rows);
   }
 
-  private formatNextPredictionSet(snapshot: PeriodSnapshot, keys: string[]) {
-    const nums = [...snapshot.base, ...keys.map((key) => snapshot.labels[key])].filter((n) =>
+  private formatNextPredictionSet(snapshot: PeriodSnapshot, keys: string[], rows: ComboRow[] = []) {
+    const rawNums = [...snapshot.base, ...keys.map((key) => snapshot.labels[key])].filter((n) =>
       Number.isFinite(n),
     );
-    const unique = [...new Set(nums)];
+    const rawUnique = [...new Set(rawNums)];
+    const protectionActive = this.shouldActivateProtection(rows);
+    const protectedRemoved = protectionActive
+      ? rawUnique.filter((n) => snapshot.hotRiskNums.has(n))
+      : [];
+    const unique = rawUnique.filter((n) => !protectedRemoved.includes(n));
     return {
       pair: keys,
       period: snapshot.period,
       nums: unique.map((n) => this.fmt(n)).join(' '),
+      rawNums: rawUnique.map((n) => this.fmt(n)).join(' '),
+      protectedRemoved: protectedRemoved.map((n) => this.fmt(n)).join(' '),
+      protectionActive,
       baseDetails: snapshot.baseDetails.map((item) => ({
         ...item,
         value: item.value === null ? null : this.fmt(item.value),
@@ -349,6 +368,7 @@ export class KillComboBacktestService {
         base,
         baseDetails,
         labels,
+        hotRiskNums: this.buildHotRiskSet(training),
       });
     }
 
@@ -365,17 +385,30 @@ export class KillComboBacktestService {
   }
 
   private evalComboSet(periods: any[], keys: string[]) {
-    const rows: ComboRow[] = periods.map((period) => {
+    const rows: ComboRow[] = [];
+
+    periods.forEach((period) => {
       const nums = [...period.base, ...keys.map((key) => period.labels[key])].filter((n) =>
         Number.isFinite(n),
       );
-      const unique = [...new Set(nums)];
+      const rawUnique = [...new Set(nums)];
+      const protectionActive = this.shouldActivateProtection(rows);
+      const protectedRemoved = protectionActive
+        ? rawUnique.filter((n) => period.hotRiskNums.has(n))
+        : [];
+      const unique = rawUnique.filter((n) => !protectedRemoved.includes(n));
+      const rawFailed = rawUnique.filter((n) => period.actual.includes(n));
       const failed = unique.filter((n) => period.actual.includes(n));
-      return {
+      rows.push({
         period: period.period,
         actual: period.actual,
+        rawNums: rawUnique,
         nums: unique,
+        protectedNums: unique,
+        protectedRemoved,
+        protectionActive,
         failed,
+        rawFailed,
         ok: failed.length === 0,
         a: period.labels[keys[0]] ?? null,
         b: period.labels[keys[1]] ?? null,
@@ -383,7 +416,7 @@ export class KillComboBacktestService {
         baseDetails: period.baseDetails,
         extraDetails: keys.map((key) => ({ key, value: period.labels[key] ?? null })),
         uniqueCount: unique.length,
-      };
+      });
     });
     const ok = rows.filter((row) => row.ok).length;
     return {
@@ -396,6 +429,27 @@ export class KillComboBacktestService {
       avgUnique: rows.reduce((sum, row) => sum + row.uniqueCount, 0) / rows.length,
       rows,
     };
+  }
+
+  private shouldActivateProtection(rows: ComboRow[]) {
+    return rows.slice(-3).some((row) => !row.ok);
+  }
+
+  private buildHotRiskSet(history: DrawRow[]) {
+    const risk = new Set<number>();
+    for (let n = 1; n <= 49; n++) {
+      if (this.isHotRisk(history, n)) risk.add(n);
+    }
+    return risk;
+  }
+
+  private isHotRisk(history: DrawRow[], n: number) {
+    const last = history[history.length - 1]?.numbers || [];
+    const freq = (window: number) =>
+      history.slice(-window).filter((row) => row.numbers.includes(n)).length;
+    const f5 = freq(5);
+    const f10 = freq(10);
+    return f5 >= 2 || (last.includes(n) && f10 >= 2);
   }
 
   private highConfidence4(history: DrawRow[]) {
@@ -1130,7 +1184,7 @@ export class KillComboBacktestService {
 
   private getCacheKey(options: SearchOptions, history: DrawRow[]) {
     const latest = history[history.length - 1];
-    return `kill-combo:v5-real-base:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
+    return `kill-combo:v7-hot-protect:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
   }
 
   private comb(n: number, k: number) {

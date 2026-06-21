@@ -289,8 +289,43 @@ export class KillOneService implements OnModuleDestroy {
     };
   }
 
-  pickForHistory(history: DrawRow[], t = history.length): number {
-    return this.adaptivePick(history, t, KillOneService.ADAPTIVE_WINDOW);
+  pickForHistory(history: DrawRow[], t = history.length, backtestCount = 50): number {
+    const scopedHistory = history.slice(0, t);
+    const safeBacktest = Math.max(5, Math.min(100, Number(backtestCount) || 50));
+    const minHistory = safeBacktest + KillOneService.ADAPTIVE_WINDOW + 50 + 1;
+    if (scopedHistory.length < minHistory) {
+      return this.adaptivePick(history, t, KillOneService.ADAPTIVE_WINDOW);
+    }
+
+    const voterReports: StrategyReport[] = this.getVoters().map((v) =>
+      this.buildReport(scopedHistory, v.key, v.name, v.kind, v.pick, safeBacktest),
+    );
+    const metaReports: StrategyReport[] = [
+      this.buildReport(
+        scopedHistory,
+        'consensus',
+        '共识投票（多策略一致取最高票）',
+        'meta',
+        (h, p) => this.consensusPick(h, p).number,
+        safeBacktest,
+      ),
+      this.buildReport(
+        scopedHistory,
+        'adaptive',
+        `自适应（每期滚动选近${KillOneService.ADAPTIVE_WINDOW}期最强策略）`,
+        'meta',
+        (h, p) => this.adaptivePick(h, p, KillOneService.ADAPTIVE_WINDOW),
+        safeBacktest,
+      ),
+    ];
+
+    const best = [...voterReports, ...metaReports].sort(
+      (a, b) =>
+        b.backtest.successRate - a.backtest.successRate ||
+        b.backtest.successCount - a.backtest.successCount ||
+        a.key.localeCompare(b.key),
+    )[0];
+    return best?.prediction.number ?? this.adaptivePick(history, t, KillOneService.ADAPTIVE_WINDOW);
   }
 
   /* ---------------- 选号核心 ---------------- */

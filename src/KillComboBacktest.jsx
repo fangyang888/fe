@@ -35,6 +35,19 @@ function DetailList({ items = [] }) {
   );
 }
 
+function ProtectionInfo({ item }) {
+  const active = Boolean(item?.protectionActive || item?.s2RiskActive);
+  return (
+    <div className="combo-protection-info">
+      <span className={`combo-badge ${active ? 'is-warn' : ''}`}>
+        {active ? '开启' : '关闭'}
+      </span>
+      <div>热号：{item?.hotProtectedRemoved || '--'}</div>
+      <div>S2风险：{item?.s2RiskRemoved || '--'}</div>
+    </div>
+  );
+}
+
 export default function KillComboBacktest() {
   const [count, setCount] = useState(20);
   const [a, setA] = useState(DEFAULT_A);
@@ -308,6 +321,13 @@ export default function KillComboBacktest() {
           background: rgba(245, 158, 11, 0.13);
           color: #fcd34d;
         }
+        .combo-protection-info {
+          display: grid;
+          gap: 4px;
+          color: #9fb2c8;
+          font-size: 12px;
+          line-height: 1.35;
+        }
         .combo-error {
           border: 1px solid rgba(239, 68, 68, 0.38);
           background: rgba(127, 29, 29, 0.32);
@@ -473,8 +493,10 @@ export default function KillComboBacktest() {
                         <NumBall key={`best-next-${num}`} value={num} />
                       ))}
                     </div>
-                    {bestNext.protectionActive && (
-                      <div className="combo-warning-text">热号保护剔除：{bestNext.protectedRemoved || '--'}</div>
+                    {(bestNext.protectionActive || bestNext.s2RiskActive) && (
+                      <div className="combo-warning-text">
+                        热号：{bestNext.hotProtectedRemoved || '--'} / S2风险：{bestNext.s2RiskRemoved || '--'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -501,8 +523,10 @@ export default function KillComboBacktest() {
                         <NumBall key={`current-next-${num}`} value={num} />
                       ))}
                     </div>
-                    {currentNext.protectionActive && (
-                      <div className="combo-warning-text">热号保护剔除：{currentNext.protectedRemoved || '--'}</div>
+                    {(currentNext.protectionActive || currentNext.s2RiskActive) && (
+                      <div className="combo-warning-text">
+                        热号：{currentNext.hotProtectedRemoved || '--'} / S2风险：{currentNext.s2RiskRemoved || '--'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -529,8 +553,10 @@ export default function KillComboBacktest() {
                         <NumBall key={`fallback-next-${num}`} value={num} />
                       ))}
                     </div>
-                    {fallbackNext.protectionActive && (
-                      <div className="combo-warning-text">热号保护剔除：{fallbackNext.protectedRemoved || '--'}</div>
+                    {(fallbackNext.protectionActive || fallbackNext.s2RiskActive) && (
+                      <div className="combo-warning-text">
+                        热号：{fallbackNext.hotProtectedRemoved || '--'} / S2风险：{fallbackNext.s2RiskRemoved || '--'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -637,7 +663,7 @@ export default function KillComboBacktest() {
                         <th>开奖号码</th>
                         <th>原4杀</th>
                         <th>备案补位</th>
-                        <th>热号保护</th>
+                        <th>保护剔除</th>
                         <th>最终号码</th>
                         <th>误杀</th>
                       </tr>
@@ -662,12 +688,7 @@ export default function KillComboBacktest() {
                             </td>
                             <td><DetailList items={row.baseDetails} /></td>
                             <td><DetailList items={row.extraDetails} /></td>
-                            <td>
-                              <span className={`combo-badge ${row.protectionActive ? 'is-warn' : ''}`}>
-                                {row.protectionActive ? '开启' : '关闭'}
-                              </span>
-                              <div>{row.protectedRemoved || '--'}</div>
-                            </td>
+                            <td><ProtectionInfo item={row} /></td>
                             <td>
                               <div className="combo-num-list">
                                 {splitNums(row.nums).map((num) => (
@@ -696,7 +717,7 @@ export default function KillComboBacktest() {
                       <th>开奖号码</th>
                         <th>原4杀</th>
                         <th>补位算法</th>
-                        <th>热号保护</th>
+                        <th>保护剔除</th>
                         <th>原始号码</th>
                         <th>最终号码</th>
                         <th>误杀</th>
@@ -722,12 +743,7 @@ export default function KillComboBacktest() {
                           </td>
                           <td><DetailList items={row.baseDetails} /></td>
                           <td><DetailList items={row.extraDetails} /></td>
-                          <td>
-                            <span className={`combo-badge ${row.protectionActive ? 'is-warn' : ''}`}>
-                              {row.protectionActive ? '开启' : '关闭'}
-                            </span>
-                            <div>{row.protectedRemoved || '--'}</div>
-                          </td>
+                          <td><ProtectionInfo item={row} /></td>
                           <td>
                             <div className="combo-num-list">
                               {splitNums(row.rawNums || row.nums).map((num) => (
@@ -762,7 +778,7 @@ export default function KillComboBacktest() {
                       <th>开奖号码</th>
                         <th>原4杀</th>
                         <th>补位算法</th>
-                      <th>热号保护</th>
+                      <th>保护剔除</th>
                       <th>原始号码</th>
                       <th>最终号码</th>
                       <th>误杀</th>
@@ -788,12 +804,7 @@ export default function KillComboBacktest() {
                           </td>
                           <td><DetailList items={row.baseDetails} /></td>
                           <td><DetailList items={row.extraDetails} /></td>
-                          <td>
-                            <span className={`combo-badge ${row.protectionActive ? 'is-warn' : ''}`}>
-                              {row.protectionActive ? '开启' : '关闭'}
-                            </span>
-                            <div>{row.protectedRemoved || '--'}</div>
-                          </td>
+                          <td><ProtectionInfo item={row} /></td>
                           <td>
                             <div className="combo-num-list">
                               {splitNums(row.rawNums || row.nums).map((num) => (

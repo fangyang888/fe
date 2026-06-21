@@ -24,6 +24,9 @@ interface ComboRow {
   nums: number[];
   protectedNums: number[];
   protectedRemoved: number[];
+  hotProtectedRemoved: number[];
+  s2RiskRemoved: number[];
+  s2RiskActive: boolean;
   protectionActive: boolean;
   failed: number[];
   rawFailed: number[];
@@ -43,6 +46,7 @@ interface PeriodSnapshot {
   baseDetails: Array<{ key: string; label: string; value: number | null }>;
   labels: Record<string, number>;
   hotRiskNums: Set<number>;
+  s2PressureRiskNums: Set<number>;
 }
 
 @Injectable()
@@ -266,6 +270,9 @@ export class KillComboBacktestService {
       nums: row.nums.map((n) => this.fmt(n)).join(' '),
       rawNums: row.rawNums.map((n) => this.fmt(n)).join(' '),
       protectedRemoved: row.protectedRemoved.map((n) => this.fmt(n)).join(' '),
+      hotProtectedRemoved: row.hotProtectedRemoved.map((n) => this.fmt(n)).join(' '),
+      s2RiskRemoved: row.s2RiskRemoved.map((n) => this.fmt(n)).join(' '),
+      s2RiskActive: row.s2RiskActive,
       protectionActive: row.protectionActive,
     }));
   }
@@ -293,6 +300,7 @@ export class KillComboBacktestService {
       baseDetails,
       labels,
       hotRiskNums: this.buildHotRiskSet(history),
+      s2PressureRiskNums: this.buildS2PressureRiskSet(history, labels),
     };
   }
 
@@ -306,9 +314,13 @@ export class KillComboBacktestService {
     );
     const rawUnique = [...new Set(rawNums)];
     const protectionActive = this.shouldActivateProtection(rows);
-    const protectedRemoved = protectionActive
+    const hotProtectedRemoved = protectionActive
       ? rawUnique.filter((n) => snapshot.hotRiskNums.has(n))
       : [];
+    const s2RiskRemoved = keys.includes('S2')
+      ? rawUnique.filter((n) => snapshot.s2PressureRiskNums.has(n))
+      : [];
+    const protectedRemoved = [...new Set([...hotProtectedRemoved, ...s2RiskRemoved])];
     const unique = rawUnique.filter((n) => !protectedRemoved.includes(n));
     return {
       pair: keys,
@@ -316,6 +328,9 @@ export class KillComboBacktestService {
       nums: unique.map((n) => this.fmt(n)).join(' '),
       rawNums: rawUnique.map((n) => this.fmt(n)).join(' '),
       protectedRemoved: protectedRemoved.map((n) => this.fmt(n)).join(' '),
+      hotProtectedRemoved: hotProtectedRemoved.map((n) => this.fmt(n)).join(' '),
+      s2RiskRemoved: s2RiskRemoved.map((n) => this.fmt(n)).join(' '),
+      s2RiskActive: s2RiskRemoved.length > 0,
       protectionActive,
       baseDetails: snapshot.baseDetails.map((item) => ({
         ...item,
@@ -369,6 +384,7 @@ export class KillComboBacktestService {
         baseDetails,
         labels,
         hotRiskNums: this.buildHotRiskSet(training),
+        s2PressureRiskNums: this.buildS2PressureRiskSet(training, labels),
       });
     }
 
@@ -393,9 +409,13 @@ export class KillComboBacktestService {
       );
       const rawUnique = [...new Set(nums)];
       const protectionActive = this.shouldActivateProtection(rows);
-      const protectedRemoved = protectionActive
+      const hotProtectedRemoved = protectionActive
         ? rawUnique.filter((n) => period.hotRiskNums.has(n))
         : [];
+      const s2RiskRemoved = keys.includes('S2')
+        ? rawUnique.filter((n) => period.s2PressureRiskNums.has(n))
+        : [];
+      const protectedRemoved = [...new Set([...hotProtectedRemoved, ...s2RiskRemoved])];
       const unique = rawUnique.filter((n) => !protectedRemoved.includes(n));
       const rawFailed = rawUnique.filter((n) => period.actual.includes(n));
       const failed = unique.filter((n) => period.actual.includes(n));
@@ -406,6 +426,9 @@ export class KillComboBacktestService {
         nums: unique,
         protectedNums: unique,
         protectedRemoved,
+        hotProtectedRemoved,
+        s2RiskRemoved,
+        s2RiskActive: s2RiskRemoved.length > 0,
         protectionActive,
         failed,
         rawFailed,
@@ -432,7 +455,7 @@ export class KillComboBacktestService {
   }
 
   private shouldActivateProtection(rows: ComboRow[]) {
-    return rows.slice(-3).some((row) => !row.ok);
+    return rows.slice(-3).some((row) => row.rawFailed.length > 0);
   }
 
   private buildHotRiskSet(history: DrawRow[]) {
@@ -450,6 +473,48 @@ export class KillComboBacktestService {
     const f5 = freq(5);
     const f10 = freq(10);
     return f5 >= 2 || (last.includes(n) && f10 >= 2);
+  }
+
+  private buildS2PressureRiskSet(history: DrawRow[], labels: Record<string, number>) {
+    const risk = new Set<number>();
+    const s2 = labels.S2;
+    if (Number.isFinite(s2) && this.isS2PressureRisk(history, s2)) {
+      risk.add(s2);
+    }
+    return risk;
+  }
+
+  private isS2PressureRisk(history: DrawRow[], n: number) {
+    if (!Number.isFinite(n) || history.length < 10) return false;
+    const last = history[history.length - 1]?.numbers || [];
+    const nearNums = this.nearNums(n);
+    const nearLast = nearNums.filter((num) => last.includes(num)).length;
+    const near10 = this.countRecentMatches(history, 10, (num) => nearNums.includes(num));
+    const sameTail10 = this.countRecentMatches(
+      history,
+      10,
+      (num) => num !== n && num % 10 === n % 10,
+    );
+    const miss = this.missingSpan(history, n);
+    return miss >= 10 && nearLast >= 1 && near10 >= 8 && sameTail10 >= 6;
+  }
+
+  private nearNums(n: number) {
+    return [n - 2, n - 1, n + 1, n + 2].filter((num) => num >= 1 && num <= 49);
+  }
+
+  private countRecentMatches(history: DrawRow[], window: number, predicate: (n: number) => boolean) {
+    return history.slice(-window).reduce(
+      (sum, row) => sum + row.numbers.filter((num) => predicate(num)).length,
+      0,
+    );
+  }
+
+  private missingSpan(history: DrawRow[], n: number) {
+    for (let i = history.length - 1, span = 0; i >= 0; i--, span++) {
+      if (history[i].numbers.includes(n)) return span;
+    }
+    return history.length;
   }
 
   private highConfidence4(history: DrawRow[]) {
@@ -1184,7 +1249,7 @@ export class KillComboBacktestService {
 
   private getCacheKey(options: SearchOptions, history: DrawRow[]) {
     const latest = history[history.length - 1];
-    return `kill-combo:v7-hot-protect:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
+    return `kill-combo:v9-raw-trigger-s2:${history.length}:${latest?.year || 0}:${latest?.No || 0}:${options.count}:${options.a.toUpperCase()}:${options.b.toUpperCase()}`;
   }
 
   private comb(n: number, k: number) {

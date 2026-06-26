@@ -19,6 +19,8 @@ import { POneKillController } from './p-one-kill.controller';
 import { POneKillService } from './p-one-kill.service';
 import { KillComboBacktestController } from './kill-combo-backtest.controller';
 import { KillComboBacktestService } from './kill-combo-backtest.service';
+import { TailTenKillController } from './tail-ten-kill.controller';
+import { TailTenKillService } from './tail-ten-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -32,6 +34,7 @@ import { KillComboBacktestService } from './kill-combo-backtest.service';
     KillOneController,
     POneKillController,
     KillComboBacktestController,
+    TailTenKillController,
   ],
   providers: [
     PredictorService,
@@ -43,6 +46,7 @@ import { KillComboBacktestService } from './kill-combo-backtest.service';
     KillOneService,
     POneKillService,
     KillComboBacktestService,
+    TailTenKillService,
   ],
 })
 export class PredictorModule {}

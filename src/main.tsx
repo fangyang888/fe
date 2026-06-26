@@ -42,6 +42,8 @@ import POneKill from './POneKill.jsx';
 import KillComboBacktest from './KillComboBacktest.jsx';
 // @ts-ignore
 import TailTenKill from './TailTenKill.jsx';
+// @ts-ignore
+import MultiDimKill from './MultiDimKill.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -61,6 +63,7 @@ const routes = [
   // { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
   { path: '/kill/tail-ten', label: '尾数十位单杀', section: '杀码', element: <TailTenKill /> },
+  { path: '/kill/multi-dim', label: '多维单杀择优', section: '杀码', element: <MultiDimKill /> },
   { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },

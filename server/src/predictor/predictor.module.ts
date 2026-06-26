@@ -23,6 +23,8 @@ import { TailTenKillController } from './tail-ten-kill.controller';
 import { TailTenKillService } from './tail-ten-kill.service';
 import { MultiDimKillController } from './multi-dim-kill.controller';
 import { MultiDimKillService } from './multi-dim-kill.service';
+import { ExperimentalKill98Controller } from './experimental-kill98.controller';
+import { ExperimentalKill98Service } from './experimental-kill98.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -38,6 +40,7 @@ import { MultiDimKillService } from './multi-dim-kill.service';
     KillComboBacktestController,
     TailTenKillController,
     MultiDimKillController,
+    ExperimentalKill98Controller,
   ],
   providers: [
     PredictorService,
@@ -51,6 +54,7 @@ import { MultiDimKillService } from './multi-dim-kill.service';
     KillComboBacktestService,
     TailTenKillService,
     MultiDimKillService,
+    ExperimentalKill98Service,
   ],
 })
 export class PredictorModule {}

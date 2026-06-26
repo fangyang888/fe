@@ -55,10 +55,10 @@ function FailureList({ rows }) {
   );
 }
 
-function BacktestTable({ rows = [] }) {
+function BacktestTable({ rows = [], title = '全局优选单杀 · 近20期回测' }) {
   return (
     <section className="mdk-panel mdk-section">
-      <h2>当前综合推荐 · 近20期回测</h2>
+      <h2>{title}</h2>
       <div className="mdk-table-wrap">
         <table className="mdk-table">
           <thead>
@@ -93,6 +93,7 @@ function BacktestTable({ rows = [] }) {
 export default function MultiDimKill() {
   const [dataType, setDataType] = useState('default');
   const [data, setData] = useState(null);
+  const [tailData, setTailData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -102,13 +103,21 @@ export default function MultiDimKill() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`/api/kill/multi-dim?type=${dataType}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.message || `接口返回 ${res.status}`);
-        setData(json);
+        const [multiRes, tailRes] = await Promise.all([
+          fetch(`/api/kill/multi-dim?type=${dataType}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+          fetch(`/api/kill/tail-ten?type=${dataType}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+        ]);
+        const [multiJson, tailJson] = await Promise.all([multiRes.json(), tailRes.json()]);
+        if (!multiRes.ok) throw new Error(multiJson.message || `多维接口返回 ${multiRes.status}`);
+        if (!tailRes.ok) throw new Error(tailJson.message || `尾数十位接口返回 ${tailRes.status}`);
+        setData(multiJson);
+        setTailData(tailJson);
       } catch (err) {
         if (err.name !== 'AbortError') setError(err.message || '加载失败');
       } finally {
@@ -119,10 +128,36 @@ export default function MultiDimKill() {
     return () => controller.abort();
   }, [dataType]);
 
-  const current = data?.currentRecommendation;
+  const tailReport = tailData?.recommended
+    ? {
+        key: 'tailTen',
+        name: '尾数十位单杀',
+        description: tailData.recommended.description || '根据尾数和十位段规律选择下期不会开的号码。',
+        prediction: tailData.prediction,
+        backtest20: tailData.recommended.backtest20,
+        backtest50: tailData.recommended.backtest50,
+      }
+    : null;
+  const globalCandidates = [tailReport, ...(data?.strategies || [])].filter(Boolean);
+  const globalBest = globalCandidates
+    .slice()
+    .sort((a, b) => {
+      const a20 = a.backtest20?.successRate || 0;
+      const b20 = b.backtest20?.successRate || 0;
+      const a50 = a.backtest50?.successRate || 0;
+      const b50 = b.backtest50?.successRate || 0;
+      return (
+        Number(b20 >= 1) - Number(a20 >= 1) ||
+        b50 - a50 ||
+        b20 - a20 ||
+        (b.backtest50?.successCount || 0) - (a.backtest50?.successCount || 0)
+      );
+    })[0] || data?.currentRecommendation;
+  const current = globalBest;
   const prediction = current?.prediction;
   const latest = data?.historyMeta?.latest;
-  const targetMet = data?.status === 'target-met';
+  const targetMet =
+    (current?.backtest20?.successRate || 0) >= 1 && (current?.backtest50?.successRate || 0) >= 0.94;
 
   return (
     <main className="mdk-page">
@@ -219,7 +254,7 @@ export default function MultiDimKill() {
         .mdk-stat { padding: 16px; }
         .mdk-stat strong { display: block; font-size: 28px; line-height: 1.1; }
         .mdk-stat span { display: block; margin-top: 6px; color: #9fb2c8; font-size: 12px; font-weight: 750; }
-        .mdk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+        .mdk-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
         .mdk-strategy { padding: 16px; }
         .mdk-strategy-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
         .mdk-strategy h2, .mdk-section h2 { margin: 0 0 8px; font-size: 16px; line-height: 1.3; }
@@ -276,13 +311,16 @@ export default function MultiDimKill() {
           .mdk-head, .mdk-hero, .mdk-grid { grid-template-columns: 1fr; }
           .mdk-stats { grid-template-columns: 1fr 1fr; }
         }
+        @media (min-width: 901px) and (max-width: 1180px) {
+          .mdk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
       `}</style>
 
       <div className="mdk-shell">
         <header className="mdk-head">
           <div>
-            <h1 className="mdk-title">多维单杀择优</h1>
-            <p className="mdk-subtitle">和值、奇偶大小、遗漏周期三个方向回测，并优先展示当前综合推荐。</p>
+            <h1 className="mdk-title">全局优选单杀</h1>
+            <p className="mdk-subtitle">尾数十位、和值、奇偶大小、遗漏周期统一回测，优先展示近20期100%且近50期最高的单杀。</p>
           </div>
           <div className="mdk-tabs" role="tablist" aria-label="数据源">
             <button className={`mdk-tab ${dataType === 'default' ? 'is-active' : ''}`} type="button" onClick={() => setDataType('default')}>默认数据</button>
@@ -300,12 +338,16 @@ export default function MultiDimKill() {
           <>
             <div className="mdk-hero">
               <section className="mdk-panel mdk-current">
-                <div className="mdk-label">当前综合推荐</div>
+                <div className="mdk-label">全局优选单杀</div>
                 <div className="mdk-main">
                   <div className="mdk-big-ball">{prediction?.display || '--'}</div>
                   <div>
-                    <h2>{prediction?.strategyName || current?.name || '--'}</h2>
-                    <p className="mdk-reason">{prediction?.reason || current?.description || '--'}</p>
+                    <h2>{current?.name || prediction?.strategyName || '--'}</h2>
+                    <p className="mdk-reason">
+                      {current?.key === 'tailTen'
+                        ? '当前优先采用「尾数十位单杀」：近20期100%，近50期98%。'
+                        : prediction?.reason || current?.description || '--'}
+                    </p>
                     <div className="mdk-badges">
                       <span className={`mdk-badge ${targetMet ? 'is-ok' : 'is-bad'}`}>{targetMet ? '目标已达成' : '当前未完全达标'}</span>
                       <span className="mdk-badge">数据库 {data?.historyMeta?.count || 0} 期</span>
@@ -318,14 +360,14 @@ export default function MultiDimKill() {
               <div className="mdk-stats">
                 <section className="mdk-panel mdk-stat">
                   <strong>{fmtPct(current?.backtest20?.successRate)}</strong>
-                  <span>综合近20期 {current?.backtest20?.successCount || 0}/{current?.backtest20?.count || 0}</span>
+                  <span>全局近20期 {current?.backtest20?.successCount || 0}/{current?.backtest20?.count || 0}</span>
                 </section>
                 <section className="mdk-panel mdk-stat">
                   <strong>{fmtPct(current?.backtest50?.successRate)}</strong>
-                  <span>综合近50期 {current?.backtest50?.successCount || 0}/{current?.backtest50?.count || 0}</span>
+                  <span>全局近50期 {current?.backtest50?.successCount || 0}/{current?.backtest50?.count || 0}</span>
                 </section>
                 <section className="mdk-panel mdk-stat">
-                  <strong>{prediction?.metrics?.selectedDirection || '--'}</strong>
+                  <strong>{current?.name || prediction?.metrics?.selectedDirection || '--'}</strong>
                   <span>当前采用方向</span>
                 </section>
                 <section className="mdk-panel mdk-stat">
@@ -336,6 +378,7 @@ export default function MultiDimKill() {
             </div>
 
             <div className="mdk-grid">
+              {tailReport && <StrategyCard report={tailReport} />}
               {(data?.strategies || []).map((report) => <StrategyCard key={report.key} report={report} />)}
             </div>
 

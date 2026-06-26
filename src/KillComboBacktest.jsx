@@ -26,9 +26,26 @@ function DetailList({ items = [] }) {
   return (
     <div className="combo-detail-list">
       {items.map((item) => (
-        <span className="combo-chip" key={`${item.key}-${item.value ?? 'empty'}`}>
+        <span
+          className={`combo-chip ${item.replacedFrom ? 'is-replaced' : ''}`}
+          key={`${item.key}-${item.value ?? 'empty'}-${item.replacedFrom ?? ''}`}
+          title={item.replacementReason || ''}
+        >
           <span>{item.label || item.key}</span>
-          <strong>{item.value || '--'}</strong>
+          <strong>
+            {item.replacedFrom ? (
+              <>
+                <span className="combo-replaced-from">{item.replacedFrom}</span>
+                <span className="combo-replaced-arrow">→</span>
+                <span>{item.value || '--'}</span>
+              </>
+            ) : (
+              item.value || '--'
+            )}
+          </strong>
+          {item.replacementReason && (
+            <em>{item.replacementReason}</em>
+          )}
         </span>
       ))}
     </div>
@@ -298,9 +315,39 @@ export default function KillComboBacktest() {
           color: #9fb2c8;
           box-sizing: border-box;
         }
+        .combo-chip.is-replaced {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 4px;
+          border-color: rgba(245, 158, 11, 0.48);
+          background: rgba(120, 53, 15, 0.22);
+          color: #fcd34d;
+        }
         .combo-chip strong {
           color: #e2e8f0;
           font-size: 12px;
+        }
+        .combo-chip.is-replaced strong {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          color: #fff7ed;
+          font-size: 13px;
+        }
+        .combo-chip em {
+          color: #fed7aa;
+          font-size: 11px;
+          font-style: normal;
+          line-height: 1.35;
+        }
+        .combo-replaced-from {
+          color: #fca5a5;
+          text-decoration: line-through;
+          text-decoration-thickness: 2px;
+        }
+        .combo-replaced-arrow {
+          color: #fdba74;
+          font-weight: 900;
         }
         .combo-badge {
           display: inline-flex;

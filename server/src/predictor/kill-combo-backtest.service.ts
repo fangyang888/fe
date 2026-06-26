@@ -1,6 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
 import { FivePeriodKillService } from './five-period-kill.service';
+import { FixedHybridKillService } from './fixed-hybrid-kill.service';
 import { KillOneService } from './kill-one.service';
 import { POneKillService } from './p-one-kill.service';
 
@@ -15,6 +16,20 @@ interface DrawRow {
   year?: number;
   No?: number;
   numbers: number[];
+}
+
+interface BaseDetail {
+  key: string;
+  label: string;
+  value: number | null;
+  replacedFrom?: number | null;
+  replacementRank?: number;
+  replacementReason?: string;
+}
+
+interface H47ReplacementCandidate {
+  n: number;
+  rank: number;
 }
 
 interface ComboRow {
@@ -34,7 +49,7 @@ interface ComboRow {
   a: number | null;
   b: number | null;
   c?: number | null;
-  baseDetails: Array<{ key: string; label: string; value: number | null }>;
+  baseDetails: BaseDetail[];
   extraDetails: Array<{ key: string; value: number | null }>;
   uniqueCount: number;
 }
@@ -43,10 +58,11 @@ interface PeriodSnapshot {
   period: string;
   actual: number[];
   base: number[];
-  baseDetails: Array<{ key: string; label: string; value: number | null }>;
+  baseDetails: BaseDetail[];
   labels: Record<string, number>;
   hotRiskNums: Set<number>;
   s2PressureRiskNums: Set<number>;
+  pOneReplacementCandidates?: H47ReplacementCandidate[];
 }
 
 @Injectable()
@@ -63,12 +79,14 @@ export class KillComboBacktestService {
     score: 0,
     strategyName: '',
   };
+  private pOneReplacementCache = new Map<number, { active: boolean; consecutiveFails: number }>();
 
   constructor(
     private readonly historyService: HistoryService,
     private readonly pOneKillService: POneKillService,
     private readonly killOneService: KillOneService,
     private readonly fivePeriodKillService: FivePeriodKillService,
+    private readonly fixedHybridKillService: FixedHybridKillService,
   ) {}
 
   async search(options: SearchOptions, forceRefresh = false) {
@@ -134,6 +152,7 @@ export class KillComboBacktestService {
   private buildResponse(history: DrawRow[], options: SearchOptions) {
     this.kill5AdaptiveCache = { opts: null, learnedAt: -1, score: 0 };
     this.kill10AdaptiveCache = { opts: null, learnedAt: -1, score: 0, strategyName: '' };
+    this.pOneReplacementCache.clear();
     const count = Math.max(5, Math.min(80, Math.floor(options.count || 20)));
     const periods = this.buildPeriods(history, count);
     const keys = Object.keys(periods[0]?.labels || {});
@@ -260,6 +279,7 @@ export class KillComboBacktestService {
       baseDetails: row.baseDetails.map((item) => ({
         ...item,
         value: item.value === null ? null : this.fmt(item.value),
+        replacedFrom: item.replacedFrom === null || item.replacedFrom === undefined ? undefined : this.fmt(item.replacedFrom),
       })),
       extraDetails: row.extraDetails.map((item) => ({
         ...item,
@@ -278,19 +298,9 @@ export class KillComboBacktestService {
   }
 
   private buildPredictionSnapshot(history: DrawRow[]): PeriodSnapshot {
+    const labels = this.buildLabels(history);
     const baseDetails = this.buildBaseDetails(history);
     const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
-    const labels: Record<string, number> = {};
-
-    this.highConfidence4(history).forEach((n, index) => {
-      labels[`HC${index + 1}`] = n;
-    });
-    this.likely22(history).forEach((n, index) => {
-      labels[`L${index + 1}`] = n;
-    });
-    this.smart7(history).forEach((n, index) => {
-      labels[`S${index + 1}`] = n;
-    });
 
     const latest = history[history.length - 1];
     return {
@@ -301,6 +311,7 @@ export class KillComboBacktestService {
       labels,
       hotRiskNums: this.buildHotRiskSet(history),
       s2PressureRiskNums: this.buildS2PressureRiskSet(history, labels),
+      pOneReplacementCandidates: this.getPOneReplacementCandidates(history),
     };
   }
 
@@ -309,7 +320,9 @@ export class KillComboBacktestService {
   }
 
   private formatNextPredictionSet(snapshot: PeriodSnapshot, keys: string[], rows: ComboRow[] = []) {
-    const rawNums = [...snapshot.base, ...keys.map((key) => snapshot.labels[key])].filter((n) =>
+    const baseDetails = this.applyPOneReplacement(snapshot, keys);
+    const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
+    const rawNums = [...base, ...keys.map((key) => snapshot.labels[key])].filter((n) =>
       Number.isFinite(n),
     );
     const rawUnique = [...new Set(rawNums)];
@@ -332,9 +345,10 @@ export class KillComboBacktestService {
       s2RiskRemoved: s2RiskRemoved.map((n) => this.fmt(n)).join(' '),
       s2RiskActive: s2RiskRemoved.length > 0,
       protectionActive,
-      baseDetails: snapshot.baseDetails.map((item) => ({
+      baseDetails: baseDetails.map((item) => ({
         ...item,
         value: item.value === null ? null : this.fmt(item.value),
+        replacedFrom: item.replacedFrom === null || item.replacedFrom === undefined ? undefined : this.fmt(item.replacedFrom),
       })),
       extraDetails: keys.map((key) => ({
         key,
@@ -348,12 +362,91 @@ export class KillComboBacktestService {
     const killOne = this.killOneService.pickForHistory(training);
     const fiveMain = this.fivePeriodKillService.pickMainForHistory(training, 8)?.n ?? null;
     const fiveStrict = this.fivePeriodKillService.pickStrictForHistory(training)?.n ?? null;
+
     return [
       { key: 'p_one', label: '/kill/p_one', value: pOne },
       { key: 'kill_one', label: '/kill/one', value: killOne },
       { key: 'five_main', label: '/kill/five-period 主', value: fiveMain },
       { key: 'five_strict', label: '/kill/five-period 严', value: fiveStrict },
     ];
+  }
+
+  private buildLabels(training: DrawRow[]) {
+    const labels: Record<string, number> = {};
+    this.highConfidence4(training).forEach((n, index) => {
+      labels[`HC${index + 1}`] = n;
+    });
+    this.likely22(training).forEach((n, index) => {
+      labels[`L${index + 1}`] = n;
+    });
+    this.smart7(training).forEach((n, index) => {
+      labels[`S${index + 1}`] = n;
+    });
+    return labels;
+  }
+
+  private getPOneReplacementCandidates(training: DrawRow[]): H47ReplacementCandidate[] {
+    const replacementState = this.getPOneReplacementState(training);
+    if (!replacementState.active) return [];
+
+    return this.fixedHybridKillService
+      .getProbability47PredictionsForMatrix(this.toMatrix(training))
+      .filter((item: any) => item.blendRank >= 8 && item.blendRank <= 10)
+      .sort((a: any, b: any) => a.blendRank - b.blendRank)
+      .map((item: any) => ({ n: item.n, rank: item.blendRank }));
+  }
+
+  private applyPOneReplacement(snapshot: PeriodSnapshot, keys: string[]) {
+    const candidates = snapshot.pOneReplacementCandidates || [];
+    if (!candidates.length) return snapshot.baseDetails;
+
+    const pOne = snapshot.baseDetails.find((item) => item.key === 'p_one');
+    const used = new Set<number>();
+    snapshot.baseDetails.forEach((item) => {
+      if (item.key !== 'p_one' && Number.isFinite(item.value)) used.add(item.value as number);
+    });
+    keys.forEach((key) => {
+      const value = snapshot.labels[key];
+      if (Number.isFinite(value)) used.add(value);
+    });
+    if (Number.isFinite(pOne?.value)) used.add(pOne?.value as number);
+
+    const picked = candidates.find((item) => Number.isFinite(item.n) && !used.has(item.n));
+    if (!picked) return snapshot.baseDetails;
+
+    return snapshot.baseDetails.map((item) =>
+      item.key === 'p_one'
+        ? {
+            key: 'p_one_h47',
+            label: `/kill/p_one→h47#${picked.rank}`,
+            value: picked.n,
+            replacedFrom: item.value,
+            replacementRank: picked.rank,
+            replacementReason: '/kill/p_one 连错 2 期，使用 h47 概率补位',
+          }
+        : item,
+    );
+  }
+
+  private getPOneReplacementState(training: DrawRow[]) {
+    const cacheKey = training.length;
+    const cached = this.pOneReplacementCache.get(cacheKey);
+    if (cached) return cached;
+
+    let consecutiveFails = 0;
+    for (let t = training.length - 1; t >= 1 && consecutiveFails < 2; t--) {
+      const pick = this.pOneKillService.pickForHistory(training.slice(0, t))?.number ?? null;
+      if (!Number.isFinite(pick)) break;
+      if (!training[t].numbers.includes(pick as number)) break;
+      consecutiveFails++;
+    }
+
+    const state = {
+      active: consecutiveFails >= 2,
+      consecutiveFails,
+    };
+    this.pOneReplacementCache.set(cacheKey, state);
+    return state;
   }
 
   private buildPeriods(history: DrawRow[], count: number) {
@@ -363,19 +456,9 @@ export class KillComboBacktestService {
     for (let t = start; t < history.length; t++) {
       const training = history.slice(0, t);
       const actual = history[t];
+      const labels = this.buildLabels(training);
       const baseDetails = this.buildBaseDetails(training);
       const base = baseDetails.map((item) => item.value).filter((n): n is number => Number.isFinite(n));
-      const labels: Record<string, number> = {};
-
-      this.highConfidence4(training).forEach((n, index) => {
-        labels[`HC${index + 1}`] = n;
-      });
-      this.likely22(training).forEach((n, index) => {
-        labels[`L${index + 1}`] = n;
-      });
-      this.smart7(training).forEach((n, index) => {
-        labels[`S${index + 1}`] = n;
-      });
 
       periods.push({
         period: `${actual.year}-${String(actual.No).padStart(3, '0')}`,

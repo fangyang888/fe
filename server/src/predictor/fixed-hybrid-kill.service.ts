@@ -56,6 +56,11 @@ export class FixedHybridKillService {
 
   constructor(private readonly historyService: HistoryService) {}
 
+  getProbability47PredictionsForMatrix(hist: number[][]) {
+    const modelPredictions = this.getProbabilityKillPredictions(hist, 14);
+    return this.combineHybridKillPredictions(hist, modelPredictions, 4, 7, 10);
+  }
+
   async getProbability47() {
     const rawHist = await this.historyService.findAll();
     const cacheKey = `${rawHist.length}:${rawHist[rawHist.length - 1]?.id || ''}`;
@@ -70,8 +75,7 @@ export class FixedHybridKillService {
       item.n6,
       item.n7,
     ]);
-    const modelPredictions = this.getProbabilityKillPredictions(hist, 14);
-    const predictions = this.combineHybridKillPredictions(hist, modelPredictions, 4, 7, 10);
+    const predictions = this.getProbability47PredictionsForMatrix(hist);
     const backtest = this.backtestHybridKill10(hist, 4, 7, 'probability', false);
     const last = rawHist[rawHist.length - 1];
     const response = {

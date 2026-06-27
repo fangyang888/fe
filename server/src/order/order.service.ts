@@ -138,6 +138,19 @@ export class OrderService {
     });
   }
 
+  /**
+   * 支付成功后置为已付款（待发货）。按订单号匹配，幂等：
+   * 已不是待付款则直接返回，避免回调/前端重复处理。
+   */
+  async markPaidByOrderNo(orderNo: string) {
+    const order = await this.orderRepo.findOne({ where: { orderNo } });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status !== 'unpaid') return order; // 幂等
+    order.status = 'unshipped';
+    order.paidAt = new Date();
+    return this.orderRepo.save(order);
+  }
+
   /** 简化的状态流转（付款 / 发货 / 收货等），实际项目按需拆 */
   async updateStatus(userId: number, id: number, status: OrderStatus) {
     const order = await this.findOne(userId, id);

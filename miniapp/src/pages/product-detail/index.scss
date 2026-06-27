@@ -1,98 +1,102 @@
-$primary-color: #ff5000;
-$primary-light: #ff8040;
-$text-primary: #1a1a1a;
-$text-secondary: #666666;
-$text-light: #999999;
-$bg-color: #f4f5f7;
-$white: #ffffff;
-
-$spacing-sm: 12px;
-$spacing-md: 16px;
+@import '../../styles/variables.scss';
 
 .product-detail-page {
   min-height: 100vh;
-  background: $bg-color;
-  padding-bottom: 140px;
+  background: $bg;
+  padding-bottom: 160px;
 
   .loading {
     text-align: center;
     padding-top: 200px;
-    color: $text-light;
-    font-size: 28px;
+    color: $text-3;
+    font-size: $fs-md;
   }
 }
 
 .main-image {
   width: 100%;
   height: 750px;
-  background: #f0f0f0;
+  background: $line-2;
 }
 
 .info-card {
-  background: $white;
-  border-radius: 18px;
-  margin: -30px $spacing-sm 0;
+  background: $surface;
+  border-radius: $r-xl;
+  margin: -36px $sp-sm 0;
   position: relative;
-  padding: $spacing-md;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  padding: $sp-lg $sp-md;
+  box-shadow: $shadow;
 
   .price-row {
     display: flex;
     align-items: baseline;
 
     .price {
-      font-size: 48px;
-      color: $primary-color;
-      font-weight: 700;
+      @include price(56px);
       margin-right: 12px;
     }
     .original {
-      font-size: 26px;
-      color: $text-light;
+      font-size: $fs-md;
+      color: $text-3;
       text-decoration: line-through;
     }
   }
 
   .name {
     display: block;
-    font-size: 32px;
-    color: $text-primary;
-    font-weight: 600;
+    font-size: $fs-lg;
+    color: $ink;
+    font-weight: 700;
     line-height: 1.4;
-    margin: 14px 0;
+    margin: 16px 0;
   }
 
   .meta-row {
     display: flex;
     justify-content: space-between;
+    padding-top: $sp-sm;
+    border-top: 1px solid $line;
 
     .meta {
-      font-size: 24px;
-      color: $text-light;
+      font-size: $fs-sm;
+      color: $text-3;
     }
   }
 }
 
 .desc-card {
-  background: $white;
-  border-radius: 18px;
-  margin: $spacing-sm;
-  padding: $spacing-md;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  background: $surface;
+  border-radius: $r-xl;
+  margin: $sp-sm;
+  padding: $sp-lg $sp-md;
+  box-shadow: $shadow;
 
   .desc-title {
-    display: block;
-    font-size: 30px;
-    font-weight: 600;
-    color: $text-primary;
-    margin-bottom: $spacing-sm;
+    display: flex;
+    align-items: center;
+    font-size: $fs-md;
+    font-weight: 700;
+    color: $ink;
+    margin-bottom: $sp-md;
     padding-left: 16px;
-    border-left: 6px solid $primary-color;
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 6px;
+      height: 26px;
+      border-radius: $r-pill;
+      background: $primary-grad;
+    }
   }
   .desc-text {
-    font-size: 27px;
-    color: $text-secondary;
-    line-height: 1.7;
+    font-size: $fs-sm;
+    color: $text-2;
+    line-height: 1.75;
   }
 }
 
@@ -101,42 +105,41 @@ $spacing-md: 16px;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 110px;
-  background: $white;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
-  padding: 0 $spacing-md;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
+  padding: 0 $sp-md;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 24px rgba(17, 24, 39, 0.06);
 
   .icon-btn {
     display: flex;
     flex-direction: column;
     align-items: center;
     margin-right: 36px;
+    @include tap;
 
     .icon {
       font-size: 40px;
     }
     .icon-label {
-      font-size: 20px;
-      color: $text-secondary;
+      font-size: $fs-xs;
+      color: $text-2;
       margin-top: 2px;
     }
   }
 
   .add-cart-btn {
     flex: 1;
-    height: 84px;
-    border-radius: 42px;
-    background: linear-gradient(135deg, $primary-color, $primary-light);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 6px 18px rgba(255, 80, 0, 0.32);
+    height: 88px;
+    border-radius: $r-pill;
+    @include btn-primary;
 
     .add-cart-text {
-      font-size: 30px;
-      color: $white;
+      font-size: $fs-md;
+      color: #fff;
       font-weight: 600;
     }
   }

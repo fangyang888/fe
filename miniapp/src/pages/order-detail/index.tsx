@@ -8,6 +8,7 @@ import {
   OrderStatus,
   AddressSnapshot,
 } from '../../api/order'
+import { payOrder } from '../../utils/pay'
 import './index.scss'
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
@@ -52,6 +53,13 @@ export default function OrderDetail() {
     } catch {
       // 统一提示
     }
+  }
+
+  /** 去付款：拉起微信支付 */
+  const handlePay = async () => {
+    if (!order) return
+    const result = await payOrder(order.id)
+    if (result === 'success') reload()
   }
 
   if (!order) {
@@ -154,12 +162,7 @@ export default function OrderDetail() {
             >
               <Text className='act-text ghost-text'>取消订单</Text>
             </View>
-            <View
-              className='act-btn primary'
-              onClick={() =>
-                changeStatus('unshipped', '确认支付该订单?', '支付成功')
-              }
-            >
+            <View className='act-btn primary' onClick={handlePay}>
               <Text className='act-text'>去付款</Text>
             </View>
           </>

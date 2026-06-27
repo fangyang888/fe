@@ -4,7 +4,7 @@
   "description": "my micro APP",
   "appid": "wx21e6348e2a7c83c7",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "es6": false,
     "enhance": false,
     "compileHotReLoad": false,

@@ -79,9 +79,15 @@ export default function Cart() {
     Taro.navigateTo({ url: '/pages/checkout/index' })
   }
 
-  // 返回上一页
+  // 返回上一页。购物车是 tabBar 页，从 tab 进入时导航栈只有自己一页，
+  // navigateBack 无效，此时回退到首页 tab。
   const handleBack = () => {
-    Taro.navigateBack({ delta: 1 })
+    const pages = Taro.getCurrentPages()
+    if (pages.length > 1) {
+      Taro.navigateBack({ delta: 1 })
+    } else {
+      Taro.switchTab({ url: '/pages/index/index' })
+    }
   }
 
   return (

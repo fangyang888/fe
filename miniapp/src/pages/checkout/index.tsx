@@ -5,6 +5,7 @@ import { getCart } from '../../store/cartStore'
 import { CartItem } from '../../api/cart'
 import { apiGetAddresses, Address } from '../../api/address'
 import { apiCreateOrder } from '../../api/order'
+import { payOrder } from '../../utils/pay'
 import { track } from '../../utils/tracker'
 import './index.scss'
 
@@ -69,7 +70,16 @@ export default function Checkout() {
     try {
       const order = await apiCreateOrder({ addressId: address.id })
       track('order_submit', { orderId: order.id, amount: totalPrice }, 'action')
-      Taro.showToast({ title: '下单成功', icon: 'success' })
+
+      // 下单成功后直接拉起微信支付
+      const result = await payOrder(order.id)
+      track(
+        'order_pay',
+        { orderId: order.id, amount: totalPrice, result },
+        'action',
+      )
+
+      // 无论支付成功/取消，订单都已创建，统一进订单详情（未付可再次支付）
       setTimeout(() => {
         Taro.redirectTo({ url: `/pages/order-detail/index?id=${order.id}` })
       }, 700)

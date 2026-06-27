@@ -3,8 +3,8 @@
   \****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
 .checkout-page {
   min-height: 100vh;
-  background: #f4f5f7;
-  padding: 12rpx 12rpx 140rpx;
+  background: #f6f7f9;
+  padding: 12rpx 12rpx 150rpx;
 }
 
 .address-card {
@@ -15,11 +15,21 @@
       -ms-flex-align: center;
           align-items: center;
   background: #ffffff;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   padding: 16rpx;
   margin-bottom: 12rpx;
-  -webkit-box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
-          box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  -webkit-box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
+          box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
+  -webkit-transition: -webkit-transform 0.18s ease;
+  transition: -webkit-transform 0.18s ease;
+  transition: transform 0.18s ease;
+  transition: transform 0.18s ease, -webkit-transform 0.18s ease;
+}
+
+.address-card:active {
+  -webkit-transform: scale(0.97);
+      -ms-transform: scale(0.97);
+          transform: scale(0.97);
 }
 
 .address-card .addr-info {
@@ -39,20 +49,20 @@
 }
 
 .address-card .addr-info .addr-line1 .addr-name {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #16181d;
   margin-right: 12rpx;
 }
 
 .address-card .addr-info .addr-line1 .addr-phone {
-  font-size: 26rpx;
-  color: #666666;
+  font-size: 28rpx;
+  color: #6b7280;
 }
 
 .address-card .addr-info .addr-detail {
-  font-size: 26rpx;
-  color: #666666;
+  font-size: 28rpx;
+  color: #6b7280;
   line-height: 1.5;
 }
 
@@ -61,23 +71,23 @@
       -ms-flex: 1;
           flex: 1;
   font-size: 28rpx;
-  color: #999999;
+  color: #9aa0aa;
 }
 
 .address-card .addr-arrow {
   font-size: 40rpx;
-  color: #cccccc;
+  color: #9aa0aa;
   margin-left: 12rpx;
 }
 
 .goods-card {
   background: #ffffff;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   padding: 0 16rpx;
   margin-bottom: 12rpx;
   max-height: 600rpx;
-  -webkit-box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
-          box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  -webkit-box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
+          box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
 }
 
 .goods-card .goods-item {
@@ -91,14 +101,14 @@
 }
 
 .goods-card .goods-item:not(:last-child) {
-  border-bottom: 1rpx solid #f5f5f5;
+  border-bottom: 1rpx solid #eef0f2;
 }
 
 .goods-card .goods-item .goods-image {
   width: 130rpx;
   height: 130rpx;
   border-radius: 12rpx;
-  background: #f7f7f7;
+  background: #f3f4f6;
   -webkit-flex-shrink: 0;
       -ms-flex-negative: 0;
           flex-shrink: 0;
@@ -124,13 +134,14 @@
 
 .goods-card .goods-item .goods-info .goods-name {
   font-size: 28rpx;
-  color: #1a1a1a;
+  color: #2b2f36;
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .goods-card .goods-item .goods-info .goods-meta {
@@ -146,22 +157,23 @@
 }
 
 .goods-card .goods-item .goods-info .goods-meta .goods-price {
-  font-size: 30rpx;
-  color: #1a1a1a;
-  font-weight: 600;
+  color: #16181d;
+  font-weight: 800;
+  font-size: 28rpx;
+  font-family: -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .goods-card .goods-item .goods-info .goods-meta .goods-qty {
-  font-size: 26rpx;
-  color: #999999;
+  font-size: 24rpx;
+  color: #9aa0aa;
 }
 
 .summary-card {
   background: #ffffff;
-  border-radius: 18rpx;
+  border-radius: 20rpx;
   padding: 16rpx;
-  -webkit-box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
-          box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.05);
+  -webkit-box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
+          box-shadow: 0 2rpx 8rpx rgba(17, 24, 39, 0.04);
 }
 
 .summary-card .summary-row {
@@ -174,17 +186,17 @@
   -webkit-align-items: center;
       -ms-flex-align: center;
           align-items: center;
-  padding: 10rpx 0;
+  padding: 12rpx 0;
 }
 
 .summary-card .summary-row .summary-label {
-  font-size: 26rpx;
-  color: #666666;
+  font-size: 28rpx;
+  color: #6b7280;
 }
 
 .summary-card .summary-row .summary-value {
   font-size: 28rpx;
-  color: #1a1a1a;
+  color: #2b2f36;
 }
 
 .footer {
@@ -192,8 +204,10 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: 110rpx;
-  background: #ffffff;
+  height: 120rpx;
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-backdrop-filter: blur(20rpx);
+          backdrop-filter: blur(20rpx);
   display: -webkit-flex;
   display: -ms-flexbox;
   display: flex;
@@ -204,8 +218,9 @@
       -ms-flex-pack: justify;
           justify-content: space-between;
   padding: 0 16rpx;
-  -webkit-box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
-          box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
+  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-box-shadow: 0 -4rpx 24rpx rgba(17, 24, 39, 0.06);
+          box-shadow: 0 -4rpx 24rpx rgba(17, 24, 39, 0.06);
 }
 
 .footer .footer-total {
@@ -218,32 +233,56 @@
 }
 
 .footer .footer-total .total-label {
-  font-size: 26rpx;
-  color: #666666;
+  font-size: 28rpx;
+  color: #6b7280;
   margin-right: 6rpx;
 }
 
 .footer .footer-total .total-amount {
-  font-size: 42rpx;
-  color: #ff5000;
-  font-weight: 700;
+  color: #16181d;
+  font-weight: 800;
+  font-size: 40rpx;
+  font-family: -apple-system, "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .footer .submit-btn {
-  background: -webkit-linear-gradient(315deg, #ff5000, #ff8040);
-  background: linear-gradient(135deg, #ff5000, #ff8040);
-  border-radius: 44rpx;
-  padding: 22rpx 56rpx;
-  -webkit-box-shadow: 0 6rpx 18rpx rgba(255, 80, 0, 0.32);
-          box-shadow: 0 6rpx 18rpx rgba(255, 80, 0, 0.32);
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-align-items: center;
+      -ms-flex-align: center;
+          align-items: center;
+  -webkit-justify-content: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+  background: -webkit-linear-gradient(315deg, #11b886 0%, #14c6bd 100%);
+  background: linear-gradient(135deg, #11b886 0%, #14c6bd 100%);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 999rpx;
+  -webkit-box-shadow: 0 8rpx 20rpx rgba(17, 184, 134, 0.28);
+          box-shadow: 0 8rpx 20rpx rgba(17, 184, 134, 0.28);
+  -webkit-transition: -webkit-transform 0.18s ease;
+  transition: -webkit-transform 0.18s ease;
+  transition: transform 0.18s ease;
+  transition: transform 0.18s ease, -webkit-transform 0.18s ease;
+  padding: 24rpx 60rpx;
+}
+
+.footer .submit-btn:active {
+  -webkit-transform: scale(0.97);
+      -ms-transform: scale(0.97);
+          transform: scale(0.97);
 }
 
 .footer .submit-btn.disabled {
-  opacity: 0.6;
+  opacity: 0.5;
+  -webkit-box-shadow: none;
+          box-shadow: none;
 }
 
 .footer .submit-btn .submit-text {
   font-size: 28rpx;
-  color: #ffffff;
+  color: #fff;
   font-weight: 600;
 }

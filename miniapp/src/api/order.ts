@@ -84,3 +84,18 @@ export const apiCreateOrder = (data?: {
 /** 修改订单状态（付款/取消/确认收货等） */
 export const apiUpdateOrderStatus = (id: number, status: OrderStatus) =>
   http.put<Order>(`/api/order/${id}/status`, { status })
+
+/** wx.requestPayment 所需参数（后端微信下单返回） */
+export interface JsapiPayParams {
+  timeStamp: string
+  nonceStr: string
+  package: string
+  signType: 'RSA'
+  paySign: string
+  /** 本地开发兜底：为 true 时跳过真实拉起，直接按支付成功处理 */
+  mock?: boolean
+}
+
+/** 发起微信支付，获取调起参数 */
+export const apiPayOrder = (id: number) =>
+  http.post<JsapiPayParams>(`/api/order/${id}/pay`)

@@ -208,11 +208,19 @@ function Cart() {
     });
   };
 
-  // 返回上一页
+  // 返回上一页。购物车是 tabBar 页，从 tab 进入时导航栈只有自己一页，
+  // navigateBack 无效，此时回退到首页 tab。
   var handleBack = function handleBack() {
-    _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().navigateBack({
-      delta: 1
-    });
+    var pages = _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().getCurrentPages();
+    if (pages.length > 1) {
+      _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().navigateBack({
+        delta: 1
+      });
+    } else {
+      _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().switchTab({
+        url: '/pages/index/index'
+      });
+    }
   };
   return /*#__PURE__*/(0,react_jsx_runtime__WEBPACK_IMPORTED_MODULE_3__.jsxs)(_tarojs_components__WEBPACK_IMPORTED_MODULE_7__.View, {
     className: "cart-page",

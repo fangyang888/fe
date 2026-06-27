@@ -1,0 +1,113 @@
+// ============================================================
+// 全局设计系统 · 极简高级电商风 · 清新绿/青
+// 各页面通过 @import '../../styles/variables.scss' 复用
+// 单位用 px，Taro 会按 designWidth 自动转 rpx
+// ============================================================
+
+// ---------- 主色（清新绿 → 青 渐变体系）----------
+$primary: #11b886; // 主色 · 清新绿
+$primary-deep: #0a9e72; // 深一档（按压/描边）
+$primary-cyan: #14c6bd; // 青色（渐变末端/点缀）
+$primary-soft: #e9fbf3; // 极浅主色（标签/选中底）
+$primary-grad: linear-gradient(135deg, #11b886 0%, #14c6bd 100%);
+
+// ---------- 中性色（高级感来自克制的灰阶）----------
+$ink: #16181d; // 近黑 · 主标题/价格
+$text: #2b2f36; // 正文
+$text-2: #6b7280; // 次要文字
+$text-3: #9aa0aa; // 辅助/占位
+$line: #eef0f2; // 发丝分割线
+$line-2: #f3f4f6; // 更浅分割
+$bg: #f6f7f9; // 页面背景（微冷灰）
+$surface: #ffffff; // 卡片/前景
+$danger: #f5483b; // 删除/警示
+
+// ---------- 间距 ----------
+$sp-xs: 8px;
+$sp-sm: 12px;
+$sp-md: 16px;
+$sp-lg: 24px;
+$sp-xl: 32px;
+
+// ---------- 圆角 ----------
+$r-sm: 12px;
+$r-md: 16px;
+$r-lg: 20px;
+$r-xl: 28px;
+$r-pill: 999px;
+
+// ---------- 阴影（柔和、低透明，高级感）----------
+$shadow-sm: 0 2px 8px rgba(17, 24, 39, 0.04);
+$shadow: 0 6px 24px rgba(17, 24, 39, 0.06);
+$shadow-lg: 0 14px 40px rgba(17, 24, 39, 0.08);
+$shadow-primary: 0 8px 20px rgba(17, 184, 134, 0.28);
+
+// ---------- 字号 ----------
+$fs-xs: 22px;
+$fs-sm: 24px;
+$fs-md: 28px;
+$fs-lg: 32px;
+$fs-xl: 40px;
+$fs-xxl: 52px;
+
+// ============================================================
+// Mixins
+// ============================================================
+
+// 标准卡片
+@mixin card {
+  background: $surface;
+  border-radius: $r-lg;
+  box-shadow: $shadow;
+}
+
+// 按压缩放反馈
+@mixin tap {
+  transition: transform 0.18s ease;
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+// 多行省略
+@mixin clamp($lines: 2) {
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// 主按钮（胶囊 + 渐变 + 主色阴影）
+@mixin btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $primary-grad;
+  color: #fff;
+  font-weight: 600;
+  border-radius: $r-pill;
+  box-shadow: $shadow-primary;
+  @include tap;
+}
+
+// 次按钮（描边/浅底）
+@mixin btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $surface;
+  color: $text;
+  border: 1px solid $line;
+  border-radius: $r-pill;
+  @include tap;
+}
+
+// 价格展示（近黑高级感）
+@mixin price($size: $fs-xl) {
+  color: $ink;
+  font-weight: 800;
+  font-size: $size;
+  font-family: -apple-system, 'SF Pro Display', 'PingFang SC', sans-serif;
+}

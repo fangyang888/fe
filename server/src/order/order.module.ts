@@ -5,6 +5,7 @@ import { OrderItem } from './order-item.entity';
 import { CartItem } from '../cart/cart-item.entity';
 import { Product } from '../product/product.entity';
 import { OrderService } from './order.service';
+import { PayService } from './pay.service';
 import { OrderController } from './order.controller';
 import { OrderAdminController } from './order-admin.controller';
 import { AddressModule } from '../address/address.module';
@@ -15,7 +16,7 @@ import { AddressModule } from '../address/address.module';
     AddressModule,
   ],
   controllers: [OrderController, OrderAdminController],
-  providers: [OrderService],
+  providers: [OrderService, PayService],
   exports: [OrderService],
 })
 export class OrderModule {}

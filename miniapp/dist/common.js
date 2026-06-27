@@ -184,6 +184,7 @@ var apiGetProduct = function apiGetProduct(id) {
 /* harmony export */   "apiGetOrder": function() { return /* binding */ apiGetOrder; },
 /* harmony export */   "apiGetOrderSummary": function() { return /* binding */ apiGetOrderSummary; },
 /* harmony export */   "apiGetOrders": function() { return /* binding */ apiGetOrders; },
+/* harmony export */   "apiPayOrder": function() { return /* binding */ apiPayOrder; },
 /* harmony export */   "apiUpdateOrderStatus": function() { return /* binding */ apiUpdateOrderStatus; }
 /* harmony export */ });
 /* harmony import */ var _Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_slicedToArray_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/slicedToArray.js */ "./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/slicedToArray.js");
@@ -224,6 +225,54 @@ var apiUpdateOrderStatus = function apiUpdateOrderStatus(id, status) {
     status: status
   });
 };
+
+/** wx.requestPayment 所需参数（后端微信下单返回） */
+
+/** 发起微信支付，获取调起参数 */
+var apiPayOrder = function apiPayOrder(id) {
+  return _utils_request__WEBPACK_IMPORTED_MODULE_0__.http.post("/api/order/".concat(id, "/pay"));
+};
+
+/***/ }),
+
+/***/ "./src/api/track.ts":
+/*!**************************!*\
+  !*** ./src/api/track.ts ***!
+  \**************************/
+/***/ (function(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "reportEvents": function() { return /* binding */ reportEvents; }
+/* harmony export */ });
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! @tarojs/taro */ "webpack/container/remote/@tarojs/taro");
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_tarojs_taro__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _config__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../config */ "./src/config/index.ts");
+
+
+/**
+ * 埋点上报：独立于业务 request 封装，绝不弹错、绝不阻塞主流程。
+ * 不带鉴权（未登录也采集）。
+ */
+function reportEvents(events) {
+  return new Promise(function (resolve) {
+    _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().request({
+      url: "".concat(_config__WEBPACK_IMPORTED_MODULE_1__.BASE_URL, "/api/track/report"),
+      method: 'POST',
+      header: {
+        'Content-Type': 'application/json'
+      },
+      data: {
+        events: events
+      },
+      success: function success() {
+        return resolve();
+      },
+      fail: function fail() {
+        return resolve();
+      } // 静默失败
+    });
+  });
+}
 
 /***/ }),
 
@@ -567,6 +616,113 @@ var logout = function logout() {
 
 /***/ }),
 
+/***/ "./src/utils/pay.ts":
+/*!**************************!*\
+  !*** ./src/utils/pay.ts ***!
+  \**************************/
+/***/ (function(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "payOrder": function() { return /* binding */ payOrder; }
+/* harmony export */ });
+/* harmony import */ var _Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_regenerator_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! ./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/regenerator.js */ "./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/regenerator.js");
+/* harmony import */ var _Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_asyncToGenerator_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/asyncToGenerator.js */ "./node_modules/.pnpm/@babel+runtime@7.28.6/node_modules/@babel/runtime/helpers/esm/asyncToGenerator.js");
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! @tarojs/taro */ "webpack/container/remote/@tarojs/taro");
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_tarojs_taro__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _api_order__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../api/order */ "./src/api/order.ts");
+
+
+
+
+/**
+ * 发起微信支付。
+ * 1. 向后端请求 wx.requestPayment 参数
+ * 2. 调起微信收银台
+ * 3. 返回支付结果
+ *
+ * 本地开发兜底：后端未配商户号时返回 { mock: true }，此处跳过真实拉起，
+ * 直接调用状态接口把订单置为已付款，方便联调。
+ */
+function payOrder(_x) {
+  return _payOrder.apply(this, arguments);
+}
+function _payOrder() {
+  _payOrder = (0,_Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_asyncToGenerator_js__WEBPACK_IMPORTED_MODULE_2__["default"])(/*#__PURE__*/(0,_Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_regenerator_js__WEBPACK_IMPORTED_MODULE_3__["default"])().m(function _callee(orderId) {
+    var params, _t, _t2, _t3;
+    return (0,_Users_yang_fe_fe_miniapp_node_modules_pnpm_babel_runtime_7_28_6_node_modules_babel_runtime_helpers_esm_regenerator_js__WEBPACK_IMPORTED_MODULE_3__["default"])().w(function (_context) {
+      while (1) switch (_context.p = _context.n) {
+        case 0:
+          _context.p = 0;
+          _context.n = 1;
+          return (0,_api_order__WEBPACK_IMPORTED_MODULE_1__.apiPayOrder)(orderId);
+        case 1:
+          params = _context.v;
+          _context.n = 3;
+          break;
+        case 2:
+          _context.p = 2;
+          _t = _context.v;
+          return _context.a(2, 'fail');
+        case 3:
+          if (!params.mock) {
+            _context.n = 7;
+            break;
+          }
+          _context.p = 4;
+          _context.n = 5;
+          return (0,_api_order__WEBPACK_IMPORTED_MODULE_1__.apiUpdateOrderStatus)(orderId, 'unshipped');
+        case 5:
+          _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().showToast({
+            title: '支付成功(模拟)',
+            icon: 'success'
+          });
+          return _context.a(2, 'success');
+        case 6:
+          _context.p = 6;
+          _t2 = _context.v;
+          return _context.a(2, 'fail');
+        case 7:
+          _context.p = 7;
+          _context.n = 8;
+          return _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().requestPayment({
+            timeStamp: params.timeStamp,
+            nonceStr: params.nonceStr,
+            package: params.package,
+            signType: params.signType,
+            paySign: params.paySign
+          });
+        case 8:
+          _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().showToast({
+            title: '支付成功',
+            icon: 'success'
+          });
+          return _context.a(2, 'success');
+        case 9:
+          _context.p = 9;
+          _t3 = _context.v;
+          if (!(_t3 !== null && _t3 !== void 0 && _t3.errMsg && /cancel/i.test(_t3.errMsg))) {
+            _context.n = 10;
+            break;
+          }
+          _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().showToast({
+            title: '已取消支付',
+            icon: 'none'
+          });
+          return _context.a(2, 'cancel');
+        case 10:
+          _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().showToast({
+            title: '支付失败',
+            icon: 'none'
+          });
+          return _context.a(2, 'fail');
+      }
+    }, _callee, null, [[7, 9], [4, 6], [0, 2]]);
+  }));
+  return _payOrder.apply(this, arguments);
+}
+
+/***/ }),
+
 /***/ "./src/utils/request.ts":
 /*!******************************!*\
   !*** ./src/utils/request.ts ***!
@@ -688,6 +844,129 @@ var http = {
     }, opts));
   }
 };
+
+/***/ }),
+
+/***/ "./src/utils/tracker.ts":
+/*!******************************!*\
+  !*** ./src/utils/tracker.ts ***!
+  \******************************/
+/***/ (function(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "flush": function() { return /* binding */ flush; },
+/* harmony export */   "initTracker": function() { return /* binding */ initTracker; },
+/* harmony export */   "track": function() { return /* binding */ track; },
+/* harmony export */   "trackPageView": function() { return /* binding */ trackPageView; }
+/* harmony export */ });
+/* unused harmony export tracker */
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! @tarojs/taro */ "webpack/container/remote/@tarojs/taro");
+/* harmony import */ var _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_tarojs_taro__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _api_track__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ../api/track */ "./src/api/track.ts");
+/* harmony import */ var _store_userStore__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ../store/userStore */ "./src/store/userStore.ts");
+
+
+
+
+// 触发上报的阈值
+var FLUSH_SIZE = 10; // 累计条数
+var FLUSH_INTERVAL = 5000; // 间隔(ms)
+
+var queue = [];
+var timer = null;
+var sessionId = '';
+var systemInfo = {};
+
+/** 生成会话 id（一次启动一个） */
+function genSessionId() {
+  return "".concat(Date.now(), "-").concat(Math.random().toString(36).slice(2, 10));
+}
+
+/** 初始化：App 启动时调一次 */
+function initTracker() {
+  sessionId = genSessionId();
+  try {
+    var _Taro$getAccountInfoS, _account$miniProgram;
+    var info = _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().getSystemInfoSync();
+    var account = (_Taro$getAccountInfoS = (_tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().getAccountInfoSync)) === null || _Taro$getAccountInfoS === void 0 ? void 0 : _Taro$getAccountInfoS.call((_tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default()));
+    systemInfo = {
+      os: info.system,
+      appVersion: (account === null || account === void 0 || (_account$miniProgram = account.miniProgram) === null || _account$miniProgram === void 0 ? void 0 : _account$miniProgram.version) || info.version
+    };
+  } catch (_unused) {
+    systemInfo = {};
+  }
+}
+
+/** 当前页面路径 */
+function currentPage() {
+  try {
+    var pages = _tarojs_taro__WEBPACK_IMPORTED_MODULE_0___default().getCurrentPages();
+    var cur = pages[pages.length - 1];
+    return cur ? "/".concat(cur.route) : '';
+  } catch (_unused2) {
+    return '';
+  }
+}
+
+/** 立即上报队列 */
+function flush() {
+  if (queue.length === 0) return;
+  var batch = queue;
+  queue = [];
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+  (0,_api_track__WEBPACK_IMPORTED_MODULE_1__.reportEvents)(batch);
+}
+function scheduleFlush() {
+  if (timer) return;
+  timer = setTimeout(function () {
+    timer = null;
+    flush();
+  }, FLUSH_INTERVAL);
+}
+
+/**
+ * 埋点：业务侧只需 track('add_to_cart', { productId })。
+ * SDK 自动补 openid / sessionId / page / 平台 / 时间等公共参数。
+ */
+function track(eventName, params) {
+  var eventType = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 'custom';
+  var user = (0,_store_userStore__WEBPACK_IMPORTED_MODULE_2__.getUserInfo)();
+  queue.push({
+    eventName: eventName,
+    eventType: eventType,
+    openid: user === null || user === void 0 ? void 0 : user.openid,
+    sessionId: sessionId,
+    page: currentPage(),
+    params: params,
+    platform: 'mp-weixin',
+    appVersion: systemInfo.appVersion,
+    os: systemInfo.os,
+    ts: Date.now()
+  });
+  if (queue.length >= FLUSH_SIZE) {
+    flush();
+  } else {
+    scheduleFlush();
+  }
+}
+
+/** 页面曝光 */
+function trackPageView(page) {
+  track('page_view', {
+    page: page || currentPage()
+  }, 'pageview');
+}
+var tracker = {
+  initTracker: initTracker,
+  track: track,
+  trackPageView: trackPageView,
+  flush: flush
+};
+/* unused harmony default export */ var __WEBPACK_DEFAULT_EXPORT__ = (tracker);
 
 /***/ })
 

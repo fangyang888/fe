@@ -46,6 +46,8 @@ import TailTenKill from './TailTenKill.jsx';
 import MultiDimKill from './MultiDimKill.jsx';
 // @ts-ignore
 import ExperimentalKill98 from './ExperimentalKill98.jsx';
+// @ts-ignore
+import SpecialTailPredictor from './SpecialTailPredictor.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -69,6 +71,7 @@ const routes = [
   { path: '/kill/experimental-98', label: '98实验单杀', section: '杀码', element: <ExperimentalKill98 /> },
   { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },
+  { path: '/special-tail', label: '特别号尾数预测', section: '预测', element: <SpecialTailPredictor /> },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
   // { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },

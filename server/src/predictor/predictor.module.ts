@@ -27,6 +27,8 @@ import { ExperimentalKill98Controller } from './experimental-kill98.controller';
 import { ExperimentalKill98Service } from './experimental-kill98.service';
 import { ExperimentalKill99Controller } from './experimental-kill99.controller';
 import { ExperimentalKill99Service } from './experimental-kill99.service';
+import { ExperimentalGuardedKillController } from './experimental-guarded-kill.controller';
+import { ExperimentalGuardedKillService } from './experimental-guarded-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -44,6 +46,7 @@ import { ExperimentalKill99Service } from './experimental-kill99.service';
     MultiDimKillController,
     ExperimentalKill98Controller,
     ExperimentalKill99Controller,
+    ExperimentalGuardedKillController,
   ],
   providers: [
     PredictorService,
@@ -59,6 +62,7 @@ import { ExperimentalKill99Service } from './experimental-kill99.service';
     MultiDimKillService,
     ExperimentalKill98Service,
     ExperimentalKill99Service,
+    ExperimentalGuardedKillService,
   ],
 })
 export class PredictorModule {}

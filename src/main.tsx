@@ -94,7 +94,7 @@ const routes = [
   },
   {
     path: '/kill/gap-score',
-    label: 'Gap Score实验',
+    label: 'Gap F20实验',
     section: '杀码',
     element: <GapScoreKill />,
   },

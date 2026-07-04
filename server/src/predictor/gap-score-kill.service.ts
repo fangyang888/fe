@@ -37,7 +37,7 @@ export class GapScoreKillService {
     if (history.length < 120) {
       return {
         status: 'insufficient-history',
-        message: '至少需要 120 期 history 数据库历史，才能完成 gap-score-r4 回测。',
+        message: '至少需要 120 期 history 数据库历史，才能完成 gap-f20-r2 回测。',
         historyCount: history.length,
       };
     }
@@ -60,10 +60,10 @@ export class GapScoreKillService {
         last50: { required: 1, met: backtest50.successRate >= 1 },
       },
       currentRecommendation: {
-        key: 'gapScoreR4',
-        name: '固定 gap-score-r4',
+        key: 'gapF20R2',
+        name: '固定 gap-f20-r2',
         description:
-          '独立于 98/99/guarded 的间隔序列实验：按号码自身出现间隔的 z-score、遗漏比例、近10频次和间隔加速打分；当首选 score>=0.1 时顺延第4名。',
+          '独立于 98/99/guarded 的间隔序列实验：按号码自身出现间隔的 z-score、遗漏比例、近10频次和间隔加速打分；当首选近20频次 f20>=4 时顺延第2名。',
         prediction,
         backtest20,
         backtest50,
@@ -86,16 +86,16 @@ export class GapScoreKillService {
     let selectedIndex = 0;
     let guard = '默认取间隔偏离首选';
 
-    if (first.score >= 0.1) {
-      selectedIndex = 3;
-      guard = 'score>=0.1 保护：首选分数偏高，顺延第4名';
+    if (first.f20 >= 4) {
+      selectedIndex = 1;
+      guard = 'f20>=4 保护：首选近20频次偏高，顺延第2名';
     }
 
     const selected = ranking[selectedIndex] || first;
     return {
       ...selected,
-      strategyKey: 'gapScoreR4',
-      strategyName: '固定 gap-score-r4',
+      strategyKey: 'gapF20R2',
+      strategyName: '固定 gap-f20-r2',
       reason:
         `${guard}。当前候选${selected.display}：miss ${selected.miss}，` +
         `avg ${selected.avgGap.toFixed(1)}，z ${selected.z.toFixed(2)}，` +

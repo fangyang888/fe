@@ -153,11 +153,11 @@ export default function GapScoreKill() {
 
       <div className="gsk-shell">
         <header className="gsk-head">
-          <h1 className="gsk-title">固定 gap-score-r4</h1>
-          <p className="gsk-subtitle">独立间隔序列实验：不使用 98、99、guarded 页面实验。</p>
+          <h1 className="gsk-title">固定 gap-f20-r2</h1>
+          <p className="gsk-subtitle">独立间隔序列实验：f20 偏高时顺延第2名，不使用 98、99、guarded 页面实验。</p>
         </header>
 
-        {loading && <div className="gsk-panel gsk-message">加载 gap-score-r4 回测中...</div>}
+        {loading && <div className="gsk-panel gsk-message">加载 gap-f20-r2 回测中...</div>}
         {error && <div className="gsk-panel gsk-message is-error">{error}（请确认后端和数据库已启动）</div>}
         {!loading && !error && data?.status === 'insufficient-history' && (
           <div className="gsk-panel gsk-message">{data.message} 当前数据库共有 {data.historyCount} 期。</div>

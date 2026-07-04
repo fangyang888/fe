@@ -51,6 +51,8 @@ import ExperimentalKill99 from './ExperimentalKill99.jsx';
 // @ts-ignore
 import ExperimentalGuardedKill from './ExperimentalGuardedKill.jsx';
 // @ts-ignore
+import GapScoreKill from './GapScoreKill.jsx';
+// @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
 
 const routes = [
@@ -89,6 +91,12 @@ const routes = [
     label: '候选换位实验',
     section: '杀码',
     element: <ExperimentalGuardedKill />,
+  },
+  {
+    path: '/kill/gap-score',
+    label: 'Gap Score实验',
+    section: '杀码',
+    element: <GapScoreKill />,
   },
   // { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },

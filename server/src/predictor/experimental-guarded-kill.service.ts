@@ -41,32 +41,23 @@ export class ExperimentalGuardedKillService {
       };
     }
 
-    const prediction = this.pick(history, history.length);
-    const backtest20 = this.buildBacktest(history, 20);
-    const backtest50 = this.buildBacktest(history, 50);
-    const backtest100 = this.buildBacktest(history, 100);
+    const base = this.buildExperiment(history, false);
+    const enhanced = this.buildExperiment(history, true);
     const latest = history[history.length - 1];
+    const currentRecommendation = enhanced;
 
     return {
       source: 'database:history',
       status:
-        backtest20.successRate >= 1 && backtest50.successRate >= 1
+        currentRecommendation.backtest20.successRate >= 1 && currentRecommendation.backtest50.successRate >= 1
           ? 'target-met'
           : 'best-effort',
       target: {
-        last20: { required: 1, met: backtest20.successRate >= 1 },
-        last50: { required: 1, met: backtest50.successRate >= 1 },
+        last20: { required: 1, met: currentRecommendation.backtest20.successRate >= 1 },
+        last50: { required: 1, met: currentRecommendation.backtest50.successRate >= 1 },
       },
-      currentRecommendation: {
-        key: 'experimentalGuarded',
-        name: '遗漏频次候选换位单杀',
-        description:
-          '非98/99重复方向：先按号码自身近15期频次、遗漏、上次间隔排序，再用三条候选换位过滤避开高风险首选。',
-        prediction,
-        backtest20,
-        backtest50,
-        backtest100,
-      },
+      currentRecommendation,
+      experiments: [base, enhanced],
       historyMeta: {
         count: history.length,
         latest,
@@ -77,7 +68,21 @@ export class ExperimentalGuardedKillService {
     };
   }
 
-  private pick(history: DrawRow[], t: number) {
+  private buildExperiment(history: DrawRow[], enhanced: boolean) {
+    return {
+      key: enhanced ? 'experimentalGuardedEnhanced' : 'experimentalGuardedBase',
+      name: enhanced ? '增强候选换位单杀' : '原始候选换位单杀',
+      description: enhanced
+        ? '在原始三条候选换位过滤基础上，追加低频长间隔首选保护，用于提升近100期稳定性。'
+        : '原始实验：先按号码自身近15期频次、遗漏、上次间隔排序，再用三条候选换位过滤避开高风险首选。',
+      prediction: this.pick(history, history.length, enhanced),
+      backtest20: this.buildBacktest(history, 20, enhanced),
+      backtest50: this.buildBacktest(history, 50, enhanced),
+      backtest100: this.buildBacktest(history, 100, enhanced),
+    };
+  }
+
+  private pick(history: DrawRow[], t: number, enhanced = false) {
     const ranking = this.rankBase(history, t);
     const first = ranking[0];
     let selectedIndex = 0;
@@ -94,11 +99,22 @@ export class ExperimentalGuardedKillService {
       guard = '首选分数异常领先过滤：领先第2名超过0.8，顺延第3名';
     }
 
+    if (
+      enhanced &&
+      selectedIndex === 0 &&
+      first.f20 <= 1 &&
+      first.miss >= 16 &&
+      first.gap >= 18
+    ) {
+      selectedIndex = 2;
+      guard = '低频长间隔首选保护：首选近20频次<=1 且 miss>=16、gap>=18，顺延第3名';
+    }
+
     const selected = ranking[selectedIndex] || first;
     return {
       ...selected,
-      strategyKey: 'experimentalGuarded',
-      strategyName: '遗漏频次候选换位单杀',
+      strategyKey: enhanced ? 'experimentalGuardedEnhanced' : 'experimentalGuardedBase',
+      strategyName: enhanced ? '增强候选换位单杀' : '原始候选换位单杀',
       reason: `${guard}。当前候选${selected.display}：近15频次${selected.f15}，遗漏${selected.miss}期，上次间隔${selected.gap}。`,
       guard,
       selectedRank: selectedIndex + 1,
@@ -137,12 +153,12 @@ export class ExperimentalGuardedKillService {
       .map((candidate, index) => ({ ...candidate, rank: index + 1 }));
   }
 
-  private buildBacktest(history: DrawRow[], count: number) {
+  private buildBacktest(history: DrawRow[], count: number, enhanced = false) {
     const start = Math.max(100, history.length - count);
     const rows = [];
     for (let t = start; t < history.length; t++) {
       const actual = history[t];
-      const prediction = this.pick(history, t);
+      const prediction = this.pick(history, t, enhanced);
       rows.push({
         year: actual.year,
         No: actual.No,

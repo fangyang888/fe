@@ -33,6 +33,28 @@ function CandidateList({ rows = [] }) {
   );
 }
 
+function ExperimentCard({ item, active = false }) {
+  const prediction = item?.prediction;
+  return (
+    <section className={`egk-panel egk-exp-card ${active ? 'is-active' : ''}`}>
+      <div className="egk-exp-top">
+        <div>
+          <div className="egk-label">{active ? '当前采用' : '对照实验'}</div>
+          <h2>{item?.name || '--'}</h2>
+        </div>
+        <div className="egk-exp-ball">{prediction?.display || '--'}</div>
+      </div>
+      <p className="egk-reason">{prediction?.reason || item?.description || '--'}</p>
+      <div className="egk-mini-stats">
+        <Stat label="近20期" backtest={item?.backtest20} />
+        <Stat label="近50期" backtest={item?.backtest50} />
+        <Stat label="近100期" backtest={item?.backtest100} />
+      </div>
+      <CandidateList rows={prediction?.topCandidates || []} />
+    </section>
+  );
+}
+
 function BacktestTable({ rows = [] }) {
   return (
     <section className="egk-panel egk-section">
@@ -98,6 +120,7 @@ export default function ExperimentalGuardedKill() {
 
   const current = data?.currentRecommendation;
   const prediction = current?.prediction;
+  const experiments = data?.experiments?.length ? data.experiments : current ? [current] : [];
   const latest = data?.historyMeta?.latest;
   const targetMet = data?.status === 'target-met';
 
@@ -121,6 +144,15 @@ export default function ExperimentalGuardedKill() {
         .egk-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.25); color: #dbeafe; background: rgba(255, 255, 255, 0.05); font-size: 12px; font-weight: 850; }
         .egk-badge.is-ok { border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.14); color: #86efac; }
         .egk-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+        .egk-experiments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+        .egk-exp-card { padding: 16px; }
+        .egk-exp-card.is-active { border-color: rgba(45, 212, 191, 0.45); }
+        .egk-exp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .egk-exp-top h2 { margin: 0; font-size: 17px; line-height: 1.25; }
+        .egk-exp-ball { display: inline-grid; place-items: center; flex: none; width: 58px; height: 58px; border-radius: 50%; background: #2dd4bf; color: #042f2e; font-size: 24px; font-weight: 950; }
+        .egk-mini-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+        .egk-mini-stats .egk-stat { padding: 10px; }
+        .egk-mini-stats .egk-stat strong { font-size: 20px; }
         .egk-stat { padding: 16px; }
         .egk-stat.is-ok { border-color: rgba(34, 197, 94, 0.36); }
         .egk-stat strong { display: block; font-size: 28px; line-height: 1.1; }
@@ -145,7 +177,7 @@ export default function ExperimentalGuardedKill() {
         .egk-nums { color: #dbeafe; white-space: nowrap; }
         .egk-message { padding: 18px; color: #cbd5e1; }
         .egk-message.is-error { color: #fca5a5; }
-        @media (max-width: 940px) { .egk-hero, .egk-layout { grid-template-columns: 1fr; } .egk-stats { grid-template-columns: 1fr; } }
+        @media (max-width: 940px) { .egk-hero, .egk-layout, .egk-experiments { grid-template-columns: 1fr; } .egk-stats, .egk-mini-stats { grid-template-columns: 1fr; } }
       `}</style>
 
       <div className="egk-shell">
@@ -196,6 +228,16 @@ export default function ExperimentalGuardedKill() {
                 <p className="egk-reason">{current?.description}</p>
                 <p className="egk-reason">{data?.excluded}</p>
               </section>
+            </div>
+
+            <div className="egk-experiments">
+              {experiments.map((item) => (
+                <ExperimentCard
+                  key={item.key}
+                  item={item}
+                  active={item.key === current?.key}
+                />
+              ))}
             </div>
 
             <BacktestTable rows={current?.backtest20?.rows || []} />

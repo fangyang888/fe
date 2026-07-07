@@ -4,6 +4,12 @@ import { Repository } from 'typeorm';
 import { History } from './history.entity';
 import { loadSpider } from '../common/spider-loader';
 
+type HistorySyncItem = {
+  year?: number;
+  No?: number;
+  items: number[];
+};
+
 @Injectable()
 export class HistoryService {
   constructor(
@@ -61,8 +67,7 @@ export class HistoryService {
   }
 
   async syncYear(year: number) {
-    const spider = loadSpider();
-    const records = await spider.fetchLotteryData(year);
+    const records = await this.fetchOnlineYear(year);
     let inserted = 0;
     let skipped = 0;
     const insertedRecords: History[] = [];
@@ -85,6 +90,27 @@ export class HistoryService {
       skipped,
       records: insertedRecords,
     };
+  }
+
+  private async fetchOnlineYear(year: number): Promise<HistorySyncItem[]> {
+    const baseUrl = process.env.HISTORY_SYNC_SOURCE_URL || 'http://47.106.103.79/api/history';
+    const url = `${baseUrl}?year=${encodeURIComponent(year)}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`线上历史数据读取失败：HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      throw new Error('线上历史数据格式不正确');
+    }
+
+    return data.map((item) => ({
+      year: item.year || year,
+      No: item.No,
+      items: [item.n1, item.n2, item.n3, item.n4, item.n5, item.n6, item.n7],
+    }));
   }
 
   async syncLatest(year: number) {

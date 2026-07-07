@@ -37,7 +37,7 @@ function SourceGrid({ summary = {} }) {
 function CandidatePool({ rows = [] }) {
   return (
     <section className="kc7-panel kc7-card">
-      <h2>补位观察池</h2>
+      <h2>候选观察池</h2>
       <div className="kc7-candidates">
         {rows.map((item) => (
           <div className="kc7-candidate" key={item.number}>
@@ -53,6 +53,40 @@ function CandidatePool({ rows = [] }) {
   );
 }
 
+function PlanGrid({ plans = [], backtests = {} }) {
+  if (!plans.length) return null;
+
+  return (
+    <section className="kc7-plans">
+      {plans.map((plan) => {
+        const stats = backtests[plan.key] || {};
+        return (
+          <div className={`kc7-plan kc7-plan-${plan.key}`} key={plan.key}>
+            <div className="kc7-plan-head">
+              <div>
+                <h2>{plan.name}</h2>
+                <p>{plan.description}</p>
+              </div>
+            </div>
+            <NumberStrip items={plan.optimizedSeven || []} />
+            <div className="kc7-plan-stats">
+              {[10, 20, 50, 100].map((count) => {
+                const item = stats[`backtest${count}`] || {};
+                return (
+                  <div key={count}>
+                    <strong>{item.successCount ?? '--'}/{item.count ?? '--'}</strong>
+                    <span>近{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function BacktestTable({ rows = [] }) {
   return (
     <section className="kc7-panel kc7-section">
@@ -62,7 +96,7 @@ function BacktestTable({ rows = [] }) {
           <thead>
             <tr>
               <th>期号</th>
-              <th>核心杀码</th>
+              <th>组合杀码</th>
               <th>结果</th>
               <th>开奖号码</th>
               <th>开出杀码</th>
@@ -121,6 +155,7 @@ export default function KillComboSeven() {
   const latest = data?.historyMeta?.latest;
   const bt10 = data?.backtest10;
   const bt20 = data?.backtest20;
+  const guard = bt10?.failureGuard;
 
   return (
     <main className="kc7-page">
@@ -142,8 +177,36 @@ export default function KillComboSeven() {
         .kc7-stat { padding: 16px; }
         .kc7-stat strong { display: block; font-size: 30px; line-height: 1.1; }
         .kc7-stat span { display: block; margin-top: 6px; color: #9fb2c8; font-size: 12px; font-weight: 750; }
+        .kc7-guard {
+          margin-top: 14px;
+          padding: 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(34, 197, 94, 0.32);
+          background: rgba(34, 197, 94, 0.1);
+          color: #bbf7d0;
+          font-size: 13px;
+          line-height: 1.45;
+          font-weight: 800;
+        }
+        .kc7-guard.is-warn {
+          border-color: rgba(248, 113, 113, 0.42);
+          background: rgba(239, 68, 68, 0.14);
+          color: #fecaca;
+        }
         .kc7-layout { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 14px; margin-bottom: 14px; }
         .kc7-card, .kc7-section { padding: 16px; }
+        .kc7-plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+        .kc7-plan { padding: 16px; border: 1px solid rgba(148, 163, 184, 0.22); background: rgba(15, 23, 42, 0.72); border-radius: 8px; }
+        .kc7-plan-short { border-color: rgba(34, 197, 94, 0.38); }
+        .kc7-plan-long { border-color: rgba(56, 189, 248, 0.36); }
+        .kc7-plan-observe { border-color: rgba(251, 191, 36, 0.36); }
+        .kc7-plan-head h2 { margin: 0 0 6px; font-size: 15px; line-height: 1.25; }
+        .kc7-plan-head p { margin: 0 0 12px; min-height: 40px; color: #a8b8cc; font-size: 12px; line-height: 1.45; }
+        .kc7-plan .kc7-strip { margin: 6px 0 12px; min-width: 0; }
+        .kc7-plan-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+        .kc7-plan-stats div { padding: 8px 7px; border-radius: 8px; background: rgba(255,255,255,0.045); text-align: center; }
+        .kc7-plan-stats strong { display: block; font-size: 13px; line-height: 1.2; }
+        .kc7-plan-stats span { display: block; margin-top: 3px; color: #93a4ba; font-size: 11px; font-weight: 850; }
         .kc7-source-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
         .kc7-source, .kc7-candidate { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.04); }
         .kc7-source strong, .kc7-source span, .kc7-candidate strong, .kc7-candidate span { display: block; }
@@ -162,14 +225,14 @@ export default function KillComboSeven() {
         .kc7-nums { color: #dbeafe; white-space: nowrap; }
         .kc7-message { padding: 18px; color: #cbd5e1; }
         .kc7-message.is-error { color: #fca5a5; }
-        @media (max-width: 940px) { .kc7-head, .kc7-hero, .kc7-layout, .kc7-stats, .kc7-source-grid, .kc7-candidates { grid-template-columns: 1fr; } }
+        @media (max-width: 940px) { .kc7-head, .kc7-hero, .kc7-layout, .kc7-stats, .kc7-plans, .kc7-source-grid, .kc7-candidates { grid-template-columns: 1fr; } }
       `}</style>
 
       <div className="kc7-shell">
         <header className="kc7-head">
           <div>
             <h1 className="kc7-title">四页组合 7 杀</h1>
-            <p className="kc7-subtitle">合并 98、99、候选换位、Gap F20 四页核心；按数据库 history 做近10期滚动回测，补位先只观察不纳入统计。</p>
+            <p className="kc7-subtitle">合并四页核心，再分短线、长线保护、观察实验三组补位；按数据库 history 做滚动回测。</p>
           </div>
         </header>
 
@@ -183,19 +246,24 @@ export default function KillComboSeven() {
           <>
             <div className="kc7-hero">
               <section className="kc7-panel kc7-current">
-                <div className="kc7-label">当前四页核心</div>
+                <div className="kc7-label">当前核心 + 补位 7 杀</div>
                 <div className="kc7-big-strip">
                   {(current?.optimizedSeven || []).map((item) => <Ball key={item.number} value={item.number} />)}
                 </div>
                 <p className="kc7-reason">
-                  最新 {latest ? `${latest.year}-${String(latest.No).padStart(3, '0')}` : '--'}，当前只统计四页核心；其它补位先放在观察池，等你确认规则后再加入。
+                  最新 {latest ? `${latest.year}-${String(latest.No).padStart(3, '0')}` : '--'}，四页核心保持为底座，补位采用近10有热度、近5降温、尾数压力仍在的实验方向。
                 </p>
+                {guard && (
+                  <div className={`kc7-guard ${guard.shouldSwitchExperiment ? 'is-warn' : ''}`}>
+                    {guard.message}
+                  </div>
+                )}
               </section>
 
               <div className="kc7-stats">
                 <section className="kc7-panel kc7-stat">
                   <strong>{fmtPct(bt10?.successRate)}</strong>
-                  <span>近10期 核心成功 {bt10?.successCount || 0}/{bt10?.count || 0}</span>
+                  <span>近10期 7杀成功 {bt10?.successCount || 0}/{bt10?.count || 0}</span>
                 </section>
                 <section className="kc7-panel kc7-stat">
                   <strong>{fmtPct(bt10?.coreSuccessRate)}</strong>
@@ -203,7 +271,7 @@ export default function KillComboSeven() {
                 </section>
                 <section className="kc7-panel kc7-stat">
                   <strong>{fmtPct(bt20?.successRate)}</strong>
-                  <span>近20期 核心成功 {bt20?.successCount || 0}/{bt20?.count || 0}</span>
+                  <span>近20期 7杀成功 {bt20?.successCount || 0}/{bt20?.count || 0}</span>
                 </section>
                 <section className="kc7-panel kc7-stat">
                   <strong>{data?.status || '--'}</strong>
@@ -211,6 +279,8 @@ export default function KillComboSeven() {
                 </section>
               </div>
             </div>
+
+            <PlanGrid plans={current?.supplementPlans || []} backtests={data?.supplementPlanBacktests || {}} />
 
             <div className="kc7-layout">
               <section className="kc7-panel kc7-card">

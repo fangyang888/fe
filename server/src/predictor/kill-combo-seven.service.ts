@@ -24,6 +24,8 @@ interface ComboCandidate {
   appearedLatest: boolean;
 }
 
+type SupplementPlanKey = 'short' | 'long' | 'observe';
+
 @Injectable()
 export class KillComboSevenService {
   constructor(
@@ -48,12 +50,12 @@ export class KillComboSevenService {
       };
     }
 
-    const current = this.buildSelection(rawRows, history);
-    const reportRows = this.buildReportRows(rawRows);
-    const backtest10 = this.buildBacktestFromReportRows(reportRows, history, 10);
-    const backtest20 = this.buildBacktestFromReportRows(reportRows, history, 20);
+    const context = this.buildComboContext(rawRows);
+    const current = this.buildSelection(rawRows, history, context);
+    const backtest10 = this.buildBacktest(history, context, 10, 'short', true);
+    const backtest20 = this.buildBacktest(history, context, 20, 'short', true);
     const requestedBacktest =
-      safeCount === 10 ? backtest10 : this.buildBacktestFromReportRows(reportRows, history, safeCount);
+      safeCount === 10 ? backtest10 : this.buildBacktest(history, context, safeCount, 'short', true);
     const latest = history[history.length - 1];
 
     return {
@@ -63,6 +65,7 @@ export class KillComboSevenService {
       backtest10,
       backtest20,
       requestedBacktest,
+      supplementPlanBacktests: this.buildSupplementPlanBacktests(history, context),
       historyMeta: {
         count: history.length,
         latest,
@@ -70,6 +73,134 @@ export class KillComboSevenService {
       note:
         '组合 7 杀使用滚动口径：每一期只用该期之前的数据库数据生成候选，再检查 7 个杀码是否全部未开。',
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  private buildComboContext(rawRows: any[]) {
+    const exp98 = this.experimental98Service.buildComboReportFromRows(rawRows);
+    const exp99 = this.experimental99Service.buildComboReportFromRows(rawRows);
+
+    return {
+      exp98,
+      exp99,
+      best98Key: exp98.best?.key || 'spanRange',
+      best99Key: exp99.best?.key || 'pairAfter',
+      best98Name: exp98.best?.name || '98优选',
+      best99Name: exp99.best?.name || '99优选',
+    };
+  }
+
+  private buildSupplementPlanBacktests(history: DrawRow[], context: any) {
+    const plans: SupplementPlanKey[] = ['short', 'long', 'observe'];
+    const counts = [10, 20, 50, 100];
+    const result: Record<string, any> = {};
+    const rowsByPlan: Record<SupplementPlanKey, any[]> = {
+      short: [],
+      long: [],
+      observe: [],
+    };
+    const start = Math.max(140, history.length - 100);
+
+    for (let t = start; t < history.length; t++) {
+      const actual = history[t];
+      const selection = this.buildSelectionForHistory(history.slice(0, t), context);
+
+      for (const planKey of plans) {
+        const plan = selection.supplementPlans.find((item) => item.key === planKey) || selection.supplementPlans[0];
+        const killNumbers = plan?.optimizedSeven || selection.optimizedSeven;
+        const appeared = killNumbers
+          .map((item) => item.number)
+          .filter((number) => actual.numbers.includes(number));
+
+        rowsByPlan[planKey].push({
+          year: actual.year,
+          No: actual.No,
+          success: appeared.length === 0,
+        });
+      }
+    }
+
+    for (const plan of plans) {
+      result[plan] = {};
+      for (const count of counts) {
+        result[plan][`backtest${count}`] = this.toBacktestSummaryFromRows(rowsByPlan[plan].slice(-count));
+      }
+    }
+
+    return result;
+  }
+
+  private toBacktestSummary(backtest: any) {
+    return {
+      count: backtest.count,
+      successCount: backtest.successCount,
+      failureCount: backtest.failureCount,
+      successRate: backtest.successRate,
+      failureGuard: backtest.failureGuard,
+    };
+  }
+
+  private toBacktestSummaryFromRows(rows: Array<{ success: boolean; year?: number; No?: number }>) {
+    const successCount = rows.filter((row) => row.success).length;
+    return {
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      failureGuard: this.buildFailureGuard(rows),
+    };
+  }
+
+  private buildBacktest(
+    history: DrawRow[],
+    context: any,
+    count: number,
+    planKey: SupplementPlanKey,
+    includeRows: boolean,
+  ) {
+    const start = Math.max(140, history.length - count);
+    const rows = [];
+
+    for (let t = start; t < history.length; t++) {
+      const actual = history[t];
+      const selection = this.buildSelectionForHistory(history.slice(0, t), context);
+      const plan = selection.supplementPlans.find((item) => item.key === planKey) || selection.supplementPlans[0];
+      const killNumbers = plan?.optimizedSeven || selection.optimizedSeven;
+      const appeared = killNumbers
+        .map((item) => item.number)
+        .filter((number) => actual.numbers.includes(number));
+      const coreAppeared = selection.coreNumbers
+        .map((item) => item.number)
+        .filter((number) => actual.numbers.includes(number));
+
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        killNumbers,
+        coreNumbers: selection.coreNumbers,
+        appearedNumbers: appeared,
+        coreAppearedNumbers: coreAppeared,
+        success: appeared.length === 0,
+        coreSuccess: coreAppeared.length === 0,
+      });
+    }
+
+    const successCount = rows.filter((row) => row.success).length;
+    const coreSuccessCount = rows.filter((row) => row.coreSuccess).length;
+    const failureGuard = this.buildFailureGuard(rows);
+
+    return {
+      kind: 'walk-forward-combo',
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      coreSuccessCount,
+      coreSuccessRate: rows.length ? coreSuccessCount / rows.length : 0,
+      failureGuard,
+      rows: includeRows ? rows.slice().reverse() : [],
+      failureRows: includeRows ? rows.filter((row) => !row.success).reverse() : [],
     };
   }
 
@@ -117,6 +248,7 @@ export class KillComboSevenService {
 
     const successCount = rows.filter((row) => row.success).length;
     const coreSuccessCount = rows.filter((row) => row.coreSuccess).length;
+    const failureGuard = this.buildFailureGuard(rows);
 
     return {
       kind: 'walk-forward-combo',
@@ -126,8 +258,29 @@ export class KillComboSevenService {
       successRate: rows.length ? successCount / rows.length : 0,
       coreSuccessCount,
       coreSuccessRate: rows.length ? coreSuccessCount / rows.length : 0,
+      failureGuard,
       rows: rows.slice().reverse(),
       failureRows: rows.filter((row) => !row.success).reverse(),
+    };
+  }
+
+  private buildFailureGuard(rows: Array<{ success: boolean; year?: number; No?: number }>) {
+    const recentRows = rows.slice(-4);
+    const failureCount = recentRows.filter((row) => !row.success).length;
+    const shouldSwitchExperiment = failureCount >= 2;
+
+    return {
+      window: recentRows.length,
+      failureCount,
+      shouldSwitchExperiment,
+      periods: recentRows.map((row) => ({
+        year: row.year,
+        No: row.No,
+        success: row.success,
+      })),
+      message: shouldSwitchExperiment
+        ? `近${recentRows.length}期已错${failureCount}期，补位实验可能进入失效段，建议换新实验。`
+        : `近${recentRows.length}期错${failureCount}期，补位实验暂时可继续观察。`,
     };
   }
 
@@ -193,10 +346,12 @@ export class KillComboSevenService {
       [exp98?.predictedNumber, exp99?.predictedNumber, guarded?.predictedNumber, gap?.predictedNumber]
         .map((number) => number ? candidates.get(number) : undefined),
     );
+    const supplements = this.buildMidTailCooldownSupplements(training, coreNumbers.map((item) => item.number), 3);
+    const optimizedSeven = this.uniqueCandidates([...coreNumbers, ...supplements]);
 
     return {
       coreNumbers,
-      optimizedSeven: coreNumbers,
+      optimizedSeven,
     };
   }
 
@@ -221,7 +376,7 @@ export class KillComboSevenService {
     return rows.reverse();
   }
 
-  private buildSelection(rawRows: any[], history: DrawRow[]) {
+  private buildSelection(rawRows: any[], history: DrawRow[], context: any) {
     const candidates = new Map<number, ComboCandidate>();
     const add = (number: number | undefined, source: string, score: number, note: string) => {
       if (!Number.isFinite(number) || !number) return;
@@ -251,8 +406,8 @@ export class KillComboSevenService {
       });
     };
 
-    const exp98 = this.experimental98Service.buildComboReportFromRows(rawRows);
-    const exp99 = this.experimental99Service.buildComboReportFromRows(rawRows);
+    const exp98 = context.exp98;
+    const exp99 = context.exp99;
     const guarded = this.guardedService.buildComboReportFromRows(rawRows);
     const gap = this.gapScoreService.buildComboReportFromRows(rawRows);
     const strictFive = this.fivePeriodKillService.pickStrictForHistory(history);
@@ -307,13 +462,21 @@ export class KillComboSevenService {
       guarded.best?.prediction?.number,
       gap.prediction?.number,
     ].map((number) => number ? candidates.get(number) : undefined));
+    const planSelection = this.buildSelectionForHistory(history, context);
+    const supplements = planSelection.supplementPlans[0]?.supplements || [];
+    const optimizedSeven = planSelection.optimizedSeven;
 
     return {
       key: 'combo-seven',
-      name: '四页核心组合',
+      name: '四页核心 + 中窗热尾补位',
       coreNumbers,
-      optimizedSeven: coreNumbers,
-      candidatePool: ranked.slice(0, 18),
+      optimizedSeven,
+      supplementPlans: planSelection.supplementPlans,
+      candidatePool: this.mergeCandidatePool([
+        ...planSelection.supplementPlans.flatMap((plan: any) => plan.supplements || []),
+        ...supplements,
+        ...ranked,
+      ]).slice(0, 18),
       sourceSummary: {
         exp98: this.toSourceSummary(exp98.best?.prediction?.number, exp98.best?.name),
         exp99: this.toSourceSummary(exp99.best?.prediction?.number, exp99.best?.name),
@@ -324,6 +487,130 @@ export class KillComboSevenService {
     };
   }
 
+  private buildSelectionForHistory(history: DrawRow[], context: any) {
+    const exp98Best = this.pick98Strategy(history, context.best98Key);
+    const exp99Best = this.pick99Strategy(history, context.best99Key);
+    const guarded = this.pickGuarded(history);
+    const gap = this.pickGap(history);
+
+    const coreNumbers = this.uniqueCandidates([
+      this.makeCandidate(exp98Best?.number, `98 · ${context.best98Name}`, '98页当前优选', history, 12),
+      this.makeCandidate(exp99Best?.number, `99 · ${context.best99Name}`, '99页当前优选', history, 12),
+      this.makeCandidate(guarded?.number, 'guarded · 增强候选换位', '候选换位当前优选', history, 12),
+      this.makeCandidate(gap?.number, 'gap-score', '间隔序列当前优选', history, 8),
+    ]);
+    const coreValues = coreNumbers.map((item) => item.number);
+
+    const shortSupplements = this.buildMidTailCooldownSupplements(history, coreValues, 3);
+    const shortPlan = this.buildPlan(
+      'short',
+      '短线补位',
+      '近10优先：中窗热尾降温补满 7 个，保留当前短线全中表现。',
+      coreNumbers,
+      shortSupplements,
+      history,
+    );
+
+    const longBase = this.uniqueCandidates([
+      this.makeCandidate(this.pick98Strategy(history, 'zoneDensity')?.number, '98 · 分区密度单杀', '长线保护补位', history, 5.8),
+      this.makeCandidate(this.fivePeriodKillService.pickStrictForHistory(history)?.n, 'five-period · 严格', '五期严格零失败补位', history, 5.5),
+    ]);
+    const longPlan = this.buildPlan(
+      'long',
+      '长线保护',
+      '近50/100优先：98分区密度 + five严格，再用中窗补满。',
+      coreNumbers,
+      longBase,
+      history,
+    );
+
+    const observeBase = this.uniqueCandidates([
+      this.makeCandidate(this.pick98Strategy(history, 'zoneDensity')?.number, '98 · 分区密度单杀', '观察补位', history, 5.8),
+      this.makeCandidate(this.pick99Strategy(history, 'pairExact3')?.number, '99 · 精确三号重叠单杀', '观察补位', history, 5.8),
+      this.makeCandidate(guarded?.topCandidates?.[2]?.number, 'guarded · 第3候选', '观察补位', history, 4.85),
+    ]);
+    const observePlan = this.buildPlan(
+      'observe',
+      '新实验观察',
+      '新方向观察：98分区密度 + 99精确三号重叠 + guarded第3候选。',
+      coreNumbers,
+      observeBase,
+      history,
+    );
+
+    return {
+      coreNumbers,
+      optimizedSeven: shortPlan.optimizedSeven,
+      supplementPlans: [shortPlan, longPlan, observePlan],
+    };
+  }
+
+  private buildPlan(
+    key: SupplementPlanKey,
+    name: string,
+    description: string,
+    coreNumbers: ComboCandidate[],
+    supplements: ComboCandidate[],
+    history: DrawRow[],
+  ) {
+    const excluded = [...coreNumbers, ...supplements].map((item) => item.number);
+    const fillers = this.buildMidTailCooldownSupplements(
+      history,
+      excluded,
+      Math.max(0, 7 - coreNumbers.length - supplements.length),
+    );
+    const finalSupplements = this.uniqueCandidates([...supplements, ...fillers]).slice(0, Math.max(0, 7 - coreNumbers.length));
+    const optimizedSeven = this.uniqueCandidates([...coreNumbers, ...finalSupplements]).slice(0, 7);
+
+    return {
+      key,
+      name,
+      description,
+      supplements: finalSupplements,
+      optimizedSeven,
+    };
+  }
+
+  private makeCandidate(
+    number: number | undefined,
+    source: string,
+    note: string,
+    history: DrawRow[],
+    score: number,
+  ): ComboCandidate | undefined {
+    if (!Number.isFinite(number) || !number) return undefined;
+    return {
+      number,
+      display: this.fmt(number),
+      score,
+      sources: [source],
+      notes: [note],
+      recent10: this.freqAt(history, number, 10),
+      recent5: this.freqAt(history, number, 5),
+      appearedLatest: history[history.length - 1]?.numbers.includes(number) || false,
+    };
+  }
+
+  private pick98Strategy(history: DrawRow[], key: string) {
+    const service = this.experimental98Service as any;
+    const strategy = (service.strategies || []).find((item: any) => item.key === key);
+    return strategy ? service.pickByStrategy(history, history.length, strategy) : null;
+  }
+
+  private pick99Strategy(history: DrawRow[], key: string) {
+    const service = this.experimental99Service as any;
+    const strategy = (service.getStrategies?.() || []).find((item: any) => item.key === key);
+    return strategy ? strategy.pick(history, history.length) : null;
+  }
+
+  private pickGuarded(history: DrawRow[]) {
+    return (this.guardedService as any).pick(history, history.length, true);
+  }
+
+  private pickGap(history: DrawRow[]) {
+    return (this.gapScoreService as any).pick(history, history.length);
+  }
+
   private uniqueCandidates(items: Array<ComboCandidate | undefined>) {
     const seen = new Set<number>();
     return items.filter((item): item is ComboCandidate => {
@@ -331,6 +618,57 @@ export class KillComboSevenService {
       seen.add(item.number);
       return true;
     });
+  }
+
+  private mergeCandidatePool(items: ComboCandidate[]) {
+    const merged = new Map<number, ComboCandidate>();
+    for (const item of items) {
+      const existing = merged.get(item.number);
+      if (!existing) {
+        merged.set(item.number, { ...item, sources: [...item.sources], notes: [...item.notes] });
+        continue;
+      }
+      existing.score = Math.max(existing.score, item.score);
+      existing.sources.push(...item.sources);
+      existing.notes.push(...item.notes);
+    }
+    return Array.from(merged.values()).sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.recent10 - b.recent10 ||
+        a.recent5 - b.recent5 ||
+        a.number - b.number,
+    );
+  }
+
+  private buildMidTailCooldownSupplements(history: DrawRow[], excluded: number[], limit: number) {
+    const excludedSet = new Set(excluded);
+    const last = history[history.length - 1];
+    const lastNumbers = new Set(last?.numbers || []);
+    const recent10 = history.slice(-10).flatMap((row) => row.numbers);
+
+    return Array.from({ length: 49 }, (_, index) => index + 1)
+      .filter((number) => !excludedSet.has(number))
+      .map((number): ComboCandidate => {
+        const recent10Count = this.freqAt(history, number, 10);
+        const recent5Count = this.freqAt(history, number, 5);
+        const appearedLatest = lastNumbers.has(number);
+        const tailPressure = recent10.filter((item) => item % 10 === number % 10).length;
+        const score = recent10Count * 4 - recent5Count * 4 - (appearedLatest ? 4 : 0) + tailPressure;
+
+        return {
+          number,
+          display: this.fmt(number),
+          score,
+          sources: ['中窗热尾降温补位'],
+          notes: ['近10有热度、近5降温、尾数压力仍在'],
+          recent10: recent10Count,
+          recent5: recent5Count,
+          appearedLatest,
+        };
+      })
+      .sort((a, b) => b.score - a.score || a.number - b.number)
+      .slice(0, limit);
   }
 
   private toSourceSummary(number?: number, name?: string) {

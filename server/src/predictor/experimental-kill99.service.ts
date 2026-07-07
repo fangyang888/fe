@@ -99,6 +99,25 @@ export class ExperimentalKill99Service {
     };
   }
 
+  buildComboReportFromRows(rawRows: any[]) {
+    const history = this.normalizeRows(rawRows);
+    this.pickCache.clear();
+    const strategies = this.getStrategies().map((strategy) => this.buildStrategyReport(history, strategy));
+    const best = strategies
+      .slice()
+      .sort(
+        (a, b) =>
+          Number(b.backtest20.successRate >= 1 && b.backtest50.successRate >= 0.98) -
+            Number(a.backtest20.successRate >= 1 && a.backtest50.successRate >= 0.98) ||
+          b.backtest50.successRate - a.backtest50.successRate ||
+          b.backtest20.successRate - a.backtest20.successRate ||
+          b.backtest50.successCount - a.backtest50.successCount ||
+          this.strategyPriority(b.key) - this.strategyPriority(a.key),
+      )[0];
+
+    return { best, strategies };
+  }
+
   private getStrategies(): StrategyConfig[] {
     return [
       {

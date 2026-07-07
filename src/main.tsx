@@ -41,6 +41,8 @@ import POneKill from './POneKill.jsx';
 // @ts-ignore
 import KillComboBacktest from './KillComboBacktest.jsx';
 // @ts-ignore
+import KillComboSeven from './KillComboSeven.jsx';
+// @ts-ignore
 import TailTenKill from './TailTenKill.jsx';
 // @ts-ignore
 import MultiDimKill from './MultiDimKill.jsx';
@@ -100,6 +102,7 @@ const routes = [
   },
   // { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },
+  { path: '/kill/combo-seven', label: '四页组合7杀', section: '杀码', element: <KillComboSeven /> },
   {
     path: '/special-tail',
     label: '特别号尾数预测',

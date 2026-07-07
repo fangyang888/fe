@@ -31,6 +31,8 @@ import { ExperimentalGuardedKillController } from './experimental-guarded-kill.c
 import { ExperimentalGuardedKillService } from './experimental-guarded-kill.service';
 import { GapScoreKillController } from './gap-score-kill.controller';
 import { GapScoreKillService } from './gap-score-kill.service';
+import { KillComboSevenController } from './kill-combo-seven.controller';
+import { KillComboSevenService } from './kill-combo-seven.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -50,6 +52,7 @@ import { GapScoreKillService } from './gap-score-kill.service';
     ExperimentalKill99Controller,
     ExperimentalGuardedKillController,
     GapScoreKillController,
+    KillComboSevenController,
   ],
   providers: [
     PredictorService,
@@ -67,6 +70,7 @@ import { GapScoreKillService } from './gap-score-kill.service';
     ExperimentalKill99Service,
     ExperimentalGuardedKillService,
     GapScoreKillService,
+    KillComboSevenService,
   ],
 })
 export class PredictorModule {}

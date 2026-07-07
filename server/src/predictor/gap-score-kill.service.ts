@@ -80,6 +80,16 @@ export class GapScoreKillService {
     };
   }
 
+  buildComboReportFromRows(rawRows: any[]) {
+    const history = this.normalizeRows(rawRows);
+    return {
+      prediction: this.pick(history, history.length),
+      backtest20: this.buildBacktest(history, 20),
+      backtest50: this.buildBacktest(history, 50),
+      backtest100: this.buildBacktest(history, 100),
+    };
+  }
+
   private pick(history: DrawRow[], t: number) {
     const ranking = this.rankBase(history, t);
     const first = ranking[0];

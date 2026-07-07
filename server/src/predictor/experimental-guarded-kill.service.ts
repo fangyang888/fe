@@ -68,6 +68,13 @@ export class ExperimentalGuardedKillService {
     };
   }
 
+  buildComboReportFromRows(rawRows: any[]) {
+    const history = this.normalizeRows(rawRows);
+    const base = this.buildExperiment(history, false);
+    const enhanced = this.buildExperiment(history, true);
+    return { best: enhanced, experiments: [base, enhanced] };
+  }
+
   private buildExperiment(history: DrawRow[], enhanced: boolean) {
     return {
       key: enhanced ? 'experimentalGuardedEnhanced' : 'experimentalGuardedBase',

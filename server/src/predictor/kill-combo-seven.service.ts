@@ -1,4 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { readFile, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { ExperimentalKill98Service } from './experimental-kill98.service';
 import { ExperimentalKill99Service } from './experimental-kill99.service';
@@ -24,10 +27,18 @@ interface ComboCandidate {
   appearedLatest: boolean;
 }
 
-type SupplementPlanKey = 'short' | 'long' | 'observe';
+type SupplementPlanKey = 'short' | 'long' | 'observe' | 'consensus';
 
 @Injectable()
 export class KillComboSevenService {
+  private readonly strictCachePath = join(tmpdir(), 'fe-kill-combo-seven-strict-cache.json');
+  private strictCache:
+    | {
+        key: string;
+        value: any;
+      }
+    | undefined;
+
   constructor(
     private readonly historyService: HistoryService,
     private readonly experimental98Service: ExperimentalKill98Service,
@@ -52,10 +63,12 @@ export class KillComboSevenService {
 
     const context = this.buildComboContext(rawRows);
     const current = this.buildSelection(rawRows, history, context);
-    const backtest10 = this.buildBacktest(history, context, 10, 'short', true);
-    const backtest20 = this.buildBacktest(history, context, 20, 'short', true);
+    const backtest10 = this.buildBacktest(history, context, 10, 'consensus', true);
+    const backtest20 = this.buildBacktest(history, context, 20, 'consensus', true);
     const requestedBacktest =
-      safeCount === 10 ? backtest10 : this.buildBacktest(history, context, safeCount, 'short', true);
+      safeCount === 10
+        ? backtest10
+        : this.buildBacktest(history, context, safeCount, 'consensus', true);
     const latest = history[history.length - 1];
 
     return {
@@ -76,6 +89,158 @@ export class KillComboSevenService {
     };
   }
 
+  async getComboSevenStrict() {
+    const rawRows = await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+
+    if (history.length < 150) {
+      return {
+        status: 'insufficient-history',
+        message: '严格滚动回测至少需要 150 期数据库 history 数据。',
+        historyCount: history.length,
+      };
+    }
+
+    const latestForCache = history[history.length - 1];
+    const cacheKey = [
+      'v2',
+      history.length,
+      latestForCache.id,
+      latestForCache.year,
+      latestForCache.No,
+      latestForCache.numbers.join('.'),
+    ].join(':');
+    if (this.strictCache?.key === cacheKey) {
+      return {
+        ...this.strictCache.value,
+        cache: 'hit',
+      };
+    }
+    try {
+      const persistedCache = JSON.parse(await readFile(this.strictCachePath, 'utf8'));
+      if (persistedCache?.key === cacheKey && persistedCache?.value) {
+        this.strictCache = persistedCache;
+        return {
+          ...persistedCache.value,
+          cache: 'disk-hit',
+        };
+      }
+    } catch {
+      // 缓存不存在或损坏时直接重新计算。
+    }
+
+    const currentContext = this.buildComboContext(rawRows);
+    const current = this.buildSelection(rawRows, history, currentContext);
+    const rowsByPlan: Record<SupplementPlanKey, any[]> = {
+      short: [],
+      long: [],
+      observe: [],
+      consensus: [],
+    };
+    const start = Math.max(140, history.length - 100);
+
+    for (let t = start; t < history.length; t++) {
+      const training = history.slice(0, t);
+      const trainingRawRows = this.toRawRows(training);
+      const rollingContext = this.buildComboContext(trainingRawRows);
+      const selection = this.buildSelectionForHistory(training, rollingContext);
+      const actual = history[t];
+
+      for (const planKey of ['short', 'long', 'observe', 'consensus'] as SupplementPlanKey[]) {
+        const plan =
+          selection.supplementPlans.find((item) => item.key === planKey) ||
+          selection.supplementPlans[0];
+        const killNumbers = plan?.optimizedSeven || selection.optimizedSeven;
+        const appearedNumbers = killNumbers
+          .map((item) => item.number)
+          .filter((number) => actual.numbers.includes(number));
+        const coreAppearedNumbers = selection.coreNumbers
+          .map((item) => item.number)
+          .filter((number) => actual.numbers.includes(number));
+
+        rowsByPlan[planKey].push({
+          year: actual.year,
+          No: actual.No,
+          actualNumbers: actual.numbers,
+          killNumbers,
+          coreNumbers: selection.coreNumbers,
+          appearedNumbers,
+          coreAppearedNumbers,
+          success: appearedNumbers.length === 0,
+          coreSuccess: coreAppearedNumbers.length === 0,
+          selectedStrategies: {
+            exp98: rollingContext.best98Name,
+            exp99: rollingContext.best99Name,
+          },
+        });
+      }
+    }
+
+    const summarize = (rows: any[], count: number, includeRows = false) => {
+      const selectedRows = rows.slice(-count);
+      const successCount = selectedRows.filter((row) => row.success).length;
+      const coreSuccessCount = selectedRows.filter((row) => row.coreSuccess).length;
+      return {
+        kind: 'strict-walk-forward-combo',
+        count: selectedRows.length,
+        successCount,
+        failureCount: selectedRows.length - successCount,
+        successRate: selectedRows.length ? successCount / selectedRows.length : 0,
+        coreSuccessCount,
+        coreSuccessRate: selectedRows.length ? coreSuccessCount / selectedRows.length : 0,
+        failureGuard: this.buildFailureGuard(selectedRows),
+        rows: includeRows ? selectedRows.slice().reverse() : [],
+        failureRows: includeRows
+          ? selectedRows.filter((row) => !row.success).reverse()
+          : [],
+      };
+    };
+
+    const backtest10 = summarize(rowsByPlan.consensus, 10, true);
+    const backtest20 = summarize(rowsByPlan.consensus, 20, true);
+    const supplementPlanBacktests: Record<string, any> = {};
+    for (const planKey of ['short', 'long', 'observe', 'consensus'] as SupplementPlanKey[]) {
+      supplementPlanBacktests[planKey] = {};
+      for (const count of [10, 20, 50, 100]) {
+        supplementPlanBacktests[planKey][`backtest${count}`] = summarize(
+          rowsByPlan[planKey],
+          count,
+        );
+      }
+    }
+
+    const latest = history[history.length - 1];
+    const value = {
+      source: 'database:history',
+      mode: 'strict-rolling-strategy-selection',
+      status:
+        backtest10.successRate >= 0.8
+          ? 'strong'
+          : backtest10.successRate >= 0.7
+            ? 'watch'
+            : 'weak',
+      currentRecommendation: current,
+      backtest10,
+      backtest20,
+      requestedBacktest: backtest10,
+      supplementPlanBacktests,
+      historyMeta: {
+        count: history.length,
+        latest,
+      },
+      note:
+        '严格滚动口径：每一期只用该期之前的数据重新评估并选择 98/99 策略，再生成 7 个杀码。',
+      generatedAt: new Date().toISOString(),
+      cache: 'miss',
+    };
+
+    this.strictCache = { key: cacheKey, value };
+    await writeFile(this.strictCachePath, JSON.stringify(this.strictCache), 'utf8').catch(() => {
+      // 写缓存失败不影响接口结果。
+    });
+    return value;
+  }
+
   private buildComboContext(rawRows: any[]) {
     const exp98 = this.experimental98Service.buildComboReportFromRows(rawRows);
     const exp99 = this.experimental99Service.buildComboReportFromRows(rawRows);
@@ -91,13 +256,14 @@ export class KillComboSevenService {
   }
 
   private buildSupplementPlanBacktests(history: DrawRow[], context: any) {
-    const plans: SupplementPlanKey[] = ['short', 'long', 'observe'];
+    const plans: SupplementPlanKey[] = ['short', 'long', 'observe', 'consensus'];
     const counts = [10, 20, 50, 100];
     const result: Record<string, any> = {};
     const rowsByPlan: Record<SupplementPlanKey, any[]> = {
       short: [],
       long: [],
       observe: [],
+      consensus: [],
     };
     const start = Math.max(140, history.length - 100);
 
@@ -267,11 +433,23 @@ export class KillComboSevenService {
   private buildFailureGuard(rows: Array<{ success: boolean; year?: number; No?: number }>) {
     const recentRows = rows.slice(-4);
     const failureCount = recentRows.filter((row) => !row.success).length;
-    const shouldSwitchExperiment = failureCount >= 2;
+    const recent10 = rows.slice(-10);
+    const recent10FailureCount = recent10.filter((row) => !row.success).length;
+    let consecutiveFailures = 0;
+    for (let index = rows.length - 1; index >= 0 && !rows[index].success; index--) {
+      consecutiveFailures++;
+    }
+    const isWarning = consecutiveFailures >= 2;
+    const shouldSwitchExperiment =
+      consecutiveFailures >= 3 ||
+      (recent10.length >= 10 && recent10FailureCount >= 4);
 
     return {
       window: recentRows.length,
       failureCount,
+      recent10FailureCount,
+      consecutiveFailures,
+      isWarning,
       shouldSwitchExperiment,
       periods: recentRows.map((row) => ({
         year: row.year,
@@ -279,8 +457,10 @@ export class KillComboSevenService {
         success: row.success,
       })),
       message: shouldSwitchExperiment
-        ? `近${recentRows.length}期已错${failureCount}期，补位实验可能进入失效段，建议换新实验。`
-        : `近${recentRows.length}期错${failureCount}期，补位实验暂时可继续观察。`,
+        ? `已连续错${consecutiveFailures}期或近10错${recent10FailureCount}期，达到切换条件，建议重新评估方案。`
+        : isWarning
+          ? `当前连续错${consecutiveFailures}期，仅作预警；未达到连续错3期或近10错4期的切换条件。`
+          : `近10错${recent10FailureCount}期，方案暂时可继续观察。`,
     };
   }
 
@@ -537,11 +717,26 @@ export class KillComboSevenService {
       observeBase,
       history,
     );
+    const longValues = new Set(longPlan.optimizedSeven.map((item) => item.number));
+    const sharedSupplements = observePlan.supplements.filter((item) => longValues.has(item.number));
+    const consensusBase = this.uniqueCandidates([
+      ...sharedSupplements,
+      ...observePlan.supplements,
+      ...longPlan.supplements,
+    ]);
+    const consensusPlan = this.buildPlan(
+      'consensus',
+      '长线 + 观察共识',
+      '以长线保护和观察实验的共同号码优先，再按观察、长线顺序补满 7 个。',
+      coreNumbers,
+      consensusBase,
+      history,
+    );
 
     return {
       coreNumbers,
-      optimizedSeven: shortPlan.optimizedSeven,
-      supplementPlans: [shortPlan, longPlan, observePlan],
+      optimizedSeven: consensusPlan.optimizedSeven,
+      supplementPlans: [consensusPlan, longPlan, observePlan, shortPlan],
     };
   }
 
@@ -553,13 +748,20 @@ export class KillComboSevenService {
     supplements: ComboCandidate[],
     history: DrawRow[],
   ) {
-    const excluded = [...coreNumbers, ...supplements].map((item) => item.number);
+    const coreValues = new Set(coreNumbers.map((item) => item.number));
+    const uniqueSupplements = this.uniqueCandidates(supplements).filter(
+      (item) => !coreValues.has(item.number),
+    );
+    const excluded = [...coreNumbers, ...uniqueSupplements].map((item) => item.number);
     const fillers = this.buildMidTailCooldownSupplements(
       history,
       excluded,
-      Math.max(0, 7 - coreNumbers.length - supplements.length),
+      Math.max(0, 7 - coreNumbers.length - uniqueSupplements.length),
     );
-    const finalSupplements = this.uniqueCandidates([...supplements, ...fillers]).slice(0, Math.max(0, 7 - coreNumbers.length));
+    const finalSupplements = this.uniqueCandidates([...uniqueSupplements, ...fillers]).slice(
+      0,
+      Math.max(0, 7 - coreNumbers.length),
+    );
     const optimizedSeven = this.uniqueCandidates([...coreNumbers, ...finalSupplements]).slice(0, 7);
 
     return {
@@ -694,6 +896,21 @@ export class KillComboSevenService {
           (a.No || 0) - (b.No || 0) ||
           (a.id || 0) - (b.id || 0),
       );
+  }
+
+  private toRawRows(history: DrawRow[]) {
+    return history.map((row) => ({
+      id: row.id,
+      year: row.year,
+      No: row.No,
+      n1: row.numbers[0],
+      n2: row.numbers[1],
+      n3: row.numbers[2],
+      n4: row.numbers[3],
+      n5: row.numbers[4],
+      n6: row.numbers[5],
+      n7: row.numbers[6],
+    }));
   }
 
   private freqAt(history: DrawRow[], n: number, window: number) {

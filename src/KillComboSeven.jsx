@@ -123,7 +123,11 @@ function BacktestTable({ rows = [] }) {
   );
 }
 
-export default function KillComboSeven() {
+export default function KillComboSeven({
+  endpoint = '/api/kill/combo-seven?count=10',
+  title = '四页组合 7 杀',
+  subtitle = '合并四页核心，再分短线、长线保护、观察实验三组补位；按数据库 history 做滚动回测。',
+}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -134,7 +138,7 @@ export default function KillComboSeven() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch('/api/kill/combo-seven?count=10', {
+        const res = await fetch(endpoint, {
           cache: 'no-store',
           signal: controller.signal,
         });
@@ -149,7 +153,7 @@ export default function KillComboSeven() {
     }
     load();
     return () => controller.abort();
-  }, []);
+  }, [endpoint]);
 
   const current = data?.currentRecommendation;
   const latest = data?.historyMeta?.latest;
@@ -231,8 +235,8 @@ export default function KillComboSeven() {
       <div className="kc7-shell">
         <header className="kc7-head">
           <div>
-            <h1 className="kc7-title">四页组合 7 杀</h1>
-            <p className="kc7-subtitle">合并四页核心，再分短线、长线保护、观察实验三组补位；按数据库 history 做滚动回测。</p>
+            <h1 className="kc7-title">{title}</h1>
+            <p className="kc7-subtitle">{subtitle}</p>
           </div>
         </header>
 
@@ -246,15 +250,15 @@ export default function KillComboSeven() {
           <>
             <div className="kc7-hero">
               <section className="kc7-panel kc7-current">
-                <div className="kc7-label">当前核心 + 补位 7 杀</div>
+                <div className="kc7-label">当前长线 + 观察共识 7 杀</div>
                 <div className="kc7-big-strip">
                   {(current?.optimizedSeven || []).map((item) => <Ball key={item.number} value={item.number} />)}
                 </div>
                 <p className="kc7-reason">
-                  最新 {latest ? `${latest.year}-${String(latest.No).padStart(3, '0')}` : '--'}，四页核心保持为底座，补位采用近10有热度、近5降温、尾数压力仍在的实验方向。
+                  最新 {latest ? `${latest.year}-${String(latest.No).padStart(3, '0')}` : '--'}，四页核心保持为底座，补位优先采用长线保护与观察实验的共识号码。
                 </p>
                 {guard && (
-                  <div className={`kc7-guard ${guard.shouldSwitchExperiment ? 'is-warn' : ''}`}>
+                  <div className={`kc7-guard ${guard.isWarning || guard.shouldSwitchExperiment ? 'is-warn' : ''}`}>
                     {guard.message}
                   </div>
                 )}

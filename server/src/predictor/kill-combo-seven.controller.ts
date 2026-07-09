@@ -10,4 +10,10 @@ export class KillComboSevenController {
   getComboSeven(@Query('count') count?: string): Promise<any> {
     return this.killComboSevenService.getComboSeven(count ? parseInt(count, 10) : 10);
   }
+
+  /** GET /api/kill/combo-seven/strict — 每一期都重新选择 98/99 策略的严格滚动回测 */
+  @Get('strict')
+  getComboSevenStrict(): Promise<any> {
+    return this.killComboSevenService.getComboSevenStrict();
+  }
 }

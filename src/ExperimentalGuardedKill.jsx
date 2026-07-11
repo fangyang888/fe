@@ -101,13 +101,23 @@ export default function ExperimentalGuardedKill() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch('/api/kill/experimental-guarded', {
-          cache: 'no-store',
-          signal: controller.signal,
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.message || `接口返回 ${res.status}`);
-        setData(json);
+        const requestOptions = { cache: 'no-store', signal: controller.signal };
+        const [guardedRes, overlapRes] = await Promise.all([
+          fetch('/api/kill/experimental-guarded', requestOptions),
+          fetch('/api/kill/experimental-99', requestOptions),
+        ]);
+        const [guardedJson, overlapJson] = await Promise.all([
+          guardedRes.json(),
+          overlapRes.json(),
+        ]);
+        if (!guardedRes.ok) {
+          throw new Error(guardedJson.message || `候选换位接口返回 ${guardedRes.status}`);
+        }
+        if (!overlapRes.ok) {
+          throw new Error(overlapJson.message || `双号重叠接口返回 ${overlapRes.status}`);
+        }
+        const pairAfter = overlapJson?.strategies?.find((item) => item.key === 'pairAfter');
+        setData({ ...guardedJson, pairAfter });
       } catch (err) {
         if (err.name !== 'AbortError') setError(err.message || '加载失败');
       } finally {
@@ -120,7 +130,14 @@ export default function ExperimentalGuardedKill() {
 
   const current = data?.currentRecommendation;
   const prediction = current?.prediction;
-  const experiments = data?.experiments?.length ? data.experiments : current ? [current] : [];
+  const guardedExperiments = data?.experiments?.length ? data.experiments : current ? [current] : [];
+  const pairAfter = data?.pairAfter
+    ? {
+        ...data.pairAfter,
+        description: '独立对照实验：根据历史相似的双号重叠样本，选择后续出现风险最低的单杀码。',
+      }
+    : null;
+  const experiments = pairAfter ? [...guardedExperiments, pairAfter] : guardedExperiments;
   const latest = data?.historyMeta?.latest;
   const targetMet = data?.status === 'target-met';
 

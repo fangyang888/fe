@@ -85,6 +85,7 @@ export class ExperimentalKill99Service {
             },
             backtest20: this.relabelBacktest(best.backtest20, best.name),
             backtest50: this.relabelBacktest(best.backtest50, best.name),
+            backtest100: this.relabelBacktest(best.backtest100, best.name),
             sourceStrategy: best.key,
           }
         : null,
@@ -155,6 +156,7 @@ export class ExperimentalKill99Service {
       prediction: strategy.pick(history, history.length),
       backtest20: this.buildBacktest(history, 20, strategy),
       backtest50: this.buildBacktest(history, 50, strategy),
+      backtest100: this.buildBacktest(history, 100, strategy),
     };
   }
 

@@ -57,6 +57,8 @@ import ExperimentalGuardedKill from './ExperimentalGuardedKill.jsx';
 // @ts-ignore
 import GapScoreKill from './GapScoreKill.jsx';
 // @ts-ignore
+import DynamicSevenKill from './DynamicSevenKill.jsx';
+// @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
 
 const routes = [
@@ -102,15 +104,21 @@ const routes = [
     section: '杀码',
     element: <GapScoreKill />,
   },
+  {
+    path: '/kill/dynamic-seven',
+    label: '动态学习7杀',
+    section: '杀码',
+    element: <DynamicSevenKill />,
+  },
   // { path: '/kill/p_one', label: '前五期选一杀', section: '杀码', element: <POneKill /> },
   { path: '/kill/combo', label: '6杀组合回测', section: '杀码', element: <KillComboBacktest /> },
   { path: '/kill/combo-seven', label: '四页组合7杀', section: '杀码', element: <KillComboSeven /> },
-  {
-    path: '/kill/combo-seven-strict',
-    label: '严格滚动7杀',
-    section: '杀码',
-    element: <KillComboSevenStrict />,
-  },
+  // {
+  //   path: '/kill/combo-seven-strict',
+  //   label: '严格滚动7杀',
+  //   section: '杀码',
+  //   element: <KillComboSevenStrict />,
+  // },
   {
     path: '/special-tail',
     label: '特别号尾数预测',

@@ -67,6 +67,7 @@ export default function FixedHybridKillPredictor() {
 
   const predictions = data?.predictions || [];
   const backtest = data?.backtest || {};
+  const bestByWindow = data?.positionBacktests?.bestByWindow || [];
   const latest = data?.historyMeta?.latest;
 
   return (
@@ -124,6 +125,39 @@ export default function FixedHybridKillPredictor() {
           <div>
             <span className="fixed-label">当前输出来源</span>
             <strong>{sourceCounts.history} 历史 + {sourceCounts.probability} 概率</strong>
+          </div>
+        </section>
+
+        <section className="fixed-section fixed-top-three-backtest">
+          <div className="fixed-section-head">
+            <div>
+              <h2>近20 / 50 / 100期最佳位次</h2>
+              <p className="fixed-section-copy">分别比较h47全部10个输出位次，展示每个回测窗口成功率最高的当前位置。</p>
+            </div>
+            <span>10个位次滚动比较</span>
+          </div>
+          <div className="fixed-top-three-grid">
+            {bestByWindow.map(({ window, result }) => {
+              const item = result?.[`backtest${window}`];
+              return (
+              <article className="fixed-position-card" key={window}>
+                <div className="fixed-position-head">
+                  <span>近{window}期最佳</span>
+                  <strong>{result?.current?.n ?? '--'}</strong>
+                </div>
+                <div className="fixed-best-position-result">
+                  <div>
+                    <strong>第{result?.position ?? '--'}位</strong>
+                    <span>当前输出位置</span>
+                  </div>
+                  <div>
+                    <strong>{formatPercent((item?.successRate || 0) * 100)}</strong>
+                    <span>{item?.successCount ?? 0}/{item?.count ?? 0} 成功</span>
+                  </div>
+                </div>
+              </article>
+              );
+            })}
           </div>
         </section>
 
@@ -255,6 +289,16 @@ const pageStyles = `
     font-size: 1.55rem;
     margin-bottom: 6px;
   }
+  .fixed-top-three-backtest { margin-bottom: 28px; }
+  .fixed-section-copy { margin: 6px 0 0; color: #91a3b3; font-size: 0.82rem; line-height: 1.55; }
+  .fixed-top-three-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .fixed-position-card { border: 1px solid rgba(94, 234, 212, 0.22); background: #151c1c; padding: 14px; }
+  .fixed-position-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #99f6e4; font-size: 0.82rem; font-weight: 900; }
+  .fixed-position-head strong { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #ccfbf1; color: #134e4a; font-size: 1.15rem; }
+  .fixed-best-position-result { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: rgba(148, 163, 184, 0.18); }
+  .fixed-best-position-result div { padding: 12px 9px; background: #111817; }
+  .fixed-best-position-result strong { display: block; font-size: 1.1rem; margin-bottom: 4px; }
+  .fixed-best-position-result span { color: #91a3b3; font-size: 0.72rem; }
   .fixed-stats span, .fixed-label {
     color: #91a3b3;
     font-size: 0.82rem;
@@ -411,7 +455,7 @@ const pageStyles = `
       justify-content: flex-start;
       margin-top: 18px;
     }
-    .fixed-stats, .fixed-strategy {
+    .fixed-stats, .fixed-strategy, .fixed-top-three-grid {
       grid-template-columns: 1fr;
     }
     .fixed-section-head {

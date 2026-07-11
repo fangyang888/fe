@@ -77,6 +77,22 @@ export class FixedHybridKillService {
     ]);
     const predictions = this.getProbability47PredictionsForMatrix(hist);
     const backtest = this.backtestHybridKill10(hist, 4, 7, 'probability', false);
+    const allPositionRows = this.backtestHybridPositions(hist, 10, 100);
+    const allPositions = allPositionRows.map((rows, index) => ({
+      position: index + 1,
+      current: predictions[index] || null,
+      backtest20: this.summarizePositionRows(rows.slice(-20)),
+      backtest50: this.summarizePositionRows(rows.slice(-50)),
+      backtest100: this.summarizePositionRows(rows.slice(-100)),
+    }));
+    const bestPosition = (key: 'backtest20' | 'backtest50' | 'backtest100') =>
+      allPositions
+        .slice()
+        .sort((a, b) =>
+          b[key].successRate - a[key].successRate ||
+          b[key].successCount - a[key].successCount ||
+          a.position - b.position,
+        )[0];
     const last = rawHist[rawHist.length - 1];
     const response = {
       strategy: {
@@ -90,6 +106,14 @@ export class FixedHybridKillService {
       },
       predictions,
       backtest,
+      positionBacktests: {
+        allPositions,
+        bestByWindow: [
+          { window: 20, result: bestPosition('backtest20') },
+          { window: 50, result: bestPosition('backtest50') },
+          { window: 100, result: bestPosition('backtest100') },
+        ],
+      },
       historyMeta: {
         source: 'database:history',
         count: rawHist.length,
@@ -687,6 +711,35 @@ export class FixedHybridKillService {
       this.addVariantResult(tracker, this.scoreKillPrediction(predictions, new Set(hist[i])), hist[i], hist.length - i, i >= hist.length - displayPeriods);
     }
     return this.summarizeVariantTracker(`hybrid-history-${window}-${historyCount}-${baseModel}${useRecentRiskGuard ? '-guarded' : ''}`, tracker, hist.length - start, 10);
+  }
+
+  private backtestHybridPositions(hist: number[][], positionCount: number, count: number) {
+    const rowsByPosition = Array.from({ length: positionCount }, () => [] as any[]);
+    const start = Math.max(40, hist.length - count);
+    for (let i = start; i < hist.length; i++) {
+      const predictions = this.getProbability47PredictionsForMatrix(hist.slice(0, i));
+      for (let positionIndex = 0; positionIndex < positionCount; positionIndex++) {
+        const prediction = predictions[positionIndex];
+        if (!prediction) continue;
+        rowsByPosition[positionIndex].push({
+          periodOffset: hist.length - i,
+          predictedNumber: prediction.n,
+          success: !hist[i].includes(prediction.n),
+        });
+      }
+    }
+    return rowsByPosition;
+  }
+
+  private summarizePositionRows(rows: Array<{ periodOffset: number; predictedNumber: number; success: boolean }>) {
+    const successCount = rows.filter((row) => row.success).length;
+    return {
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      failureRows: rows.filter((row) => !row.success).slice().reverse(),
+    };
   }
 
   private getFailurePatternProtection(hist: number[][]): Set<number> {

@@ -15,6 +15,8 @@ import KillPredictor from './KillPredictor.jsx';
 // @ts-ignore
 import NewKillPredictor from './NewKillPredictor.jsx';
 // @ts-ignore
+import Markov2PositionSixStats from './Markov2PositionSixStats.jsx';
+// @ts-ignore
 import HotPickPredictor from './HotPickPredictor.jsx';
 // @ts-ignore
 import HotPickPredictorOpt from './HotPickPredictorOpt.jsx';
@@ -65,6 +67,12 @@ const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
   { path: '/kill', label: '基础杀码', section: '杀码', element: <KillPredictor /> },
   { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
+  {
+    path: '/kill/markov2-position-six',
+    label: '二阶马尔可夫第6位',
+    section: '杀码',
+    element: <Markov2PositionSixStats />,
+  },
   {
     path: '/kill/h47',
     label: 'Hybrid 4-7 固定策略',

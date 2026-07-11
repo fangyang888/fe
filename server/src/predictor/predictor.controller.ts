@@ -10,6 +10,11 @@ export class PredictorController {
     return this.predictorService.getKillPredictions();
   }
 
+  @Get('markov2-position-six')
+  async getMarkov2PositionSixStats() {
+    return this.predictorService.getMarkov2PositionSixStats();
+  }
+
   @Post('kill/cache/clear')
   async clearKillCache() {
     return this.predictorService.clearKillCache();

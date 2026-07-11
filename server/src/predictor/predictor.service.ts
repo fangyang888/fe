@@ -433,6 +433,125 @@ export class PredictorService implements OnModuleDestroy {
     return response;
   }
 
+  async getMarkov2PositionSixStats() {
+    const rawHist = await this.historyService.findAll();
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+
+    const getPositionSix = (rows: number[][]) => {
+      const probabilities = this.getMarkov2PredictionsMemo(rows);
+      return Array.from({ length: 49 }, (_, index) => ({
+        n: index + 1,
+        appearProbability:
+          probabilities[index + 1] || this.randomAppearProb,
+      }))
+        .sort(
+          (a, b) =>
+            a.appearProbability - b.appearProbability || a.n - b.n,
+        )[5];
+    };
+
+    const getProbabilityPositionSeven = (rows: number[][]) => {
+      const candidate = this.getAppearProbabilityScores(rows)[6];
+      return {
+        n: candidate.n,
+        appearProbability: candidate.appearProb,
+      };
+    };
+
+    type PositionResult = {
+      year?: number;
+      No: number;
+      predicted: number;
+      success: boolean;
+      actual: number[];
+    };
+
+    const summarizeWindows = (results: PositionResult[]) =>
+      [20, 50, 100].map((periods) => {
+        const sample = results.slice(-periods);
+        const successCount = sample.filter((item) => item.success).length;
+        return {
+          periods,
+          samples: sample.length,
+          successCount,
+          failureCount: sample.length - successCount,
+          rate:
+            sample.length > 0
+              ? Math.round((successCount / sample.length) * 1000) / 10
+              : 0,
+        };
+      });
+
+    const start = Math.max(2, hist.length - 100);
+    const results: PositionResult[] = [];
+    const probabilityResults: PositionResult[] = [];
+    for (let index = start; index < hist.length; index++) {
+      const prediction = getPositionSix(hist.slice(0, index));
+      const probabilityPrediction = getProbabilityPositionSeven(
+        hist.slice(0, index),
+      );
+      const success = !hist[index].includes(prediction.n);
+      const source = rawHist[index];
+      results.push({
+        year: source.year,
+        No: source.No,
+        predicted: prediction.n,
+        success,
+        actual: hist[index],
+      });
+      probabilityResults.push({
+        year: source.year,
+        No: source.No,
+        predicted: probabilityPrediction.n,
+        success: !hist[index].includes(probabilityPrediction.n),
+        actual: hist[index],
+      });
+    }
+
+    const windows = summarizeWindows(results);
+
+    const current = getPositionSix(hist);
+    const currentProbability = getProbabilityPositionSeven(hist);
+    return {
+      model: 'markov2',
+      modelLabel: '二阶马尔可夫',
+      position: 6,
+      prediction: {
+        n: current.n,
+        appearProbability:
+          Math.round(current.appearProbability * 1000) / 10,
+        killProbability:
+          Math.round((1 - current.appearProbability) * 1000) / 10,
+      },
+      windows,
+      recentResults: results.slice(-20).reverse(),
+      probabilityPositionSeven: {
+        model: 'probability',
+        modelLabel: '出现概率',
+        position: 7,
+        prediction: {
+          n: currentProbability.n,
+          appearProbability:
+            Math.round(currentProbability.appearProbability * 1000) / 10,
+          killProbability:
+            Math.round((1 - currentProbability.appearProbability) * 1000) / 10,
+        },
+        windows: summarizeWindows(probabilityResults),
+        recentResults: probabilityResults.slice(-20).reverse(),
+      },
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   async clearKillCache() {
     const rawHist = await this.historyService.findAll();
     const responseCacheKey = this.getKillResponseCacheKey(rawHist);

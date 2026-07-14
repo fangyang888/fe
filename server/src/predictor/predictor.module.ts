@@ -35,6 +35,10 @@ import { KillComboSevenController } from './kill-combo-seven.controller';
 import { KillComboSevenService } from './kill-combo-seven.service';
 import { DynamicSevenKillController } from './dynamic-seven-kill.controller';
 import { DynamicSevenKillService } from './dynamic-seven-kill.service';
+import { StateRiskKillController } from './state-risk-kill.controller';
+import { StateRiskKillService } from './state-risk-kill.service';
+import { TenAnchorShiftKillController } from './ten-anchor-shift-kill.controller';
+import { TenAnchorShiftKillService } from './ten-anchor-shift-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -56,6 +60,8 @@ import { DynamicSevenKillService } from './dynamic-seven-kill.service';
     GapScoreKillController,
     KillComboSevenController,
     DynamicSevenKillController,
+    StateRiskKillController,
+    TenAnchorShiftKillController,
   ],
   providers: [
     PredictorService,
@@ -75,6 +81,8 @@ import { DynamicSevenKillService } from './dynamic-seven-kill.service';
     GapScoreKillService,
     KillComboSevenService,
     DynamicSevenKillService,
+    StateRiskKillService,
+    TenAnchorShiftKillService,
   ],
 })
 export class PredictorModule {}

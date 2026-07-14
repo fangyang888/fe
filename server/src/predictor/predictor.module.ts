@@ -39,6 +39,8 @@ import { StateRiskKillController } from './state-risk-kill.controller';
 import { StateRiskKillService } from './state-risk-kill.service';
 import { TenAnchorShiftKillController } from './ten-anchor-shift-kill.controller';
 import { TenAnchorShiftKillService } from './ten-anchor-shift-kill.service';
+import { PreviousSevenQuadKillController } from './previous-seven-quad-kill.controller';
+import { PreviousSevenQuadKillService } from './previous-seven-quad-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -62,6 +64,7 @@ import { TenAnchorShiftKillService } from './ten-anchor-shift-kill.service';
     DynamicSevenKillController,
     StateRiskKillController,
     TenAnchorShiftKillController,
+    PreviousSevenQuadKillController,
   ],
   providers: [
     PredictorService,
@@ -83,6 +86,7 @@ import { TenAnchorShiftKillService } from './ten-anchor-shift-kill.service';
     DynamicSevenKillService,
     StateRiskKillService,
     TenAnchorShiftKillService,
+    PreviousSevenQuadKillService,
   ],
 })
 export class PredictorModule {}

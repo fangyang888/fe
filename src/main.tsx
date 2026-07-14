@@ -63,6 +63,8 @@ import StateRiskKill from './StateRiskKill.jsx';
 // @ts-ignore
 import TenAnchorShiftKill from './TenAnchorShiftKill.jsx';
 // @ts-ignore
+import PreviousSevenQuadKill from './PreviousSevenQuadKill.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -86,11 +88,11 @@ const routes = [
   // { path: '/kill/math3', label: '数学 3 杀', section: '杀码', element: <MathKillPredictor /> },
   // { path: '/kill/seven', label: '七码统计', section: '杀码', element: <KillSevenStats /> },
   // { path: '/kill/hk', label: '香港杀码', section: '杀码', element: <KillPredictorHK /> },
-  { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
+  // { path: '/kill/two', label: '二杀码', section: '杀码', element: <KillTwoPredictor /> },
   { path: '/kill/five-period', label: '五期杀码', section: '杀码', element: <FivePeriodKill /> },
   // { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   // { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
-  { path: '/kill/tail-ten', label: '尾数十位单杀', section: '杀码', element: <TailTenKill /> },
+  // { path: '/kill/tail-ten', label: '尾数十位单杀', section: '杀码', element: <TailTenKill /> },
   { path: '/kill/multi-dim', label: '多维单杀择优', section: '杀码', element: <MultiDimKill /> },
   {
     path: '/kill/experimental-98',
@@ -127,6 +129,12 @@ const routes = [
     label: '十期锚点位移',
     section: '杀码',
     element: <TenAnchorShiftKill />,
+  },
+  {
+    path: '/kill/previous-seven-quad',
+    label: '上一期七码四倍映射',
+    section: '杀码',
+    element: <PreviousSevenQuadKill />,
   },
   // {
   //   path: '/kill/dynamic-seven',

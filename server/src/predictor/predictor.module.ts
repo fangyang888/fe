@@ -41,6 +41,12 @@ import { TenAnchorShiftKillController } from './ten-anchor-shift-kill.controller
 import { TenAnchorShiftKillService } from './ten-anchor-shift-kill.service';
 import { PreviousSevenQuadKillController } from './previous-seven-quad-kill.controller';
 import { PreviousSevenQuadKillService } from './previous-seven-quad-kill.service';
+import { QuadraticAnchor53KillController } from './quadratic-anchor-53-kill.controller';
+import { QuadraticAnchor53KillService } from './quadratic-anchor-53-kill.service';
+import { AnchorPhase14KillController } from './anchor-phase-14-kill.controller';
+import { AnchorPhase14KillService } from './anchor-phase-14-kill.service';
+import { TailGatedDualKillController } from './tail-gated-dual-kill.controller';
+import { TailGatedDualKillService } from './tail-gated-dual-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -65,6 +71,9 @@ import { PreviousSevenQuadKillService } from './previous-seven-quad-kill.service
     StateRiskKillController,
     TenAnchorShiftKillController,
     PreviousSevenQuadKillController,
+    QuadraticAnchor53KillController,
+    AnchorPhase14KillController,
+    TailGatedDualKillController,
   ],
   providers: [
     PredictorService,
@@ -87,6 +96,9 @@ import { PreviousSevenQuadKillService } from './previous-seven-quad-kill.service
     StateRiskKillService,
     TenAnchorShiftKillService,
     PreviousSevenQuadKillService,
+    QuadraticAnchor53KillService,
+    AnchorPhase14KillService,
+    TailGatedDualKillService,
   ],
 })
 export class PredictorModule {}

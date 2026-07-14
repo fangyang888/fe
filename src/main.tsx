@@ -65,6 +65,12 @@ import TenAnchorShiftKill from './TenAnchorShiftKill.jsx';
 // @ts-ignore
 import PreviousSevenQuadKill from './PreviousSevenQuadKill.jsx';
 // @ts-ignore
+import QuadraticAnchor53Kill from './QuadraticAnchor53Kill.jsx';
+// @ts-ignore
+import AnchorPhase14Kill from './AnchorPhase14Kill.jsx';
+// @ts-ignore
+import TailGatedDualKill from './TailGatedDualKill.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -135,6 +141,24 @@ const routes = [
     label: '上一期七码四倍映射',
     section: '杀码',
     element: <PreviousSevenQuadKill />,
+  },
+  {
+    path: '/kill/quadratic-anchor-53',
+    label: '53期二次锚点',
+    section: '杀码',
+    element: <QuadraticAnchor53Kill />,
+  },
+  {
+    path: '/kill/anchor-phase-14',
+    label: '14期锚点＋期号相位',
+    section: '杀码',
+    element: <AnchorPhase14Kill />,
+  },
+  {
+    path: '/kill/tail-gated-dual',
+    label: '期号尾门控双公式',
+    section: '杀码',
+    element: <TailGatedDualKill />,
   },
   // {
   //   path: '/kill/dynamic-seven',

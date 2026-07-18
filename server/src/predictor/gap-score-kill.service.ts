@@ -90,6 +90,23 @@ export class GapScoreKillService {
     };
   }
 
+  buildWalkForwardTimelineFromRows(rawRows: any[]) {
+    const history = this.normalizeRows(rawRows);
+    const rows = [];
+    for (let t = 120; t < history.length; t++) {
+      const prediction = this.pick(history, t);
+      rows.push({
+        year: history[t].year,
+        No: history[t].No,
+        number: prediction.number,
+      });
+    }
+    return {
+      rows,
+      next: history.length >= 120 ? this.pick(history, history.length).number : null,
+    };
+  }
+
   private pick(history: DrawRow[], t: number) {
     const ranking = this.rankBase(history, t);
     const first = ranking[0];

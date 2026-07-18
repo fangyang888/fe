@@ -51,8 +51,12 @@ export default function FivePeriodKill() {
     return `${year}${period}`;
   }, [data]);
 
-  const prediction = data?.prediction;
-  const isPerfect = data?.status === 'historical-100';
+  const legacyPrediction = data?.prediction;
+  const prediction = data?.bayesianPrediction || legacyPrediction;
+  const bayesianBacktests = data?.bayesianBacktests || {};
+  const bayesianFrozenBacktests = data?.bayesianFrozenBacktests || bayesianBacktests;
+  const bayesianValidation = data?.bayesianValidation;
+  const isPerfect = bayesianBacktests.backtest20?.isPerfect;
   const strictPrediction = data?.strictPrediction;
   const strictBacktest20 = data?.strictBacktest20;
   const strictBacktest50 = data?.strictBacktest50;
@@ -437,10 +441,10 @@ export default function FivePeriodKill() {
               value={minSamples}
               onChange={(e) => setMinSamples(Number(e.target.value))}
             >
-              <option value={5}>至少 5 个匹配样本</option>
-              <option value={8}>至少 8 个匹配样本</option>
-              <option value={12}>至少 12 个匹配样本</option>
-              <option value={20}>至少 20 个匹配样本</option>
+              <option value={5}>原策略至少 5 个匹配样本</option>
+              <option value={8}>原策略至少 8 个匹配样本</option>
+              <option value={12}>原策略至少 12 个匹配样本</option>
+              <option value={20}>原策略至少 20 个匹配样本</option>
             </select>
           </div>
         </div>
@@ -458,15 +462,16 @@ export default function FivePeriodKill() {
               <section className="five-panel five-main">
                 <div className="five-number">{prediction.display}</div>
                 <div>
-                  <div className="five-eyebrow">前 5 期同类特征避开号</div>
+                  <div className="five-eyebrow">贝叶斯稳健五期推荐</div>
                   <h1 className="five-title">下期优先排除 {prediction.display}</h1>
                   <p className="five-subtitle">
-                    按最近 5 期的出现次数、遗漏、尾数压力、分区压力与邻号压力匹配历史样本，选择当前回测最稳的一个号码。
+                    使用最近5期出现次数、连续遗漏、尾数压力和上期状态，以固定先验强度80进行贝叶斯平滑，降低“小样本零失败”带来的过拟合。
                   </p>
                   <div className="five-status-row">
                     <span className={`five-pill ${isPerfect ? 'good' : ''}`}>{prediction.confidenceLabel}</span>
                     <span className="five-pill">匹配 {prediction.matchedSamples} 样本</span>
                     <span className="five-pill">失败 {prediction.failureCount} 次</span>
+                    {legacyPrediction && <span className="five-pill">原策略对照 {legacyPrediction.display}</span>}
                     <span className="five-pill">最新 {latestTitle}</span>
                   </div>
                 </div>
@@ -490,6 +495,44 @@ export default function FivePeriodKill() {
                 </div>
               </aside>
             </div>
+
+            {bayesianBacktests.backtest20 && (
+              <section className="five-panel five-section" style={{ marginTop: 18 }}>
+                <div className="five-backtest-head">
+                  <h2 style={{ margin: 0 }}>贝叶斯策略滚动回测</h2>
+                  <span className="five-pill good">181期起样本外 {bayesianValidation?.successCount || 0}/{bayesianValidation?.count || 0}</span>
+                </div>
+                <div className="five-stats" style={{ marginTop: 16 }}>
+                  {[
+                    ['截至180 · 近20期', bayesianFrozenBacktests.backtest20],
+                    ['截至180 · 近50期', bayesianFrozenBacktests.backtest50],
+                    ['截至180 · 近100期', bayesianFrozenBacktests.backtest100],
+                    ['截至180 · 近200期', bayesianFrozenBacktests.backtest200],
+                    ['截至180 · 近500期', bayesianFrozenBacktests.backtest500],
+                    ['样本外验证', bayesianValidation],
+                  ].map(([label, item]) => (
+                    <div className="five-stat" key={label}>
+                      <span>{label}</span>
+                      <strong>{fmtPct(item?.successRate)} · {item?.successCount || 0}/{item?.count || 0}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="five-table-wrap" style={{ marginTop: 18 }}>
+                  <table className="five-table">
+                    <thead><tr><th>期数</th><th>预测排除</th><th>当期开奖号码</th><th>平滑避开率</th><th>结果</th></tr></thead>
+                    <tbody>{(bayesianBacktests.backtest20.rows || []).map((row, index) => (
+                      <tr key={`bayes-${row.year || ''}-${row.No || index}`}>
+                        <td>{row.No ? `第 ${row.No} 期` : '--'}</td>
+                        <td><span className={`five-predicted ${row.success ? '' : 'hit'}`}>{fmtNum(row.predictedNumber)}</span></td>
+                        <td><div className="five-balls">{row.actualNumbers.map((n) => <span className={`five-ball ${n === row.predictedNumber ? 'hit' : ''}`} key={`bayes-${row.No}-${n}`}>{fmtNum(n)}</span>)}</div></td>
+                        <td>{fmtPct(row.confidence)}</td>
+                        <td className={row.success ? 'five-result-ok' : 'five-result-bad'}>{row.success ? '成功避开' : '开出失败'}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             {strictPrediction && (
               <section className="five-panel five-strict-band">

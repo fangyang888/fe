@@ -51,6 +51,25 @@ export class StateRiskKillService {
     };
   }
 
+  buildWalkForwardTimelineFromRows(rawRows: any[]) {
+    const history = this.normalizeRows(rawRows);
+    if (history.length < 300) return { rows: [], next: null };
+    const matrix = history.map((row) => row.numbers);
+    const features = this.buildFeatures(matrix);
+    const rows = [];
+    for (let t = 300; t < history.length; t++) {
+      rows.push({
+        year: history[t].year,
+        No: history[t].No,
+        number: this.pick(matrix, features, t).number,
+      });
+    }
+    return {
+      rows,
+      next: this.pick(matrix, features, matrix.length).number,
+    };
+  }
+
   private pick(history: number[][], features: State[][], t: number) {
     const maps = {
       exact: new Map() as Counts, missFreq: new Map() as Counts, phase: new Map() as Counts,

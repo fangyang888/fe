@@ -77,6 +77,8 @@ import QuadraticAnchor17FirstKill from './QuadraticAnchor17FirstKill.jsx';
 // @ts-ignore
 import DualTimeAnchorKill from './DualTimeAnchorKill.jsx';
 // @ts-ignore
+import TieredKillCombo from './TieredKillCombo.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -177,6 +179,12 @@ const routes = [
     label: '双时间尺度锚点',
     section: '杀码',
     element: <DualTimeAnchorKill />,
+  },
+  {
+    path: '/kill/tiered-combo',
+    label: '分档组合杀码',
+    section: '杀码',
+    element: <TieredKillCombo />,
   },
   {
     path: '/kill/tail-gated-dual',

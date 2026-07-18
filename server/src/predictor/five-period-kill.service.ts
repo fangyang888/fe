@@ -29,6 +29,11 @@ interface CandidateScore {
   appearedInLatest: boolean;
 }
 
+interface BayesianCandidate extends CandidateScore {
+  estimatedHitRisk: number;
+  estimatedAvoidRate: number;
+}
+
 @Injectable()
 export class FivePeriodKillService implements OnModuleDestroy {
   constructor(
@@ -112,6 +117,22 @@ export class FivePeriodKillService implements OnModuleDestroy {
     const strictPrediction = this.pickStrictCandidate(history, lastFive);
     const strictBacktest20 = this.buildStrictBacktest(history, 20);
     const strictBacktest50 = this.buildStrictBacktest(history, 50);
+    const bayesian = this.buildBayesianTimeline(history);
+    const bayesianBacktest20 = this.summarizeBayesianRows(bayesian.rows.slice(-20));
+    const bayesianBacktest50 = this.summarizeBayesianRows(bayesian.rows.slice(-50));
+    const bayesianBacktest100 = this.summarizeBayesianRows(bayesian.rows.slice(-100));
+    const bayesianBacktest200 = this.summarizeBayesianRows(bayesian.rows.slice(-200));
+    const bayesianBacktest500 = this.summarizeBayesianRows(bayesian.rows.slice(-500));
+    const bayesianFrozenRows = bayesian.rows.filter(
+      (row) => Number(row.year) < 2026 ||
+        (Number(row.year) === 2026 && Number(row.No) <= 180),
+    );
+    const bayesianValidation = this.summarizeBayesianRows(
+      bayesian.rows.filter(
+        (row) => Number(row.year) > 2026 ||
+          (Number(row.year) === 2026 && Number(row.No) >= 181),
+      ),
+    );
 
     const response = {
       source,
@@ -135,6 +156,27 @@ export class FivePeriodKillService implements OnModuleDestroy {
         zonePressure: selected.zonePressure,
         nearPressure: selected.nearPressure,
         appearedInLatest: selected.appearedInLatest,
+      },
+      bayesianPrediction: bayesian.prediction,
+      bayesianBacktests: {
+        backtest20: bayesianBacktest20,
+        backtest50: bayesianBacktest50,
+        backtest100: bayesianBacktest100,
+        backtest200: bayesianBacktest200,
+        backtest500: bayesianBacktest500,
+      },
+      bayesianFrozenBacktests: {
+        backtest20: this.summarizeBayesianRows(bayesianFrozenRows.slice(-20)),
+        backtest50: this.summarizeBayesianRows(bayesianFrozenRows.slice(-50)),
+        backtest100: this.summarizeBayesianRows(bayesianFrozenRows.slice(-100)),
+        backtest200: this.summarizeBayesianRows(bayesianFrozenRows.slice(-200)),
+        backtest500: this.summarizeBayesianRows(bayesianFrozenRows.slice(-500)),
+        cutoff: { year: 2026, No: 180 },
+      },
+      bayesianValidation: {
+        ...bayesianValidation,
+        kind: 'out-of-sample',
+        start: { year: 2026, No: 181 },
       },
       historyMeta: {
         count: history.length,
@@ -161,7 +203,7 @@ export class FivePeriodKillService implements OnModuleDestroy {
       strictBacktest20,
       strictBacktest50,
       note:
-        '这里的 100% 指“当前历史库中相同前 5 期特征的滚动样本从未开出”，不是对随机开奖的绝对保证。',
+        '主推荐使用固定先验强度80的贝叶斯平滑五期策略；原始零失败匹配和严格策略保留作对照，不代表随机开奖的绝对保证。',
       generatedAt: new Date().toISOString(),
       cacheMeta: {
         hit: false,
@@ -219,7 +261,7 @@ export class FivePeriodKillService implements OnModuleDestroy {
   }
 
   private getResponseCacheKey(source: SourceType, rawRows: any[], minSamples: number) {
-    return `predictor:five-period-kill:v1:${source}:min${minSamples}:${this.getHistoryCacheKey(rawRows)}`;
+    return `predictor:five-period-kill:v3:${source}:min${minSamples}:${this.getHistoryCacheKey(rawRows)}`;
   }
 
   private async getRedisClient() {
@@ -525,5 +567,114 @@ export class FivePeriodKillService implements OnModuleDestroy {
         b.currentMissInFive - a.currentMissInFive ||
         a.n - b.n,
     );
+  }
+
+  private buildBayesianTimeline(history: DrawRow[]) {
+    const priorStrength = 80;
+    const priorHitRate = 1 / 7;
+    const minSamples = 8;
+    const counts = Array.from({ length: 50 }, () => new Map<string, [number, number]>());
+    const rows: any[] = [];
+    let prediction: any = null;
+
+    for (let t = 5; t <= history.length; t++) {
+      const window = history.slice(t - 5, t);
+      const candidates: BayesianCandidate[] = [];
+
+      for (let n = 1; n <= 49; n++) {
+        const feature = this.buildFeature(window, n, 2);
+        const [matchedSamples, failureCount] = counts[n].get(feature.key) || [0, 0];
+        const estimatedHitRisk =
+          (failureCount + priorStrength * priorHitRate) /
+          (matchedSamples + priorStrength);
+        candidates.push({
+          n,
+          matchedSamples,
+          failureCount,
+          successCount: matchedSamples - failureCount,
+          accuracy: matchedSamples > 0 ? (matchedSamples - failureCount) / matchedSamples : 0,
+          level: 2,
+          featureKey: feature.key,
+          recentAppearCount: feature.recentAppearCount,
+          currentMissInFive: feature.currentMissInFive,
+          tailPressure: feature.tailPressure,
+          zonePressure: feature.zonePressure,
+          nearPressure: feature.nearPressure,
+          appearedInLatest: feature.appearedInLatest,
+          estimatedHitRisk,
+          estimatedAvoidRate: 1 - estimatedHitRisk,
+        });
+      }
+
+      const eligible = candidates.filter((item) => item.matchedSamples >= minSamples);
+      const selected = (eligible.length ? eligible : candidates)
+        .sort(
+          (a, b) =>
+            a.estimatedHitRisk - b.estimatedHitRisk ||
+            b.matchedSamples - a.matchedSamples ||
+            b.currentMissInFive - a.currentMissInFive ||
+            a.n - b.n,
+        )[0];
+
+      prediction = {
+        number: selected.n,
+        display: String(selected.n).padStart(2, '0'),
+        confidence: selected.estimatedAvoidRate,
+        confidenceLabel: `贝叶斯平滑避开率 ${(selected.estimatedAvoidRate * 100).toFixed(1)}%`,
+        matchedSamples: selected.matchedSamples,
+        successCount: selected.successCount,
+        failureCount: selected.failureCount,
+        estimatedHitRisk: selected.estimatedHitRisk,
+        estimatedAvoidRate: selected.estimatedAvoidRate,
+        priorStrength,
+        featureLevel: selected.level,
+        featureKey: selected.featureKey,
+        recentAppearCount: selected.recentAppearCount,
+        currentMissInFive: selected.currentMissInFive,
+        tailPressure: selected.tailPressure,
+        appearedInLatest: selected.appearedInLatest,
+        strategyKey: 'bayesianFivePeriodL2P80',
+        strategyName: '贝叶斯稳健五期策略',
+      };
+
+      if (t === history.length) break;
+
+      const actual = history[t];
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        predictedNumber: selected.n,
+        predictedDisplay: String(selected.n).padStart(2, '0'),
+        confidence: selected.estimatedAvoidRate,
+        matchedSamples: selected.matchedSamples,
+        estimatedHitRisk: selected.estimatedHitRisk,
+        success: !actual.numbers.includes(selected.n),
+      });
+
+      for (const candidate of candidates) {
+        const current = counts[candidate.n].get(candidate.featureKey) || [0, 0];
+        counts[candidate.n].set(candidate.featureKey, [
+          current[0] + 1,
+          current[1] + (actual.numbers.includes(candidate.n) ? 1 : 0),
+        ]);
+      }
+    }
+
+    return { prediction, rows };
+  }
+
+  private summarizeBayesianRows(rows: any[]) {
+    const successCount = rows.filter((row) => row.success).length;
+    return {
+      kind: 'walk-forward',
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      isPerfect: rows.length > 0 && successCount === rows.length,
+      rows: rows.slice().reverse(),
+      failureRows: rows.filter((row) => !row.success).reverse(),
+    };
   }
 }

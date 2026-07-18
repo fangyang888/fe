@@ -71,6 +71,12 @@ import AnchorPhase14Kill from './AnchorPhase14Kill.jsx';
 // @ts-ignore
 import TailGatedDualKill from './TailGatedDualKill.jsx';
 // @ts-ignore
+import QuadraticAnchor49SevenKill from './QuadraticAnchor49SevenKill.jsx';
+// @ts-ignore
+import QuadraticAnchor17FirstKill from './QuadraticAnchor17FirstKill.jsx';
+// @ts-ignore
+import DualTimeAnchorKill from './DualTimeAnchorKill.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -100,24 +106,24 @@ const routes = [
   // { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
   // { path: '/kill/tail-ten', label: '尾数十位单杀', section: '杀码', element: <TailTenKill /> },
   { path: '/kill/multi-dim', label: '多维单杀择优', section: '杀码', element: <MultiDimKill /> },
-  {
-    path: '/kill/experimental-98',
-    label: '98实验单杀',
-    section: '杀码',
-    element: <ExperimentalKill98 />,
-  },
+  // {
+  //   path: '/kill/experimental-98',
+  //   label: '98实验单杀',
+  //   section: '杀码',
+  //   element: <ExperimentalKill98 />,
+  // },
   {
     path: '/kill/experimental-99',
     label: '99组合实验',
     section: '杀码',
     element: <ExperimentalKill99 />,
   },
-  {
-    path: '/kill/experimental-guarded',
-    label: '候选换位实验',
-    section: '杀码',
-    element: <ExperimentalGuardedKill />,
-  },
+  // {
+  //   path: '/kill/experimental-guarded',
+  //   label: '候选换位实验',
+  //   section: '杀码',
+  //   element: <ExperimentalGuardedKill />,
+  // },
   {
     path: '/kill/gap-score',
     label: 'Gap F20实验',
@@ -130,18 +136,18 @@ const routes = [
     section: '杀码',
     element: <StateRiskKill />,
   },
-  {
-    path: '/kill/ten-anchor-shift',
-    label: '十期锚点位移',
-    section: '杀码',
-    element: <TenAnchorShiftKill />,
-  },
-  {
-    path: '/kill/previous-seven-quad',
-    label: '上一期七码四倍映射',
-    section: '杀码',
-    element: <PreviousSevenQuadKill />,
-  },
+  // {
+  //   path: '/kill/ten-anchor-shift',
+  //   label: '十期锚点位移',
+  //   section: '杀码',
+  //   element: <TenAnchorShiftKill />,
+  // },
+  // {
+  //   path: '/kill/previous-seven-quad',
+  //   label: '上一期七码四倍映射',
+  //   section: '杀码',
+  //   element: <PreviousSevenQuadKill />,
+  // },
   {
     path: '/kill/quadratic-anchor-53',
     label: '53期二次锚点',
@@ -153,6 +159,24 @@ const routes = [
     label: '14期锚点＋期号相位',
     section: '杀码',
     element: <AnchorPhase14Kill />,
+  },
+  {
+    path: '/kill/quadratic-anchor-49-seven',
+    label: '49期七码二次锚点',
+    section: '杀码',
+    element: <QuadraticAnchor49SevenKill />,
+  },
+  {
+    path: '/kill/quadratic-anchor-17-first',
+    label: '17期首位二次锚点',
+    section: '杀码',
+    element: <QuadraticAnchor17FirstKill />,
+  },
+  {
+    path: '/kill/dual-time-anchor',
+    label: '双时间尺度锚点',
+    section: '杀码',
+    element: <DualTimeAnchorKill />,
   },
   {
     path: '/kill/tail-gated-dual',

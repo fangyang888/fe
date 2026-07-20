@@ -82,6 +82,8 @@ import TieredKillCombo from './TieredKillCombo.jsx';
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
+// @ts-ignore
+import StableFiveKill from './StableFiveKill.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -191,6 +193,12 @@ const routes = [
     label: '期号尾门控双公式',
     section: '杀码',
     element: <TailGatedDualKill />,
+  },
+  {
+    path: '/kill/stable-five',
+    label: '稳健5杀三连',
+    section: '杀码',
+    element: <StableFiveKill />,
   },
   // {
   //   path: '/kill/dynamic-seven',

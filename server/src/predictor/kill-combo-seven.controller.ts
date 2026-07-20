@@ -16,4 +16,10 @@ export class KillComboSevenController {
   getComboSevenStrict(): Promise<any> {
     return this.killComboSevenService.getComboSevenStrict();
   }
+
+  /** GET /api/kill/combo-seven/stable-five — 面向三连中的稳健 5 杀 */
+  @Get('stable-five')
+  getStableFive(): Promise<any> {
+    return this.killComboSevenService.getStableFive();
+  }
 }

@@ -241,6 +241,55 @@ export class KillComboSevenService {
     return value;
   }
 
+  async getStableFive() {
+    const rawRows = await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+
+    if (history.length < 140) {
+      return {
+        status: 'insufficient-history',
+        message: '至少需要 140 期数据库 history 数据，才能做稳健 5 杀滚动回测。',
+        historyCount: history.length,
+      };
+    }
+
+    const context = this.buildComboContext(rawRows);
+    const current = this.buildStableFiveSelection(history, context);
+    const rows = this.buildStableFiveRows(history, context, 100);
+    const summaries: Record<string, any> = {};
+
+    for (const count of [10, 20, 50, 100]) {
+      summaries[`backtest${count}`] = this.summarizeStableFiveRows(rows.slice(-count), true);
+    }
+
+    const backtest10 = summaries.backtest10;
+    const backtest20 = summaries.backtest20;
+    const latest = history[history.length - 1];
+
+    return {
+      source: 'database:history',
+      mode: 'stable-five-for-three-streak',
+      status:
+        backtest20.threeHitRate >= 0.45 && backtest20.successRate >= 0.75
+          ? 'strong'
+          : backtest20.successRate >= 0.65
+            ? 'watch'
+            : 'weak',
+      currentRecommendation: current,
+      backtest10,
+      backtest20,
+      backtest50: summaries.backtest50,
+      backtest100: summaries.backtest100,
+      historyMeta: {
+        count: history.length,
+        latest,
+      },
+      note:
+        '稳健 5 杀不是为了多杀码，而是降低错号暴露，重点观察三连窗口成功率和错号分布。',
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   private buildComboContext(rawRows: any[]) {
     const exp98 = this.experimental98Service.buildComboReportFromRows(rawRows);
     const exp99 = this.experimental99Service.buildComboReportFromRows(rawRows);
@@ -314,6 +363,92 @@ export class KillComboSevenService {
       failureCount: rows.length - successCount,
       successRate: rows.length ? successCount / rows.length : 0,
       failureGuard: this.buildFailureGuard(rows),
+    };
+  }
+
+  private buildStableFiveRows(history: DrawRow[], context: any, count: number) {
+    const start = Math.max(140, history.length - count);
+    const rows = [];
+
+    for (let t = start; t < history.length; t++) {
+      const actual = history[t];
+      const selection = this.buildStableFiveSelection(history.slice(0, t), context);
+      const appearedNumbers = selection.optimizedFive
+        .map((item) => item.number)
+        .filter((number) => actual.numbers.includes(number));
+
+      rows.push({
+        year: actual.year,
+        No: actual.No,
+        actualNumbers: actual.numbers,
+        killNumbers: selection.optimizedFive,
+        appearedNumbers,
+        appearedCount: appearedNumbers.length,
+        success: appearedNumbers.length === 0,
+      });
+    }
+
+    return rows;
+  }
+
+  private summarizeStableFiveRows(rows: any[], includeRows = false) {
+    const successCount = rows.filter((row) => row.success).length;
+    const threeWindows = Math.max(0, rows.length - 2);
+    let threeHitCount = 0;
+    let maxSuccessStreak = 0;
+    let run = 0;
+    const appearedCountDistribution: Record<string, number> = {
+      '0': 0,
+      '1': 0,
+      '2+': 0,
+    };
+
+    for (const row of rows) {
+      if (row.success) {
+        run += 1;
+        maxSuccessStreak = Math.max(maxSuccessStreak, run);
+      } else {
+        run = 0;
+      }
+
+      if (row.appearedCount <= 0) appearedCountDistribution['0'] += 1;
+      else if (row.appearedCount === 1) appearedCountDistribution['1'] += 1;
+      else appearedCountDistribution['2+'] += 1;
+    }
+
+    for (let i = 0; i + 2 < rows.length; i++) {
+      if (rows[i].success && rows[i + 1].success && rows[i + 2].success) {
+        threeHitCount += 1;
+      }
+    }
+
+    let currentSuccessStreak = 0;
+    let currentFailureStreak = 0;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].success) {
+        if (currentFailureStreak > 0) break;
+        currentSuccessStreak += 1;
+      } else {
+        if (currentSuccessStreak > 0) break;
+        currentFailureStreak += 1;
+      }
+    }
+
+    return {
+      kind: 'stable-five-walk-forward',
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      threeWindows,
+      threeHitCount,
+      threeHitRate: threeWindows ? threeHitCount / threeWindows : 0,
+      maxSuccessStreak,
+      currentSuccessStreak,
+      currentFailureStreak,
+      appearedCountDistribution,
+      rows: includeRows ? rows.slice().reverse() : [],
+      failureRows: includeRows ? rows.filter((row) => !row.success).reverse() : [],
     };
   }
 
@@ -737,6 +872,74 @@ export class KillComboSevenService {
       coreNumbers,
       optimizedSeven: consensusPlan.optimizedSeven,
       supplementPlans: [consensusPlan, longPlan, observePlan, shortPlan],
+    };
+  }
+
+  private buildStableFiveSelection(history: DrawRow[], context: any) {
+    const selection = this.buildSelectionForHistory(history, context);
+    const scoreMap = new Map<
+      number,
+      ComboCandidate & { stableScore: number; planSupport: string[] }
+    >();
+    const addStable = (item: ComboCandidate | undefined, planName: string, weight: number) => {
+      if (!item) return;
+      const recentPenalty = item.recent10 * 1.4 + item.recent5 * 2.2 + (item.appearedLatest ? 2.4 : 0);
+      const stableScore = weight + item.score * 0.18 - recentPenalty;
+      const existing = scoreMap.get(item.number);
+
+      if (existing) {
+        existing.stableScore += stableScore;
+        existing.planSupport.push(planName);
+        existing.sources.push(...item.sources);
+        existing.notes.push(...item.notes);
+        return;
+      }
+
+      scoreMap.set(item.number, {
+        ...item,
+        stableScore,
+        planSupport: [planName],
+        sources: [...item.sources],
+        notes: [...item.notes],
+      });
+    };
+
+    for (const core of selection.coreNumbers) {
+      addStable(core, '四页核心', 5.2);
+    }
+
+    const planWeights: Record<SupplementPlanKey, number> = {
+      consensus: 4.4,
+      long: 3.5,
+      observe: 2.5,
+      short: 1.4,
+    };
+
+    for (const plan of selection.supplementPlans) {
+      const weight = planWeights[plan.key as SupplementPlanKey] || 1;
+      for (const item of plan.optimizedSeven || []) {
+        addStable(item, plan.name, weight);
+      }
+    }
+
+    const ranked = Array.from(scoreMap.values()).sort(
+      (a, b) =>
+        b.planSupport.length - a.planSupport.length ||
+        b.stableScore - a.stableScore ||
+        a.recent10 - b.recent10 ||
+        a.recent5 - b.recent5 ||
+        a.number - b.number,
+    );
+
+    return {
+      key: 'stable-five',
+      name: '稳健 5 杀',
+      optimizedFive: ranked.slice(0, 5),
+      candidatePool: ranked.slice(0, 14),
+      baseSeven: selection.optimizedSeven,
+      planSnapshot: selection.supplementPlans,
+      reason:
+        '从 7 杀共识、长线保护、观察实验和四页核心里选重合度最高的 5 个；杀号数量减少，目标转向提升连续三期成功概率。',
     };
   }
 

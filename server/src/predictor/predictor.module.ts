@@ -55,6 +55,8 @@ import { DualTimeAnchorKillController } from './dual-time-anchor-kill.controller
 import { DualTimeAnchorKillService } from './dual-time-anchor-kill.service';
 import { TieredKillComboController } from './tiered-kill-combo.controller';
 import { TieredKillComboService } from './tiered-kill-combo.service';
+import { RiskControlledFiveController } from './risk-controlled-five.controller';
+import { RiskControlledFiveService } from './risk-controlled-five.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -86,6 +88,7 @@ import { TieredKillComboService } from './tiered-kill-combo.service';
     QuadraticAnchor17FirstKillController,
     DualTimeAnchorKillController,
     TieredKillComboController,
+    RiskControlledFiveController,
   ],
   providers: [
     PredictorService,
@@ -115,6 +118,7 @@ import { TieredKillComboService } from './tiered-kill-combo.service';
     QuadraticAnchor17FirstKillService,
     DualTimeAnchorKillService,
     TieredKillComboService,
+    RiskControlledFiveService,
   ],
 })
 export class PredictorModule {}

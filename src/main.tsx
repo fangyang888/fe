@@ -79,6 +79,8 @@ import DualTimeAnchorKill from './DualTimeAnchorKill.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
+import RiskControlledFive from './RiskControlledFive.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -189,17 +191,23 @@ const routes = [
     element: <TieredKillCombo />,
   },
   {
+    path: '/kill/risk-controlled-five',
+    label: '风险受控五码',
+    section: '杀码',
+    element: <RiskControlledFive />,
+  },
+  {
     path: '/kill/tail-gated-dual',
     label: '期号尾门控双公式',
     section: '杀码',
     element: <TailGatedDualKill />,
   },
-  {
-    path: '/kill/stable-five',
-    label: '稳健5杀三连',
-    section: '杀码',
-    element: <StableFiveKill />,
-  },
+  // {
+  //   path: '/kill/stable-five',
+  //   label: '稳健5杀三连',
+  //   section: '杀码',
+  //   element: <StableFiveKill />,
+  // },
   // {
   //   path: '/kill/dynamic-seven',
   //   label: '动态学习7杀',

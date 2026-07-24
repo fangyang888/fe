@@ -89,6 +89,116 @@ export class KillComboBacktestService {
     private readonly fixedHybridKillService: FixedHybridKillService,
   ) {}
 
+  async getSmart7PositionStats(forceRefresh = false) {
+    const rawRows = await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+    const latest = history[history.length - 1];
+    const cacheKey = `smart7-position-stats:v1:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const cached = this.memoryCache.get(cacheKey);
+    if (cached && !forceRefresh) {
+      return {
+        ...cached,
+        cacheMeta: {
+          ...cached.cacheMeta,
+          hit: true,
+          store: 'memory',
+        },
+      };
+    }
+
+    const start = Math.max(30, history.length - 100);
+    const results: Array<{
+      year?: number;
+      No?: number;
+      predictions: number[];
+      actual: number[];
+      success: boolean[];
+    }> = [];
+
+    for (let target = start; target < history.length; target++) {
+      // 每个样本模拟当时首次打开页面，不能沿用未来期学习缓存。
+      this.kill5AdaptiveCache = { opts: null, learnedAt: -1, score: 0 };
+      this.kill10AdaptiveCache = {
+        opts: null,
+        learnedAt: -1,
+        score: 0,
+        strategyName: '',
+      };
+      const predictions = this.smart7(history.slice(0, target), 20);
+      const actual = history[target].numbers;
+      results.push({
+        year: history[target].year,
+        No: history[target].No,
+        predictions,
+        actual,
+        success: predictions.map((number) => !actual.includes(number)),
+      });
+    }
+
+    const windows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const positions = Array.from({ length: 7 }, (_, index) => {
+        const successCount = sample.filter((row) => row.success[index]).length;
+        return {
+          position: index + 1,
+          samples: sample.length,
+          successCount,
+          failureCount: sample.length - successCount,
+          rate: sample.length
+            ? Math.round((successCount / sample.length) * 1000) / 10
+            : 0,
+        };
+      });
+      const bestRate = Math.max(...positions.map((item) => item.rate));
+      return {
+        periods,
+        positions,
+        bestPositions: positions.filter((item) => item.rate === bestRate),
+      };
+    });
+
+    this.kill5AdaptiveCache = { opts: null, learnedAt: -1, score: 0 };
+    this.kill10AdaptiveCache = {
+      opts: null,
+      learnedAt: -1,
+      score: 0,
+      strategyName: '',
+    };
+    const currentPredictions = this.smart7(history, 20);
+    const overall = Array.from({ length: 7 }, (_, index) => {
+      const rates = windows.map((window) => window.positions[index].rate);
+      return {
+        position: index + 1,
+        averageRate:
+          Math.round((rates.reduce((sum, rate) => sum + rate, 0) / rates.length) * 10) /
+          10,
+      };
+    }).sort((a, b) => b.averageRate - a.averageRate || a.position - b.position);
+
+    const response = {
+      model: 'smart7',
+      modelLabel: '智能7码精选',
+      currentPredictions,
+      windows,
+      overallBest: overall[0],
+      historyMeta: {
+        count: history.length,
+        latest: latest
+          ? { id: latest.id, year: latest.year, No: latest.No, numbers: latest.numbers }
+          : null,
+      },
+      recentResults: results.slice(-10).reverse(),
+      cacheMeta: {
+        hit: false,
+        store: 'memory',
+        key: cacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    this.memoryCache.set(cacheKey, response);
+    return response;
+  }
+
   async search(options: SearchOptions, forceRefresh = false) {
     try {
       const rawRows = await this.historyService.findAll();
@@ -671,11 +781,11 @@ export class KillComboBacktestService {
       .map((item) => item.n);
   }
 
-  private smart7(history: DrawRow[]) {
+  private smart7(history: DrawRow[], backtestPeriods = 35) {
     const hist = this.toMatrix(history);
     if (hist.length < 15) return [];
 
-    const testPeriods = Math.min(35, hist.length - 15);
+    const testPeriods = Math.min(backtestPeriods, hist.length - 15);
     const kill10Backtest: any[] = [];
     const kill5Backtest: any[] = [];
     for (let i = hist.length - testPeriods - 1; i < hist.length - 1; i++) {

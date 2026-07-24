@@ -11,11 +11,13 @@ import NumberDigitPredictor from './NumberDigitPredictor.jsx';
 // @ts-ignore
 import Crawler from './Crawler.jsx';
 // @ts-ignore
-import KillPredictor from './KillPredictor.jsx';
+import KillPredictor, { KillTenPositionStats } from './KillPredictor.jsx';
 // @ts-ignore
 import NewKillPredictor from './NewKillPredictor.jsx';
 // @ts-ignore
 import Markov2PositionSixStats from './Markov2PositionSixStats.jsx';
+// @ts-ignore
+import SmartSevenPositionStats from './SmartSevenPositionStats.jsx';
 // @ts-ignore
 import HotPickPredictor from './HotPickPredictor.jsx';
 // @ts-ignore
@@ -90,12 +92,24 @@ import StableFiveKill from './StableFiveKill.jsx';
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
   { path: '/kill', label: '基础杀码', section: '杀码', element: <KillPredictor /> },
+  {
+    path: '/kill/ten-position-stats',
+    label: '10杀位置概率',
+    section: '杀码',
+    element: <KillTenPositionStats />,
+  },
   { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
   {
     path: '/kill/markov2-position-six',
     label: '二阶马尔可夫第6位',
     section: '杀码',
     element: <Markov2PositionSixStats />,
+  },
+  {
+    path: '/kill/smart7-position-stats',
+    label: '智能7码位置概率',
+    section: '杀码',
+    element: <SmartSevenPositionStats />,
   },
   {
     path: '/kill/h47',

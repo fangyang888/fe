@@ -41,7 +41,7 @@ import React, { useState, useEffect } from 'react';
  *    大量占用候选空间，去掉后4杀全中率提升3期
  * 2. DEFAULT_OPTS protectWindow 2→1：与参数搜索最优结果一致
  */
-export default function KillPredictor() {
+export default function KillPredictor({ statsOnly = false }) {
   const [history, setHistory] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -926,7 +926,7 @@ export default function KillPredictor() {
   // 主预测函数 v7.0
   // ================================================================
   function runKillPrediction(hist) {
-    const testPeriods = Math.min(35, hist.length - 15);
+    const testPeriods = Math.min(statsOnly ? 100 : 35, hist.length - 15);
 
     // ── 回测5杀 ──
     let kill5Correct = 0,
@@ -968,6 +968,13 @@ export default function KillPredictor() {
     const kill10Backtest = [];
     for (let i = hist.length - testPeriods - 1; i < hist.length - 1; i++) {
       const testHist = hist.slice(0, i + 1);
+      // 专项统计页必须模拟“当时首次打开页面”的状态，不能沿用未来期参数缓存。
+      if (statsOnly) {
+        kill10Cache.opts = null;
+        kill10Cache.learnedAt = -1;
+        kill10Cache.score = 0;
+        kill10Cache.strategyName = '';
+      }
       const { opts: subOpts } = getAdaptiveKill10Opts(testHist);
       const nextRow = new Set(hist[i + 1]);
       const preds = strategyAbsoluteSafe(testHist, subOpts);
@@ -987,6 +994,27 @@ export default function KillPredictor() {
       });
     }
     const kill10Accuracy = kill10Total > 0 ? kill10Correct / kill10Total : 0;
+    const positionWindows = [10, 20, 50, 100].map((periods) => {
+      const samples = kill10Backtest.slice(-periods);
+      const positions = Array.from({ length: 10 }, (_, index) => {
+        const successCount = samples.filter(
+          (item) => !new Set(item.actual).has(item.killNums[index]),
+        ).length;
+        return {
+          position: index + 1,
+          successCount,
+          failureCount: samples.length - successCount,
+          samples: samples.length,
+          rate: samples.length ? (successCount / samples.length) * 100 : 0,
+        };
+      });
+      const bestRate = Math.max(...positions.map((item) => item.rate));
+      return {
+        periods,
+        positions,
+        bestPositions: positions.filter((item) => item.rate === bestRate),
+      };
+    });
 
     // ── 近10期10杀详细回测 ──
     const kill10Recent5 = kill10Backtest.slice(-10).map((bt) => ({
@@ -1312,6 +1340,7 @@ export default function KillPredictor() {
       kill8Backtest,
       distributionAnalysis,
       kill10AdaptiveInfo,
+      positionWindows,
       smart7,
       singleKill,
     };
@@ -1485,6 +1514,115 @@ export default function KillPredictor() {
           </p>
         </div>
       </div>
+    );
+  }
+
+  if (statsOnly) {
+    const longWindow = result.positionWindows.find((item) => item.periods === 100);
+    const overall = Array.from({ length: 10 }, (_, index) => {
+      const rates = result.positionWindows.map((window) => window.positions[index].rate);
+      return {
+        position: index + 1,
+        averageRate: rates.reduce((sum, rate) => sum + rate, 0) / rates.length,
+      };
+    }).sort((a, b) => b.averageRate - a.averageRate);
+    const overallBest = overall[0];
+
+    return (
+      <main className="k10s-page">
+        <style>{`
+          .k10s-page { min-height:100vh; padding:72px 20px 48px; color:#e2e8f0; background:radial-gradient(circle at 50% 0%,#312e81 0,#111827 42%,#030712 100%); font-family:Inter,system-ui,sans-serif; }
+          .k10s-shell { width:min(1080px,100%); margin:0 auto; }
+          .k10s-eyebrow { color:#a78bfa; font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+          .k10s-title { margin:12px 0 8px; color:#f8fafc; font-size:clamp(32px,6vw,54px); line-height:1.08; }
+          .k10s-subtitle { margin:0; color:#94a3b8; line-height:1.7; }
+          .k10s-hero { display:grid; grid-template-columns:auto 1fr; gap:24px; align-items:center; margin-top:32px; padding:28px; border:1px solid rgba(167,139,250,.3); border-radius:24px; background:rgba(15,23,42,.72); box-shadow:0 24px 70px rgba(0,0,0,.3); }
+          .k10s-position { display:grid; place-items:center; width:104px; height:104px; border-radius:50%; color:#fff; font-size:42px; font-weight:900; background:linear-gradient(145deg,#8b5cf6,#4f46e5); box-shadow:0 14px 35px rgba(124,58,237,.35); }
+          .k10s-hero-label,.k10s-count { color:#94a3b8; font-size:13px; }
+          .k10s-hero-value { margin:6px 0; color:#f8fafc; font-size:26px; font-weight:900; }
+          .k10s-hero-meta { color:#c4b5fd; font-size:14px; }
+          .k10s-section { margin-top:34px; }
+          .k10s-section-title { margin:0 0 14px; color:#f8fafc; font-size:22px; }
+          .k10s-best-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+          .k10s-card { padding:22px; border:1px solid rgba(148,163,184,.16); border-radius:20px; background:rgba(15,23,42,.62); }
+          .k10s-card-label { color:#94a3b8; font-size:13px; }
+          .k10s-card-position { margin:10px 0 2px; color:#ddd6fe; font-size:24px; font-weight:900; }
+          .k10s-rate { color:#4ade80; font-size:34px; font-weight:900; }
+          .k10s-table-wrap { overflow:auto; border:1px solid rgba(148,163,184,.16); border-radius:20px; background:rgba(15,23,42,.62); }
+          .k10s-table { width:100%; border-collapse:collapse; min-width:680px; }
+          .k10s-table th,.k10s-table td { padding:14px 16px; text-align:center; border-bottom:1px solid rgba(148,163,184,.1); }
+          .k10s-table th { color:#94a3b8; font-size:13px; }
+          .k10s-table td { font-weight:750; }
+          .k10s-table tr.best-row td { color:#4ade80; background:rgba(74,222,128,.06); }
+          .k10s-badge { display:inline-block; margin-left:7px; padding:2px 7px; border-radius:999px; color:#052e16; background:#4ade80; font-size:11px; }
+          .k10s-note { margin-top:18px; padding:18px 20px; border-radius:16px; color:#94a3b8; font-size:14px; line-height:1.65; background:rgba(15,23,42,.5); }
+          .k10s-back { display:inline-block; margin-top:22px; color:#c4b5fd; text-decoration:none; }
+          @media(max-width:760px){.k10s-best-grid{grid-template-columns:1fr 1fr}.k10s-hero{grid-template-columns:1fr}.k10s-position{width:88px;height:88px}}
+        `}</style>
+        <div className="k10s-shell">
+          <div className="k10s-eyebrow">Kill 10 position statistics</div>
+          <h1 className="k10s-title">10 杀位置概率统计</h1>
+          <p className="k10s-subtitle">逐期滚动验证“预测下期不会出现的 10 个数字”，比较第 1～10 位在近 10、20、50、100 期的杀码成功率。</p>
+
+          <section className="k10s-hero">
+            <div className="k10s-position">{overallBest.position}</div>
+            <div>
+              <div className="k10s-hero-label">四个窗口综合最稳位置</div>
+              <div className="k10s-hero-value">第 {overallBest.position} 位</div>
+              <div className="k10s-hero-meta">
+                四窗口平均 {overallBest.averageRate.toFixed(1)}% · 近100期 {longWindow.positions[overallBest.position - 1].rate.toFixed(1)}%
+              </div>
+            </div>
+          </section>
+
+          <section className="k10s-section">
+            <h2 className="k10s-section-title">各窗口最高位置</h2>
+            <div className="k10s-best-grid">
+              {result.positionWindows.map((window) => (
+                <article className="k10s-card" key={window.periods}>
+                  <div className="k10s-card-label">近 {window.periods} 期</div>
+                  <div className="k10s-card-position">
+                    第 {window.bestPositions.map((item) => item.position).join('、')} 位
+                  </div>
+                  <div className="k10s-rate">{window.bestPositions[0].rate.toFixed(1)}%</div>
+                  <div className="k10s-count">
+                    成功 {window.bestPositions[0].successCount}/{window.bestPositions[0].samples}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="k10s-section">
+            <h2 className="k10s-section-title">全部位置对比</h2>
+            <div className="k10s-table-wrap">
+              <table className="k10s-table">
+                <thead><tr><th>位置</th>{result.positionWindows.map((window) => <th key={window.periods}>近{window.periods}期</th>)}</tr></thead>
+                <tbody>
+                  {Array.from({ length: 10 }, (_, index) => {
+                    const isBest = index + 1 === overallBest.position;
+                    return (
+                      <tr key={index} className={isBest ? 'best-row' : ''}>
+                        <td>第 {index + 1} 位 {isBest && <span className="k10s-badge">综合最高</span>}</td>
+                        {result.positionWindows.map((window) => {
+                          const item = window.positions[index];
+                          const windowBest = window.bestPositions.some((best) => best.position === item.position);
+                          return <td key={window.periods}>{item.rate.toFixed(1)}% {windowBest && '★'}<div className="k10s-count">{item.successCount}/{item.samples}</div></td>;
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div className="k10s-note">
+            共读取 {history.length} 期历史数据。每个样本只使用开奖前已有的数据重新选择参数并生成10个位置；成功表示该位置的号码没有在下一期7个号码中出现。历史回测不代表未来必然结果。
+          </div>
+          <a className="k10s-back" href="/fe/kill">← 返回基础杀码</a>
+        </div>
+      </main>
     );
   }
 
@@ -3496,4 +3634,8 @@ export default function KillPredictor() {
       </div>
     </div>
   );
+}
+
+export function KillTenPositionStats() {
+  return <KillPredictor statsOnly />;
 }

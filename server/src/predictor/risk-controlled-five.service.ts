@@ -1,188 +1,166 @@
 import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
-import { GapScoreKillService } from './gap-score-kill.service';
-import { StateRiskKillService } from './state-risk-kill.service';
 
-type DrawRow = { id: number; year?: number; No?: number; numbers: number[] };
-type LaneKey =
-  | 'q53'
-  | 'a14'
-  | 'q49'
-  | 'q17'
-  | 'dual'
-  | 'tail'
-  | 'gap'
-  | 'state'
-  | 'cool1'
-  | 'cool2'
-  | 'cool3';
-
-type LanePrediction = Record<LaneKey, number>;
-
-interface LaneDefinition {
-  key: LaneKey;
-  label: string;
-  family: string;
-}
-
-interface Candidate {
-  number: number;
-  display: string;
-  avoidScore: number;
-  representativeLane: LaneKey;
-  sources: Array<{
-    key: LaneKey;
-    label: string;
-    family: string;
-    longRate: number;
-    recentRate: number;
-    conservativeRate: number;
-    samples: number;
+type DrawRow = {
+  id: number;
+  year: number;
+  No: number;
+  numbers: number[];
+  numberSet: Set<number>;
+};
+type RankedNumber = { number: number; risk: number; rank: number };
+type Expert = { key: string; label: string; family: string; picks: RankedNumber[] };
+type AdaptiveConfig = { lookback: number; eta: number; prior: number };
+type Prediction = {
+  candidates: Array<{
+    number: number;
+    display: string;
+    riskIndex: number;
+    familyVotes: number;
+    supportSources: string[];
   }>;
-  families: string[];
-}
-
-interface SetOption {
-  count: number;
-  numbers: Candidate[];
-  numberValues: number[];
-  sourceLanes: LaneKey[];
-  familyCount: number;
-  estimatedRate: number;
-  conservativeRate: number;
-  longRate: number;
-  recentRate: number;
-  sampleCount: number;
-  randomBaseline: number;
-  liftOverRandom: number;
-}
+  expertWeights: Array<{ key: string; label: string; recentRate: number; weight: number }>;
+  strategy: string;
+};
+type EvaluationRow = {
+  year: number;
+  No: number;
+  actualNumbers: number[];
+  picks: number[];
+  appeared: number[];
+  success: boolean;
+};
 
 @Injectable()
 export class RiskControlledFiveService {
+  private readonly minimumHistory = 260;
+  private readonly validationStartIndex = 839;
+  private readonly blindStart = { year: 2026, No: 139 };
+  private readonly blindEnd = { year: 2026, No: 198 };
   private readonly liveStart = { year: 2026, No: 199 };
-  private readonly firstEvaluationIndex = 360;
-  private readonly longWindow = 160;
-  private readonly recentWindow = 40;
+  private readonly tierConfigs: Record<number, AdaptiveConfig | null> = {
+    3: { lookback: 60, eta: 20, prior: 10 },
+    4: { lookback: 160, eta: 20, prior: 10 },
+    5: null,
+  };
   private cache?: { key: string; value: any };
 
-  private readonly lanes: LaneDefinition[] = [
-    { key: 'q53', label: '53期二次锚点', family: '长周期二次锚点' },
-    { key: 'a14', label: '14期相位锚点', family: '期号相位' },
-    { key: 'q49', label: '49期七码锚点', family: '长周期二次锚点' },
-    { key: 'q17', label: '17期首位锚点', family: '短周期二次锚点' },
-    { key: 'dual', label: '双时间尺度锚点', family: '双尺度锚点' },
-    { key: 'tail', label: '期号尾门控', family: '期号相位' },
-    { key: 'gap', label: 'Gap F20', family: '间隔序列' },
-    { key: 'state', label: '状态条件风险', family: '状态学习' },
-    { key: 'cool1', label: '冷却风险第1位', family: '频率冷却' },
-    { key: 'cool2', label: '冷却风险第2位', family: '频率冷却' },
-    { key: 'cool3', label: '冷却风险第3位', family: '频率冷却' },
-  ];
-
-  constructor(
-    private readonly historyService: HistoryService,
-    private readonly gapScoreKillService: GapScoreKillService,
-    private readonly stateRiskKillService: StateRiskKillService,
-  ) {}
+  constructor(private readonly historyService: HistoryService) {}
 
   async getReport() {
-    const rawRows = await this.historyService.findAll();
-    const history = this.normalizeRows(rawRows);
-    if (history.length < this.firstEvaluationIndex) {
+    const history = this.normalizeRows(await this.historyService.findAll());
+    if (history.length < this.minimumHistory) {
       return {
         status: 'insufficient-history',
         historyCount: history.length,
-        message: `风险受控五码至少需要 ${this.firstEvaluationIndex} 期历史。`,
+        message: `实时自学习引擎至少需要 ${this.minimumHistory} 期历史。`,
       };
     }
-
     const latest = history[history.length - 1];
-    const cacheKey = `${history.length}:${latest.id}:${latest.year}:${latest.No}:${latest.numbers.join('.')}`;
+    const cacheKey = `${history.length}:${latest.id}:${latest.year}:${latest.No}:${latest.numbers.join('.')}:adaptive-v2`;
     if (this.cache?.key === cacheKey) return { ...this.cache.value, cache: 'hit' };
 
-    const gapTimeline = this.gapScoreKillService.buildWalkForwardTimelineFromRows(rawRows);
-    const stateTimeline = this.stateRiskKillService.buildWalkForwardTimelineFromRows(rawRows);
-    const gapMap = new Map(gapTimeline.rows.map((row) => [this.periodKey(row.year, row.No), row.number]));
-    const stateMap = new Map(stateTimeline.rows.map((row) => [this.periodKey(row.year, row.No), row.number]));
-    const laneMatrix = this.buildLaneMatrix(
-      history,
-      gapMap,
-      stateMap,
-      Number(gapTimeline.next),
-      Number(stateTimeline.next),
-    );
+    const gaps = this.buildGapMatrix(history);
+    const expertCache = new Map<number, Expert[]>();
+    const predictionCache = new Map<string, Prediction>();
+    const blindStartIndex = history.findIndex((row) => this.isPeriod(row, this.blindStart));
+    const blindEndIndex = history.findIndex((row) => this.isPeriod(row, this.blindEnd));
+    const developmentEnd = blindStartIndex >= 0 ? blindStartIndex : history.length;
+    const liveIndex = history.findIndex((row) => this.isPeriod(row, this.liveStart));
 
-    const rows: any[] = [];
-    for (let t = this.firstEvaluationIndex; t < history.length; t++) {
-      const selection = this.selectAt(history, laneMatrix, t);
-      const actual = history[t];
-      const appearedNumbers = selection.selected.numberValues.filter((number) => actual.numbers.includes(number));
-      const forcedFiveAppeared = selection.forcedFive.numberValues.filter((number) => actual.numbers.includes(number));
-      rows.push({
-        year: actual.year,
-        No: actual.No,
-        actualNumbers: actual.numbers,
-        mode: selection.mode,
-        modeLabel: selection.modeLabel,
-        issued: selection.selected.count > 0,
-        killNumbers: selection.selected.numberValues,
-        appearedNumbers,
-        success: selection.selected.count > 0 ? appearedNumbers.length === 0 : null,
-        estimatedRate: selection.selected.estimatedRate,
-        conservativeRate: selection.selected.conservativeRate,
-        randomBaseline: selection.selected.randomBaseline,
-        forcedFiveNumbers: selection.forcedFive.numberValues,
-        forcedFiveAppeared,
-        forcedFiveSuccess: forcedFiveAppeared.length === 0,
-      });
-    }
+    const predict = (t: number, count: number) => {
+      const key = `${t}:${count}`;
+      const cached = predictionCache.get(key);
+      if (cached) return cached;
+      const result = this.vetoPrediction(history, gaps, t, count);
+      predictionCache.set(key, result);
+      return result;
+    };
 
-    const currentSelection = this.selectAt(history, laneMatrix, history.length);
-    const liveRows = rows.filter((row) => this.isAtOrAfter(row, this.liveStart.year, this.liveStart.No));
+    const tiers = [3, 4, 5].map((count) => {
+      const current = predict(history.length, count);
+      const validationRows = this.evaluate(
+        history,
+        Math.min(this.validationStartIndex, developmentEnd),
+        developmentEnd,
+        count,
+        predict,
+      );
+      const blindRows =
+        blindStartIndex >= 0
+          ? this.evaluate(
+              history,
+              blindStartIndex,
+              blindEndIndex >= blindStartIndex ? blindEndIndex + 1 : history.length,
+              count,
+              predict,
+            )
+          : [];
+      const liveRows =
+        liveIndex >= 0 ? this.evaluate(history, liveIndex, history.length, count, predict) : [];
+      return {
+        count,
+        strategy: current.strategy,
+        numbers: current.candidates.slice(0, count),
+        numberValues: current.candidates.slice(0, count).map((item) => item.number),
+        expertWeights: current.expertWeights,
+        theoreticalBaseline: this.theoreticalRate(count),
+        validation: this.summarize(validationRows),
+        blindTest: this.summarize(blindRows, true),
+        live: this.summarize(liveRows, true),
+      };
+    });
+
     const value = {
       status: 'ready',
-      currentRecommendation: {
-        mode: currentSelection.mode,
-        modeLabel: currentSelection.modeLabel,
-        gateReason: currentSelection.gateReason,
-        issuedCount: currentSelection.selected.count,
-        numbers: currentSelection.selected.numbers,
-        estimatedSetRate: currentSelection.selected.estimatedRate,
-        conservativeSetRate: currentSelection.selected.conservativeRate,
-        recentSetRate: currentSelection.selected.recentRate,
-        longSetRate: currentSelection.selected.longRate,
-        randomBaseline: currentSelection.selected.randomBaseline,
-        liftOverRandom: currentSelection.selected.liftOverRandom,
-        alternatives: currentSelection.alternatives,
-        candidatePool: currentSelection.candidatePool,
-      },
-      backtests: {
-        adaptive20: this.summarizeAdaptive(rows.slice(-20), true),
-        adaptive50: this.summarizeAdaptive(rows.slice(-50)),
-        adaptive100: this.summarizeAdaptive(rows.slice(-100)),
-        adaptive200: this.summarizeAdaptive(rows.slice(-200)),
-        adaptive500: this.summarizeAdaptive(rows.slice(-500)),
-        forcedFive20: this.summarizeForcedFive(rows.slice(-20)),
-        forcedFive50: this.summarizeForcedFive(rows.slice(-50)),
-        forcedFive100: this.summarizeForcedFive(rows.slice(-100)),
-        forcedFive200: this.summarizeForcedFive(rows.slice(-200)),
-        forcedFive500: this.summarizeForcedFive(rows.slice(-500)),
-      },
-      liveTracking: {
-        start: this.liveStart,
-        ...this.summarizeAdaptive(liveRows, true),
-      },
-      methodology: {
-        name: '联合风险受控 3–5 杀',
+      engine: {
+        name: '实时多尺度缺席学习引擎',
+        version: 'MULTI-VETO-V3',
+        state: 'online-learning',
         statement:
-          '候选源先按160期长期表现和40期近期表现做贝叶斯收缩，再直接评估来源组合的整组避开率；不把单杀概率相乘。五码不达门槛时自动降为4码、3码或观望。',
+          '主模型先选出8个低风险候选，再由前5期位置偏移、5期状态块、10期状态块和相似状态逐层否决可能拖累整组的号码。不同档位使用独立否决门槛。',
+        independence:
+          '不调用旧项目的固定锚点、期号公式或旧杀码服务。所有回测均严格只读取目标期之前的数据。',
         warning:
-          '历史滚动结果用于诊断；2026年第199期起单独累计实盘追踪。任何历史100%都不代表未来保证。',
-        windows: { long: this.longWindow, recent: this.recentWindow },
-        candidatePoolLimit: 8,
-        laneCount: this.lanes.length,
+          '这是风险排序而非确定性预测。实时学习改善了历史样本表现，但无法保证下一期或连续多期命中。',
+        learningRules: [
+          '3码：位置偏移＋5/10期状态块＋相似状态四层否决',
+          '4码：位置偏移＋5/10期状态块三层否决',
+          '5码：三层否决，并保留少量连续风险排序',
+        ],
       },
-      historyMeta: { count: history.length, latest },
+      split: {
+        totalHistory: history.length,
+        development: {
+          count: developmentEnd,
+          end: developmentEnd ? this.period(history[developmentEnd - 1]) : null,
+        },
+        blindTest: {
+          frozen: true,
+          start: this.blindStart,
+          end: this.blindEnd,
+          count:
+            blindStartIndex >= 0
+              ? Math.max(0, Math.min(history.length - 1, blindEndIndex) - blindStartIndex + 1)
+              : 0,
+        },
+        liveStart: this.liveStart,
+      },
+      current: {
+        target: this.nextPeriod(latest),
+        tiers,
+        candidatePool: predict(history.length, 3).candidates.slice(0, 12),
+        latestActual: { period: this.period(latest), numbers: latest.numbers },
+      },
+      historyMeta: {
+        count: history.length,
+        latest: {
+          id: latest.id,
+          year: latest.year,
+          No: latest.No,
+          numbers: latest.numbers,
+        },
+      },
       generatedAt: new Date().toISOString(),
       cache: 'miss',
     };
@@ -190,354 +168,534 @@ export class RiskControlledFiveService {
     return value;
   }
 
-  private selectAt(history: DrawRow[], laneMatrix: LanePrediction[], t: number) {
-    const candidates = this.buildCandidates(history, laneMatrix, t).slice(0, 8);
-    const alternatives = [5, 4, 3]
-      .map((count) => this.findBestSet(history, laneMatrix, t, candidates, count))
-      .filter((option): option is SetOption => Boolean(option));
-    const forcedFive = alternatives.find((option) => option.count === 5) || this.emptyOption();
-    const bestFour = alternatives.find((option) => option.count === 4);
-    const bestThree = alternatives.find((option) => option.count === 3);
-
-    let selected = this.emptyOption();
-    let mode = 'observe';
-    let modeLabel = '观望';
-    let gateReason = '所有档位的保守联合成功率均未达到输出门槛。';
-
-    if (forcedFive.count === 5 && forcedFive.conservativeRate >= 0.7 && forcedFive.recentRate >= 0.72) {
-      selected = forcedFive;
-      mode = 'five';
-      modeLabel = '风险受控5杀';
-      gateReason = '五码的长期收缩、近期联合表现同时达到门槛。';
-    } else if (bestFour && bestFour.conservativeRate >= 0.76 && bestFour.recentRate >= 0.78) {
-      selected = bestFour;
-      mode = 'four';
-      modeLabel = '自动降档4杀';
-      gateReason = '五码证据不足，四码的保守联合成功率达到门槛。';
-    } else if (bestThree && bestThree.conservativeRate >= 0.82 && bestThree.recentRate >= 0.82) {
-      selected = bestThree;
-      mode = 'three';
-      modeLabel = '自动降档3杀';
-      gateReason = '五码与四码证据不足，保留风险最低的三码。';
-    }
-
-    return {
-      mode,
-      modeLabel,
-      gateReason,
-      selected,
-      forcedFive,
-      alternatives,
-      candidatePool: candidates,
-    };
-  }
-
-  private buildCandidates(history: DrawRow[], laneMatrix: LanePrediction[], t: number): Candidate[] {
-    const current = laneMatrix[t];
-    const grouped = new Map<number, Candidate['sources']>();
-    for (const lane of this.lanes) {
-      const number = current?.[lane.key];
-      if (!Number.isFinite(number)) continue;
-      const stats = this.getLaneStats(history, laneMatrix, t, lane.key);
-      const sources = grouped.get(number) || [];
-      sources.push({
-        key: lane.key,
-        label: lane.label,
-        family: lane.family,
-        longRate: stats.longRate,
-        recentRate: stats.recentRate,
-        conservativeRate: stats.conservativeRate,
-        samples: stats.samples,
-      });
-      grouped.set(number, sources);
-    }
-
-    return [...grouped.entries()]
-      .map(([number, sources]) => {
-        sources.sort((a, b) => b.conservativeRate - a.conservativeRate || b.samples - a.samples);
-        const families = [...new Set(sources.map((source) => source.family))];
-        const consensusBonus = Math.min(0.025, Math.max(0, families.length - 1) * 0.015);
-        return {
-          number,
-          display: String(number).padStart(2, '0'),
-          avoidScore: Math.min(0.995, sources[0].conservativeRate + consensusBonus),
-          representativeLane: sources[0].key,
-          sources,
-          families,
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.avoidScore - a.avoidScore ||
-          b.families.length - a.families.length ||
-          b.sources.length - a.sources.length ||
-          a.number - b.number,
-      );
-  }
-
-  private getLaneStats(history: DrawRow[], matrix: LanePrediction[], t: number, lane: LaneKey) {
-    const start = Math.max(300, t - this.longWindow);
-    const recentStart = Math.max(start, t - this.recentWindow);
-    let samples = 0;
-    let successes = 0;
-    let recentSamples = 0;
-    let recentSuccesses = 0;
-    for (let s = start; s < t; s++) {
-      const number = matrix[s]?.[lane];
-      if (!Number.isFinite(number)) continue;
-      const success = !history[s].numbers.includes(number);
-      samples++;
-      if (success) successes++;
-      if (s >= recentStart) {
-        recentSamples++;
-        if (success) recentSuccesses++;
-      }
-    }
-    const long = this.betaEstimate(successes, samples, 24, 42 / 49);
-    const recent = this.betaEstimate(recentSuccesses, recentSamples, 18, long.mean);
-    const conservativeRate = long.lower * 0.65 + recent.lower * 0.35;
-    return {
-      samples,
-      longRate: long.mean,
-      recentRate: recent.mean,
-      conservativeRate,
-    };
-  }
-
-  private findBestSet(
+  private adaptivePredict(
     history: DrawRow[],
-    matrix: LanePrediction[],
+    gaps: number[][],
     t: number,
-    candidates: Candidate[],
     count: number,
-  ): SetOption | null {
-    if (candidates.length < count) return null;
-    let best: SetOption | null = null;
-    for (const numbers of this.combinations(candidates, count)) {
-      const sourceLanes = numbers.map((candidate) => candidate.representativeLane);
-      const randomBaseline = this.theoreticalRate(count);
-      const start = Math.max(300, t - this.longWindow);
-      const recentStart = Math.max(start, t - this.recentWindow);
-      let samples = 0;
+    config: AdaptiveConfig,
+    expertCache: Map<number, Expert[]>,
+  ): Prediction {
+    const experts = this.expertsAt(history, gaps, t, expertCache);
+    const baseline = this.theoreticalRate(count);
+    const weightedExperts = experts.map((expert) => {
       let successes = 0;
-      let recentSamples = 0;
-      let recentSuccesses = 0;
-      for (let s = start; s < t; s++) {
-        const historicalNumbers = [...new Set(sourceLanes.map((lane) => matrix[s]?.[lane]).filter(Number.isFinite))];
-        if (!historicalNumbers.length) continue;
-        const success = historicalNumbers.every((number) => !history[s].numbers.includes(number));
+      let samples = 0;
+      for (let s = Math.max(this.minimumHistory, t - config.lookback); s < t; s++) {
+        const pastExpert = this.expertsAt(history, gaps, s, expertCache).find(
+          (item) => item.key === expert.key,
+        )!;
+        if (pastExpert.picks.slice(0, count).every((item) => !history[s].numberSet.has(item.number))) {
+          successes++;
+        }
         samples++;
-        if (success) successes++;
-        if (s >= recentStart) {
-          recentSamples++;
-          if (success) recentSuccesses++;
+      }
+      const recentRate = (successes + config.prior * baseline) / (samples + config.prior);
+      const weight = Math.exp(config.eta * (recentRate - baseline));
+      return { ...expert, recentRate, weight };
+    });
+    const totalWeight = weightedExperts.reduce((sum, expert) => sum + expert.weight, 0);
+    const candidates = Array.from({ length: 49 }, (_, index) => {
+      const number = index + 1;
+      let riskIndex = 0;
+      const supportSources: string[] = [];
+      const families = new Set<string>();
+      for (const expert of weightedExperts) {
+        const item = expert.picks.find((candidate) => candidate.number === number)!;
+        riskIndex += expert.weight * (item.rank / 48);
+        if (item.rank < count + 3) {
+          supportSources.push(expert.label);
+          families.add(expert.family);
         }
       }
-      const long = this.betaEstimate(successes, samples, 30, randomBaseline);
-      const recent = this.betaEstimate(recentSuccesses, recentSamples, 20, long.mean);
-      const familyCount = new Set(numbers.flatMap((candidate) => candidate.families)).size;
-      const familyPenalty = Math.max(0, count - familyCount) * 0.008;
-      const estimatedRate = long.mean * 0.65 + recent.mean * 0.35;
-      const conservativeRate = Math.max(0, long.lower * 0.65 + recent.lower * 0.35 - familyPenalty);
-      const option: SetOption = {
-        count,
-        numbers,
-        numberValues: numbers.map((candidate) => candidate.number),
-        sourceLanes,
-        familyCount,
-        estimatedRate,
-        conservativeRate,
-        longRate: long.mean,
-        recentRate: recent.mean,
-        sampleCount: samples,
-        randomBaseline,
-        liftOverRandom: estimatedRate - randomBaseline,
-      };
-      if (
-        !best ||
-        option.conservativeRate > best.conservativeRate ||
-        (option.conservativeRate === best.conservativeRate && option.familyCount > best.familyCount) ||
-        (option.conservativeRate === best.conservativeRate && option.familyCount === best.familyCount &&
-          option.numbers.reduce((sum, item) => sum + item.avoidScore, 0) >
-            best.numbers.reduce((sum, item) => sum + item.avoidScore, 0))
-      ) {
-        best = option;
-      }
-    }
-    return best;
-  }
-
-  private buildLaneMatrix(
-    history: DrawRow[],
-    gapMap: Map<string, number>,
-    stateMap: Map<string, number>,
-    nextGap: number,
-    nextState: number,
-  ) {
-    const matrix: LanePrediction[] = [];
-    for (let t = 0; t <= history.length; t++) {
-      if (t < 300) continue;
-      const key = t < history.length ? this.periodKey(history[t].year, history[t].No) : '';
-      const cooldown = this.cooldownPicks(history, t, 3);
-      matrix[t] = {
-        q53: this.wrap(2 * history[t - 53].numbers[1] ** 2 + 3 * history[t - 53].numbers[1] - 7),
-        a14: this.wrap(-3 * history[t - 14].numbers[3] + 2 * Number(history[t - 1].No || 0) - 19),
-        q49: this.wrap(-4 * history[t - 49].numbers[6] ** 2 + history[t - 49].numbers[6] + 20),
-        q17: this.wrap(8 * history[t - 17].numbers[0] ** 2 - 7 * history[t - 17].numbers[0] + 18),
-        dual: this.wrap(history[t - 22].numbers[5] + 2 * history[t - 34].numbers[5] + 47),
-        tail: this.tailPick(history, t),
-        gap: t < history.length ? Number(gapMap.get(key)) : nextGap,
-        state: t < history.length ? Number(stateMap.get(key)) : nextState,
-        cool1: cooldown[0],
-        cool2: cooldown[1],
-        cool3: cooldown[2],
-      };
-    }
-    return matrix;
-  }
-
-  private cooldownPicks(history: DrawRow[], t: number, count: number) {
-    const start = Math.max(0, t - 120);
-    const sampleCount = t - start;
-    const hits = Array(50).fill(0);
-    for (let s = start; s < t; s++) for (const number of history[s].numbers) hits[number]++;
-    const latest = new Set(history[t - 1]?.numbers || []);
-    return Array.from({ length: 49 }, (_, index) => index + 1)
-      .map((number) => ({
+      return {
         number,
-        risk: (hits[number] + 24 / 7) / (sampleCount + 24) + (latest.has(number) ? 0.006 : 0),
-      }))
-      .sort((a, b) => a.risk - b.risk || a.number - b.number)
-      .slice(0, count)
-      .map((item) => item.number);
+        display: String(number).padStart(2, '0'),
+        riskIndex: riskIndex / totalWeight,
+        familyVotes: families.size,
+        supportSources,
+      };
+    }).sort(
+      (a, b) =>
+        a.riskIndex - b.riskIndex ||
+        b.familyVotes - a.familyVotes ||
+        a.number - b.number,
+    );
+    return {
+      candidates,
+      expertWeights: weightedExperts
+        .map((expert) => ({
+          key: expert.key,
+          label: expert.label,
+          recentRate: expert.recentRate,
+          weight: expert.weight,
+        }))
+        .sort((a, b) => b.weight - a.weight),
+      strategy: `${count === 3 ? '60' : '160'}期在线专家学习`,
+    };
   }
 
-  private tailPick(history: DrawRow[], t: number) {
-    const previous = history[t - 1];
-    const periodTail = ((Number(previous.No || 0) % 10) + 10) % 10;
-    if (new Set([0, 2, 3, 5, 6, 7]).has(periodTail)) {
-      return this.wrap(4 * previous.numbers[6] - 2);
+  private expertsAt(
+    history: DrawRow[],
+    gaps: number[][],
+    t: number,
+    cache: Map<number, Expert[]>,
+  ) {
+    const cached = cache.get(t);
+    if (cached) return cached;
+    const experts: Expert[] = [];
+    for (const window of [24, 48, 96, 160, 240]) {
+      experts.push({
+        key: `freq-${window}`,
+        label: `${window}期稳定频率`,
+        family: '稳定频率',
+        picks: this.rank(
+          Array.from({ length: 49 }, (_, index) => {
+            const number = index + 1;
+            let hits = 0;
+            for (let s = Math.max(0, t - window); s < t; s++) {
+              if (history[s].numberSet.has(number)) hits++;
+            }
+            return { number, risk: (hits + 2) / (Math.min(window, t) + 14) };
+          }),
+        ),
+      });
     }
-    return this.wrap(-3 * history[t - 14].numbers[3] + 2 * Number(previous.No || 0) - 19);
+    for (const halfLife of [3, 6, 12, 24]) {
+      experts.push({
+        key: `ewma-${halfLife}`,
+        label: `${halfLife}期半衰实时频率`,
+        family: '实时频率',
+        picks: this.rank(
+          Array.from({ length: 49 }, (_, index) => {
+            const number = index + 1;
+            let hits = 0;
+            let weights = 0;
+            for (let s = Math.max(0, t - 120); s < t; s++) {
+              const weight = Math.exp(-(t - 1 - s) / halfLife);
+              hits += weight * (history[s].numberSet.has(number) ? 1 : 0);
+              weights += weight;
+            }
+            return { number, risk: (hits + 0.5) / (weights + 3.5) };
+          }),
+        ),
+      });
+    }
+    experts.push({
+      key: 'gap-hazard',
+      label: '间隔条件风险',
+      family: '间隔状态',
+      picks: this.rank(
+        Array.from({ length: 49 }, (_, index) => {
+          const number = index + 1;
+          const bucket = Math.min(10, gaps[t][number]);
+          let samples = 0;
+          let hits = 0;
+          for (let s = Math.max(60, t - 420); s < t; s++) {
+            if (Math.min(10, gaps[s][number]) !== bucket) continue;
+            samples++;
+            if (history[s].numberSet.has(number)) hits++;
+          }
+          return { number, risk: (hits + 5 * (7 / 49)) / (samples + 5) };
+        }),
+      ),
+    });
+    const currentState = history[t - 1].numberSet;
+    experts.push({
+      key: 'state-neighbors',
+      label: '相似状态邻居',
+      family: '状态邻居',
+      picks: this.rank(
+        Array.from({ length: 49 }, (_, index) => {
+          const number = index + 1;
+          let hits = 0;
+          let weights = 0;
+          for (let s = Math.max(1, t - 420); s < t; s++) {
+            let overlap = 0;
+            for (const value of history[s - 1].numbers) if (currentState.has(value)) overlap++;
+            if (!overlap) continue;
+            const weight = overlap * overlap;
+            weights += weight;
+            if (history[s].numberSet.has(number)) hits += weight;
+          }
+          return { number, risk: (hits + 4 * (7 / 49)) / (weights + 4) };
+        }),
+      ),
+    });
+    cache.set(t, experts);
+    return experts;
   }
 
-  private summarizeAdaptive(rows: any[], includeRows = false) {
-    const issuedRows = rows.filter((row) => row.issued);
-    const successCount = issuedRows.filter((row) => row.success).length;
+  private blockGuardedFive(history: DrawRow[], gaps: number[][], t: number): Prediction {
+    const base = this.staticRisk(history, gaps, t);
+    const block5 = this.blockStateRank(history, t, 5);
+    const block10 = this.blockStateRank(history, t, 10);
+    const candidates = Array.from({ length: 49 }, (_, index) => {
+      const number = index + 1;
+      const baseRank = base.findIndex((item) => item.number === number) / 48;
+      const blockRank =
+        (block5.find((item) => item.number === number)!.rank +
+          block10.find((item) => item.number === number)!.rank) /
+        96;
+      return {
+        number,
+        display: String(number).padStart(2, '0'),
+        riskIndex: 0.9 * baseRank + 0.1 * blockRank,
+        familyVotes: 3,
+        supportSources: ['实时主模型', '5期状态块', '10期状态块'],
+      };
+    }).sort((a, b) => a.riskIndex - b.riskIndex || a.number - b.number);
     return {
-      kind: 'strict-walk-forward-adaptive',
-      periodCount: rows.length,
-      issuedCount: issuedRows.length,
-      skippedCount: rows.length - issuedRows.length,
-      coverageRate: rows.length ? issuedRows.length / rows.length : 0,
-      successCount,
-      failureCount: issuedRows.length - successCount,
-      successRate: issuedRows.length ? successCount / issuedRows.length : 0,
-      averageIssuedCount: issuedRows.length
-        ? issuedRows.reduce((sum, row) => sum + row.killNumbers.length, 0) / issuedRows.length
-        : 0,
-      modeCounts: rows.reduce((result, row) => {
-        result[row.mode] = (result[row.mode] || 0) + 1;
-        return result;
-      }, {} as Record<string, number>),
-      rows: includeRows ? rows.slice().reverse() : [],
-      failureRows: includeRows ? issuedRows.filter((row) => !row.success).reverse() : [],
+      candidates,
+      expertWeights: [
+        { key: 'realtime-base', label: '实时主模型', recentRate: 0, weight: 0.9 },
+        { key: 'block-5-10', label: '5/10期状态块', recentRate: 0, weight: 0.1 },
+      ],
+      strategy: '5期＋10期状态块过滤',
     };
   }
 
-  private summarizeForcedFive(rows: any[]) {
-    const validRows = rows.filter((row) => row.forcedFiveNumbers.length === 5);
-    const successCount = validRows.filter((row) => row.forcedFiveSuccess).length;
-    return {
-      kind: 'strict-walk-forward-forced-five',
-      count: validRows.length,
-      successCount,
-      failureCount: validRows.length - successCount,
-      successRate: validRows.length ? successCount / validRows.length : 0,
-      randomBaseline: this.theoreticalRate(5),
-    };
-  }
-
-  private betaEstimate(successes: number, samples: number, strength: number, priorRate: number) {
-    const alpha = successes + strength * priorRate;
-    const beta = samples - successes + strength * (1 - priorRate);
-    const total = alpha + beta;
-    const mean = alpha / total;
-    const sd = Math.sqrt((alpha * beta) / (total * total * (total + 1)));
-    return { mean, lower: Math.max(0, mean - sd) };
-  }
-
-  private combinations<T>(items: T[], count: number) {
-    const result: T[][] = [];
-    const visit = (start: number, picked: T[]) => {
-      if (picked.length === count) {
-        result.push([...picked]);
-        return;
+  private vetoPrediction(
+    history: DrawRow[],
+    gaps: number[][],
+    t: number,
+    count: number,
+  ): Prediction {
+    const configs: Record<
+      number,
+      {
+        signals: Array<'modular' | 'block5' | 'block10' | 'state'>;
+        cutoff: number;
+        penalty: number;
+        signalWeight: number;
       }
-      for (let index = start; index <= items.length - (count - picked.length); index++) {
-        picked.push(items[index]);
-        visit(index + 1, picked);
-        picked.pop();
-      }
+    > = {
+      3: {
+        signals: ['modular', 'block5', 'block10', 'state'],
+        cutoff: 28,
+        penalty: 0.08,
+        signalWeight: 0,
+      },
+      4: {
+        signals: ['modular', 'block5', 'block10'],
+        cutoff: 28,
+        penalty: 0.15,
+        signalWeight: 0,
+      },
+      5: {
+        signals: ['modular', 'block5', 'block10'],
+        cutoff: 34,
+        penalty: 0.15,
+        signalWeight: 0.05,
+      },
     };
-    visit(0, []);
-    return result;
-  }
-
-  private emptyOption(): SetOption {
+    const config = configs[count];
+    const base = this.staticRisk(history, gaps, t);
+    const signalMap = {
+      modular: this.modularRank(history, t),
+      block5: this.blockStateRank(history, t, 5),
+      block10: this.blockStateRank(history, t, 10),
+      state: this.stateNeighborRank(history, t),
+    };
+    const labels = {
+      modular: '前5期位置偏移',
+      block5: '5期状态块',
+      block10: '10期状态块',
+      state: '相似状态',
+    };
+    const signals = config.signals.map((key) => ({ key, values: signalMap[key] }));
+    const candidates = base
+      .slice(0, 8)
+      .map((item, baseRank) => {
+        const ranks = signals.map(({ values }) =>
+          values.findIndex((candidate) => candidate.number === item.number),
+        );
+        const vetoSources = signals
+          .filter((_, index) => ranks[index] >= config.cutoff)
+          .map(({ key }) => labels[key]);
+        const vetoCount = vetoSources.length;
+        const meanRank =
+          ranks.reduce((sum, value) => sum + value, 0) / (ranks.length * 48);
+        return {
+          number: item.number,
+          display: String(item.number).padStart(2, '0'),
+          riskIndex:
+            baseRank / 48 +
+            config.penalty * vetoCount +
+            config.signalWeight * meanRank,
+          familyVotes: config.signals.length - vetoCount,
+          supportSources: config.signals
+            .filter((_, index) => ranks[index] < config.cutoff)
+            .map((key) => labels[key]),
+          vetoCount,
+          vetoSources,
+          signalRanks: ranks,
+        };
+      })
+      .sort((a, b) => a.riskIndex - b.riskIndex || a.number - b.number);
     return {
-      count: 0,
-      numbers: [],
-      numberValues: [],
-      sourceLanes: [],
-      familyCount: 0,
-      estimatedRate: 0,
-      conservativeRate: 0,
-      longRate: 0,
-      recentRate: 0,
-      sampleCount: 0,
-      randomBaseline: 0,
-      liftOverRandom: 0,
+      candidates,
+      expertWeights: config.signals.map((key) => ({
+        key,
+        label: labels[key],
+        recentRate: 0,
+        weight: 1 / config.signals.length,
+      })),
+      strategy: `${config.signals.length}层风险否决`,
     };
   }
 
-  private theoreticalRate(killCount: number) {
-    if (!killCount) return 0;
-    return this.comb(49 - killCount, 7) / this.comb(49, 7);
+  private modularRank(history: DrawRow[], t: number) {
+    const lag = 5;
+    const window = 300;
+    const source = history[t - lag].numbers;
+    const risk = Array(50).fill(0);
+    for (let position = 0; position < 7; position++) {
+      const deltaCounts = Array(50).fill(0);
+      let samples = 0;
+      for (let s = Math.max(lag, t - window); s < t; s++) {
+        const pastSource = history[s - lag].numbers[position];
+        for (const target of history[s].numbers) {
+          deltaCounts[this.wrap(target - pastSource)]++;
+        }
+        samples += 7;
+      }
+      for (let number = 1; number <= 49; number++) {
+        const delta = this.wrap(number - source[position]);
+        risk[number] += (deltaCounts[delta] + 3 / 7) / (samples + 21);
+      }
+    }
+    return this.rank(
+      Array.from({ length: 49 }, (_, index) => ({
+        number: index + 1,
+        risk: risk[index + 1] / 7,
+      })),
+    );
   }
 
-  private comb(n: number, k: number) {
-    let value = 1;
-    for (let index = 1; index <= k; index++) value = (value * (n - k + index)) / index;
-    return value;
+  private stateNeighborRank(history: DrawRow[], t: number) {
+    const current = history[t - 1].numberSet;
+    const hits = Array(50).fill(0);
+    let weightSum = 0;
+    for (let s = Math.max(1, t - 420); s < t; s++) {
+      let overlap = 0;
+      for (const number of history[s - 1].numbers) if (current.has(number)) overlap++;
+      if (!overlap) continue;
+      const weight = overlap * overlap;
+      weightSum += weight;
+      for (const number of history[s].numbers) hits[number] += weight;
+    }
+    return this.rank(
+      Array.from({ length: 49 }, (_, index) => ({
+        number: index + 1,
+        risk: (hits[index + 1] + 4 * (7 / 49)) / (weightSum + 4),
+      })),
+    );
   }
 
-  private isAtOrAfter(row: any, year: number, No: number) {
-    return Number(row.year) > year || (Number(row.year) === year && Number(row.No) >= No);
+  private modularThree(history: DrawRow[], gaps: number[][], t: number): Prediction {
+    const base = this.staticRisk(history, gaps, t);
+    const lag = 5;
+    const window = 300;
+    const source = history[t - lag].numbers;
+    const risk = Array(50).fill(0);
+    for (let position = 0; position < 7; position++) {
+      const deltaCounts = Array(50).fill(0);
+      let samples = 0;
+      for (let s = Math.max(lag, t - window); s < t; s++) {
+        const pastSource = history[s - lag].numbers[position];
+        for (const target of history[s].numbers) {
+          deltaCounts[this.wrap(target - pastSource)]++;
+        }
+        samples += 7;
+      }
+      for (let number = 1; number <= 49; number++) {
+        const delta = this.wrap(number - source[position]);
+        risk[number] += (deltaCounts[delta] + 3 / 7) / (samples + 21);
+      }
+    }
+    const modular = this.rank(
+      Array.from({ length: 49 }, (_, index) => ({
+        number: index + 1,
+        risk: risk[index + 1] / 7,
+      })),
+    );
+    const candidates = Array.from({ length: 49 }, (_, index) => {
+      const number = index + 1;
+      const baseRank = base.findIndex((item) => item.number === number) / 48;
+      const modularRank = modular.findIndex((item) => item.number === number) / 48;
+      return {
+        number,
+        display: String(number).padStart(2, '0'),
+        riskIndex: 0.9 * baseRank + 0.1 * modularRank,
+        familyVotes: 2,
+        supportSources: ['实时主模型', '前5期位置动态偏移'],
+      };
+    }).sort((a, b) => a.riskIndex - b.riskIndex || a.number - b.number);
+    return {
+      candidates,
+      expertWeights: [
+        { key: 'realtime-base', label: '实时主模型', recentRate: 0, weight: 0.9 },
+        { key: 'lag5-modular', label: '前5期位置动态偏移', recentRate: 0, weight: 0.1 },
+      ],
+      strategy: '前5期位置动态偏移',
+    };
   }
 
-  private periodKey(year?: number, No?: number) {
-    return `${Number(year || 0)}-${Number(No || 0)}`;
+  private staticRisk(history: DrawRow[], gaps: number[][], t: number) {
+    return this.rank(
+      Array.from({ length: 49 }, (_, index) => {
+        const number = index + 1;
+        let longHits = 0;
+        let realtimeHits = 0;
+        let weights = 0;
+        for (let s = t - 240; s < t; s++) {
+          if (history[s].numberSet.has(number)) longHits++;
+          const weight = Math.exp(-(t - 1 - s) / 6);
+          realtimeHits += weight * (history[s].numberSet.has(number) ? 1 : 0);
+          weights += weight;
+        }
+        const longRisk = (longHits + 2) / 254;
+        const realtimeRisk = (realtimeHits + 0.5) / (weights + 3.5);
+        return {
+          number,
+          risk: 0.45 * longRisk + 0.55 * realtimeRisk + 0.04 * (Math.min(gaps[t][number], 15) / 15),
+        };
+      }),
+    );
+  }
+
+  private blockStateRank(history: DrawRow[], t: number, size: number) {
+    return this.rank(
+      Array.from({ length: 49 }, (_, index) => {
+        const number = index + 1;
+        let currentCount = 0;
+        for (let s = Math.max(0, t - size); s < t; s++) {
+          if (history[s].numberSet.has(number)) currentCount++;
+        }
+        const state = Math.min(2, currentCount);
+        let samples = 0;
+        let hits = 0;
+        for (let s = Math.max(size * 8, t - 480); s < t; s += size) {
+          let pastCount = 0;
+          for (let p = s - size; p < s; p++) {
+            if (history[p].numberSet.has(number)) pastCount++;
+          }
+          if (Math.min(2, pastCount) !== state) continue;
+          samples++;
+          if (history[s].numberSet.has(number)) hits++;
+        }
+        return { number, risk: (hits + 6 * (7 / 49)) / (samples + 6) };
+      }),
+    );
+  }
+
+  private rank(items: Array<{ number: number; risk: number }>): RankedNumber[] {
+    return items
+      .sort((a, b) => a.risk - b.risk || a.number - b.number)
+      .map((item, rank) => ({ ...item, rank }));
   }
 
   private wrap(value: number) {
     return ((value - 1) % 49 + 49) % 49 + 1;
   }
 
+  private buildGapMatrix(history: DrawRow[]) {
+    const gaps = Array.from({ length: history.length + 1 }, () => Array(50).fill(30));
+    const lastSeen = Array(50).fill(-31);
+    for (let t = 0; t <= history.length; t++) {
+      for (let number = 1; number <= 49; number++) {
+        gaps[t][number] = Math.min(30, t - 1 - lastSeen[number]);
+      }
+      if (t < history.length) {
+        for (const number of history[t].numbers) lastSeen[number] = t;
+      }
+    }
+    return gaps;
+  }
+
+  private evaluate(
+    history: DrawRow[],
+    start: number,
+    end: number,
+    count: number,
+    predict: (t: number, count: number) => Prediction,
+  ) {
+    const rows: EvaluationRow[] = [];
+    for (let t = Math.max(this.minimumHistory, start); t < Math.min(end, history.length); t++) {
+      const picks = predict(t, count).candidates.slice(0, count).map((item) => item.number);
+      const appeared = picks.filter((number) => history[t].numberSet.has(number));
+      rows.push({
+        year: history[t].year,
+        No: history[t].No,
+        actualNumbers: history[t].numbers,
+        picks,
+        appeared,
+        success: appeared.length === 0,
+      });
+    }
+    return rows;
+  }
+
+  private summarize(rows: EvaluationRow[], includeRows = false) {
+    const successCount = rows.filter((row) => row.success).length;
+    let running = 0;
+    let maxStreak = 0;
+    for (const row of rows) {
+      if (row.success) {
+        running++;
+        maxStreak = Math.max(maxStreak, running);
+      } else running = 0;
+    }
+    return {
+      count: rows.length,
+      successCount,
+      failureCount: rows.length - successCount,
+      successRate: rows.length ? successCount / rows.length : 0,
+      maxStreak,
+      currentStreak: running,
+      latestRows: includeRows ? rows.slice(-12).reverse() : [],
+      failureRows: includeRows ? rows.filter((row) => !row.success).slice(-10).reverse() : [],
+    };
+  }
+
+  private theoreticalRate(count: number) {
+    return this.comb(49 - count, 7) / this.comb(49, 7);
+  }
+  private comb(n: number, k: number) {
+    let value = 1;
+    for (let index = 1; index <= k; index++) value = (value * (n - k + index)) / index;
+    return value;
+  }
+  private isPeriod(row: DrawRow, period: { year: number; No: number }) {
+    return row.year === period.year && row.No === period.No;
+  }
+  private period(row: DrawRow) {
+    return { year: row.year, No: row.No };
+  }
+  private nextPeriod(latest: DrawRow) {
+    const nextNo = latest.No + 1;
+    const lastNoOfYear = latest.year % 4 === 0 ? 366 : 365;
+    return nextNo > lastNoOfYear ? { year: latest.year + 1, No: 1 } : { year: latest.year, No: nextNo };
+  }
   private normalizeRows(rows: any[]): DrawRow[] {
     return rows
-      .map((row) => ({
-        id: Number(row.id || 0),
-        year: row.year,
-        No: row.No,
-        numbers: [row.n1, row.n2, row.n3, row.n4, row.n5, row.n6, row.n7].map(Number),
-      }))
-      .filter((row) => row.numbers.length === 7 && row.numbers.every((number) => number >= 1 && number <= 49))
-      .sort(
-        (a, b) =>
-          (a.year || 0) - (b.year || 0) ||
-          (a.No || 0) - (b.No || 0) ||
-          a.id - b.id,
-      );
+      .map((row) => {
+        const numbers = [row.n1, row.n2, row.n3, row.n4, row.n5, row.n6, row.n7].map(Number);
+        return {
+          id: Number(row.id || 0),
+          year: Number(row.year || 0),
+          No: Number(row.No || 0),
+          numbers,
+          numberSet: new Set(numbers),
+        };
+      })
+      .filter(
+        (row) =>
+          row.year > 0 &&
+          row.No > 0 &&
+          row.numbers.every((number) => number >= 1 && number <= 49),
+      )
+      .sort((a, b) => a.year - b.year || a.No - b.No || a.id - b.id);
   }
 }

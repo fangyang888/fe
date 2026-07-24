@@ -1,52 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const pct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
-const num = (value) => String(value ?? '--').padStart(2, '0');
+const ball = (value) => String(value ?? '--').padStart(2, '0');
 
-function BallList({ numbers, muted = false }) {
-  return <div className={`rcf-balls ${muted ? 'is-muted' : ''}`}>
+function Balls({ numbers, compact = false }) {
+  return <div className={`ar-balls ${compact ? 'is-compact' : ''}`}>
     {numbers.map((item) => {
       const value = typeof item === 'number' ? item : item.number;
-      return <b key={value}>{num(value)}</b>;
+      return <b key={value}>{ball(value)}</b>;
     })}
   </div>;
 }
 
-function Metric({ label, value, detail, tone = '' }) {
-  return <div className={`rcf-metric ${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></div>;
-}
-
-function BacktestCard({ label, adaptive, forced }) {
-  return <article className="rcf-backtest-card">
-    <h3>{label}</h3>
-    <div className="rcf-backtest-lines">
-      <div><span>风险受控</span><strong>{pct(adaptive?.successRate)}</strong><small>{adaptive?.successCount || 0}/{adaptive?.issuedCount || 0} · 覆盖 {pct(adaptive?.coverageRate)} · 均值 {(adaptive?.averageIssuedCount || 0).toFixed(2)}码</small></div>
-      <div><span>每期强制五码</span><strong>{pct(forced?.successRate)}</strong><small>{forced?.successCount || 0}/{forced?.count || 0} · 随机基准 {pct(forced?.randomBaseline)}</small></div>
+function TierCard({ tier, target, primary }) {
+  const blind = tier.blindTest;
+  return <article className={`ar-tier ${primary ? 'is-primary' : ''}`}>
+    <div className="ar-tier-head">
+      <div><span>第 {target.No} 期 · {tier.strategy}</span><h2>{tier.count} 个不出现号码</h2></div>
+      <strong>{pct(blind.successRate)}</strong>
+    </div>
+    <Balls numbers={tier.numberValues}/>
+    <div className="ar-tier-grid">
+      <div><span>历史审计</span><b>{blind.successCount}/{blind.count}</b></div>
+      <div><span>理论随机</span><b>{pct(tier.theoreticalBaseline)}</b></div>
+      <div><span>最长连中</span><b>{blind.maxStreak} 期</b></div>
+      <div><span>当前连中</span><b>{blind.currentStreak} 期</b></div>
     </div>
   </article>;
 }
 
-function Alternative({ option, active }) {
-  return <article className={`rcf-alt ${active ? 'is-active' : ''}`}>
-    <div className="rcf-alt-head"><strong>{option.count}杀方案</strong><span>保守 {pct(option.conservativeRate)}</span></div>
-    <BallList numbers={option.numberValues} muted={!active}/>
-    <div className="rcf-alt-meta"><span>估计 {pct(option.estimatedRate)}</span><span>近40期 {pct(option.recentRate)}</span><span>随机 {pct(option.randomBaseline)}</span><span>{option.familyCount} 类来源</span></div>
-  </article>;
-}
-
-function CandidateRow({ candidate, index }) {
-  return <tr>
-    <td>{index + 1}</td>
-    <td><span className="rcf-mini-ball">{candidate.display}</span></td>
-    <td>{pct(candidate.avoidScore)}</td>
-    <td>{candidate.sources.map((source) => source.label).join(' · ')}</td>
-    <td>{candidate.families.join(' · ')}</td>
-  </tr>;
+function Ledger({ tier }) {
+  return <div className="ar-ledger">
+    {tier.blindTest.latestRows.map((row) => <div className={row.success ? 'ok' : 'fail'} key={`${row.year}-${row.No}`}>
+      <span>{row.year}-{String(row.No).padStart(3, '0')}</span>
+      <span>{row.picks.map(ball).join(' · ')}</span>
+      <b>{row.success ? '命中' : `失败：${row.appeared.map(ball).join('、')}`}</b>
+    </div>)}
+  </div>;
 }
 
 export default function RiskControlledFive() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [selectedTier, setSelectedTier] = useState(3);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,59 +57,53 @@ export default function RiskControlledFive() {
     return () => controller.abort();
   }, []);
 
-  const current = data?.currentRecommendation;
-  const backtests = data?.backtests;
-  const latest = data?.historyMeta?.latest;
-  const live = data?.liveTracking;
+  const tier = useMemo(
+    () => data?.current?.tiers?.find((item) => item.count === selectedTier),
+    [data, selectedTier],
+  );
 
-  return <main className="rcf-page"><style>{`
-    .rcf-page{min-height:100vh;padding:76px 18px 56px;box-sizing:border-box;background:#f0eee8;color:#1e2927;font-family:Inter,system-ui,sans-serif}.rcf-shell{width:min(1180px,100%);margin:auto}.rcf-hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr);gap:18px}.rcf-panel{border:1px solid #c9cdc5;background:#faf9f5;box-shadow:0 18px 48px rgba(37,48,43,.08)}.rcf-main{padding:34px}.rcf-kicker{color:#267165;font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.rcf-main h1{margin:10px 0 12px;font-size:clamp(34px,5vw,62px);line-height:.98;letter-spacing:-.05em}.rcf-intro{max-width:760px;margin:0;color:#66716d;line-height:1.7}.rcf-decision{margin-top:30px;padding-top:25px;border-top:1px solid #d7dad3}.rcf-decision-head{display:flex;justify-content:space-between;align-items:flex-end;gap:18px}.rcf-decision-head span{display:block;color:#71807a;font-size:12px}.rcf-decision-head strong{display:block;margin-top:5px;font-size:27px}.rcf-gate{max-width:520px;text-align:right;color:#50605b;font-size:13px}.rcf-balls{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.rcf-balls b,.rcf-mini-ball{display:grid;place-items:center;border-radius:50%;background:#174f47;color:#f5fffb;font-weight:900}.rcf-balls b{width:58px;height:58px;font-size:20px;box-shadow:inset 0 -8px 14px rgba(0,0,0,.16)}.rcf-balls.is-muted b{background:#dfe2dc;color:#4f5d59;box-shadow:none}.rcf-empty{margin-top:16px;padding:18px;border:1px dashed #bfc6bd;color:#8a5e1f;background:#fff8e8}.rcf-side{padding:26px;display:flex;flex-direction:column;justify-content:space-between;background:#173b36;color:#eef8f5;border-color:#173b36}.rcf-side h2{margin:0;font-size:20px}.rcf-side p{color:#b7cbc5;line-height:1.65;font-size:13px}.rcf-metrics{display:grid;grid-template-columns:1fr 1fr;margin-top:24px;border:1px solid rgba(255,255,255,.15)}.rcf-metric{padding:16px;border-bottom:1px solid rgba(255,255,255,.15)}.rcf-metric:nth-child(odd){border-right:1px solid rgba(255,255,255,.15)}.rcf-metric span,.rcf-metric small{display:block;color:#9db8b1;font-size:11px}.rcf-metric strong{display:block;margin:6px 0 3px;font-size:24px}.rcf-live{margin-top:20px;padding:17px;border:1px solid rgba(255,255,255,.17);background:rgba(255,255,255,.04)}.rcf-live span,.rcf-live small{display:block;color:#aac1bb;font-size:11px}.rcf-live strong{display:block;margin:5px 0;color:#f6d58b;font-size:21px}.rcf-section{margin-top:18px;padding:26px}.rcf-section-title{display:flex;justify-content:space-between;align-items:end;gap:18px;margin-bottom:18px}.rcf-section-title h2{margin:0;font-size:24px}.rcf-section-title p{margin:0;color:#77817e;font-size:12px}.rcf-alts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.rcf-alt{padding:18px;border:1px solid #d2d6ce;background:#f5f4ef}.rcf-alt.is-active{border-color:#2b7569;background:#eff9f5}.rcf-alt-head{display:flex;justify-content:space-between;gap:12px}.rcf-alt-head span{color:#397b70;font-weight:800}.rcf-alt .rcf-balls b{width:42px;height:42px;font-size:15px}.rcf-alt-meta{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:15px;color:#6e7a76;font-size:11px}.rcf-backtests{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.rcf-backtest-card{border:1px solid #d2d6ce;background:#f7f6f2;padding:16px}.rcf-backtest-card h3{margin:0 0 13px;font-size:14px}.rcf-backtest-lines>div+div{margin-top:12px;padding-top:12px;border-top:1px solid #d8dbd5}.rcf-backtest-lines span,.rcf-backtest-lines small{display:block;color:#73807b;font-size:10px}.rcf-backtest-lines strong{display:block;margin:4px 0;font-size:21px}.rcf-table-wrap{overflow:auto}.rcf-table{width:100%;min-width:820px;border-collapse:collapse}.rcf-table th,.rcf-table td{padding:12px 10px;border-bottom:1px solid #dde0da;text-align:left;font-size:12px}.rcf-table th{color:#74807c;font-size:10px}.rcf-mini-ball{width:32px;height:32px}.rcf-note{margin-top:18px;padding:20px 22px;border-left:4px solid #c39032;background:#fff7e7;color:#685b40;line-height:1.7;font-size:13px}.rcf-loading{padding:28px;border:1px solid #c9cdc5;background:#faf9f5}.rcf-error{color:#a22c3b}@media(max-width:900px){.rcf-hero{grid-template-columns:1fr}.rcf-alts{grid-template-columns:1fr}.rcf-backtests{grid-template-columns:repeat(2,1fr)}}@media(max-width:560px){.rcf-page{padding-inline:12px}.rcf-main,.rcf-side,.rcf-section{padding:20px}.rcf-decision-head,.rcf-section-title{display:block}.rcf-gate{text-align:left;margin-top:10px}.rcf-backtests{grid-template-columns:1fr}.rcf-balls b{width:50px;height:50px}}
-  `}</style><div className="rcf-shell">
-    {error && <div className="rcf-loading rcf-error">加载失败：{error}</div>}
-    {!error && !data && <div className="rcf-loading">正在进行联合风险滚动计算…</div>}
-    {data?.status === 'insufficient-history' && <div className="rcf-loading">{data.message}</div>}
-    {current && <>
-      <div className="rcf-hero">
-        <section className="rcf-panel rcf-main">
-          <div className="rcf-kicker">Joint risk control · 3–5</div>
-          <h1>风险受控五码</h1>
-          <p className="rcf-intro">不把单个杀码的成功率相乘，直接评估来源组合同时避开开奖号码的历史表现。证据不足时自动减少杀码数量。</p>
-          <div className="rcf-decision">
-            <div className="rcf-decision-head"><div><span>第 {Number(latest?.No || 0) + 1} 期当前决策</span><strong>{current.modeLabel}</strong></div><div className="rcf-gate">{current.gateReason}</div></div>
-            {current.numbers.length ? <BallList numbers={current.numbers}/> : <div className="rcf-empty">本期联合风险没有通过任何档位门槛，建议观望，不强行凑满五码。</div>}
-          </div>
-        </section>
-        <aside className="rcf-panel rcf-side">
-          <div><h2>当前联合风险</h2><p>“估计”经过随机基准收缩；“保守值”再扣除统计不确定性与同族来源惩罚。</p>
-            <div className="rcf-metrics">
-              <Metric label="保守成功率" value={pct(current.conservativeSetRate)} detail="用于是否发出"/>
-              <Metric label="联合估计" value={pct(current.estimatedSetRate)} detail={`较随机 +${pct(current.liftOverRandom)}`}/>
-              <Metric label="近40期联合" value={pct(current.recentSetRate)} detail="近期状态"/>
-              <Metric label="随机理论基准" value={pct(current.randomBaseline)} detail={`${current.issuedCount} 个唯一号码`}/>
-            </div>
-          </div>
-          <div className="rcf-live"><span>199期起实盘账本</span><strong>{live?.periodCount ? pct(live.successRate) : '等待开奖'}</strong><small>{live?.periodCount ? `${live.successCount}/${live.issuedCount} · 覆盖 ${pct(live.coverageRate)}` : '当前数据库截至198期，下一期开始独立累计'}</small></div>
-        </aside>
-      </div>
-
-      <section className="rcf-panel rcf-section">
-        <div className="rcf-section-title"><h2>3–5杀分档</h2><p>绿色边框为本期实际采用档位</p></div>
-        <div className="rcf-alts">{current.alternatives.map((option) => <Alternative key={option.count} option={option} active={option.count === current.issuedCount}/>)}</div>
-      </section>
-
-      <section className="rcf-panel rcf-section">
-        <div className="rcf-section-title"><h2>严格滚动对照</h2><p>风险受控统计只计算实际发出的期；强制五码每期都出5个</p></div>
-        <div className="rcf-backtests">
-          {[20, 50, 100, 200, 500].map((count) => <BacktestCard key={count} label={`近${count}期`} adaptive={backtests[`adaptive${count}`]} forced={backtests[`forcedFive${count}`]}/>) }
+  return <main className="ar-page"><style>{`
+    .ar-page{min-height:100vh;padding:70px 18px 60px;box-sizing:border-box;background:#f3f0e8;color:#17201e;font-family:Inter,system-ui,sans-serif}.ar-shell{width:min(1160px,100%);margin:auto}.ar-panel{border:1px solid #c9cec7;background:#fffefa;box-shadow:0 22px 60px rgba(30,44,38,.08)}.ar-hero{display:grid;grid-template-columns:1.25fr .75fr;overflow:hidden}.ar-hero-main{padding:38px}.ar-kicker{color:#176a5e;font-size:11px;font-weight:900;letter-spacing:.12em}.ar-hero h1{margin:10px 0 14px;font-size:clamp(40px,6vw,72px);line-height:.93;letter-spacing:-.055em}.ar-hero p{max-width:720px;margin:0;color:#68736f;line-height:1.75}.ar-stamp{display:inline-flex;margin-top:24px;padding:9px 12px;border:1px solid #2c776b;color:#1c6258;font-size:11px;font-weight:900}.ar-truth{padding:30px;background:#173d37;color:#eef7f4}.ar-truth span{color:#a8c2bb;font-size:11px}.ar-truth strong{display:block;margin:10px 0 14px;font-size:28px;color:#f3d58d}.ar-truth p{color:#bed0cb;font-size:13px}.ar-split{margin-top:24px;padding-top:18px;border-top:1px solid rgba(255,255,255,.16)}.ar-split b,.ar-split span{display:block}.ar-split b{margin:5px 0}.ar-tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}.ar-tier{padding:24px;border:1px solid #cdd2cb;background:#fffefa}.ar-tier.is-primary{border-top:5px solid #1c6d61;padding-top:20px}.ar-tier-head{display:flex;justify-content:space-between;gap:16px;align-items:start}.ar-tier-head span{color:#75807c;font-size:11px}.ar-tier-head h2{margin:4px 0;font-size:19px}.ar-tier-head>strong{color:#1b675c;font-size:25px}.ar-balls{display:flex;flex-wrap:wrap;gap:9px;margin:21px 0}.ar-balls b{display:grid;place-items:center;width:50px;height:50px;border-radius:50%;background:#184f47;color:white;font-size:17px;box-shadow:inset 0 -7px 12px rgba(0,0,0,.18)}.ar-balls.is-compact{margin:0}.ar-balls.is-compact b{width:34px;height:34px;font-size:12px}.ar-tier-grid{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #dde0da}.ar-tier-grid div{padding:12px 8px 0}.ar-tier-grid span,.ar-tier-grid b{display:block}.ar-tier-grid span{color:#7b8581;font-size:10px}.ar-tier-grid b{margin-top:4px;font-size:14px}.ar-section{margin-top:16px;padding:28px}.ar-section-head{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:19px}.ar-section-head h2{margin:0;font-size:24px}.ar-section-head p{margin:0;color:#78827f;font-size:12px}.ar-tabs{display:flex;gap:7px}.ar-tabs button{padding:8px 13px;border:1px solid #c9cec7;background:#f3f2ed;cursor:pointer}.ar-tabs button.active{border-color:#1d695e;background:#1d695e;color:white}.ar-ledger{border-top:1px solid #d9ddd6}.ar-ledger>div{display:grid;grid-template-columns:140px 1fr 160px;gap:16px;padding:12px 8px;border-bottom:1px solid #e1e3de;font-size:12px}.ar-ledger .ok b{color:#16705f}.ar-ledger .fail{background:#fff3f0}.ar-ledger .fail b{color:#ad3e35}.ar-candidates{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.ar-candidate{padding:13px;border:1px solid #d5d9d2;background:#f7f6f1}.ar-candidate-head{display:flex;align-items:center;justify-content:space-between}.ar-mini{display:grid;place-items:center;width:33px;height:33px;border-radius:50%;background:#284f49;color:#fff;font-weight:900}.ar-candidate small,.ar-candidate span{color:#76817d;font-size:10px}.ar-candidate strong{display:block;margin:11px 0 3px}.ar-warning{margin-top:16px;padding:20px 24px;border-left:5px solid #c88d2f;background:#fff7e5;color:#69593a;line-height:1.7;font-size:13px}.ar-loading{padding:28px;border:1px solid #ccd1ca;background:#fffefa}.ar-error{color:#a63737}@media(max-width:900px){.ar-hero{grid-template-columns:1fr}.ar-tiers{grid-template-columns:1fr}.ar-candidates{grid-template-columns:repeat(3,1fr)}}@media(max-width:620px){.ar-page{padding-inline:11px}.ar-hero-main,.ar-truth,.ar-section,.ar-tier{padding:20px}.ar-section-head{display:block}.ar-tabs{margin-top:12px}.ar-ledger>div{grid-template-columns:1fr;gap:4px}.ar-candidates{grid-template-columns:repeat(2,1fr)}}
+  `}</style><div className="ar-shell">
+    {error && <div className="ar-loading ar-error">加载失败：{error}</div>}
+    {!error && !data && <div className="ar-loading">正在读取冻结模型与真实盲测账本…</div>}
+    {data?.status === 'insufficient-history' && <div className="ar-loading">{data.message}</div>}
+    {data?.current && <>
+      <header className="ar-panel ar-hero">
+        <div className="ar-hero-main">
+          <div className="ar-kicker">ONLINE ABSENCE RISK · FROZEN MODEL</div>
+          <h1>在线缺席<br/>风险引擎</h1>
+          <p>{data.engine.statement}</p>
+          <div className="ar-stamp">多层风险否决 · 5期/10期状态块 · 后60期历史审计</div>
         </div>
+        <aside className="ar-truth">
+          <span>真实结论</span>
+          <strong>分档学习，不强行套同一规则</strong>
+          <p>3码和4码按近期实战自动调整专家权重；5码额外使用5期与10期状态块过滤。第198期失败仍完整保留。</p>
+          <div className="ar-split"><span>训练 / 开发截止</span><b>{data.split.development.end.year}-{data.split.development.end.No}</b><span>历史审计：2026-139 至 2026-198（{data.split.blindTest.count}期）</span></div>
+        </aside>
+      </header>
+
+      <section className="ar-tiers">
+        {data.current.tiers.map((item) => <TierCard key={item.count} tier={item} target={data.current.target} primary={item.count === 3}/>)}
       </section>
 
-      <section className="rcf-panel rcf-section">
-        <div className="rcf-section-title"><h2>当前候选池</h2><p>最多8个号码，再枚举组合寻找最低联合风险</p></div>
-        <div className="rcf-table-wrap"><table className="rcf-table"><thead><tr><th>排名</th><th>号码</th><th>单号保守避开率</th><th>支持来源</th><th>来源家族</th></tr></thead><tbody>{current.candidatePool.map((candidate, index) => <CandidateRow key={candidate.number} candidate={candidate} index={index}/>)}</tbody></table></div>
+      <section className="ar-panel ar-section">
+        <div className="ar-section-head"><div><h2>历史审计末段账本</h2><p>每一期只使用它之前的数据重新计算，红色失败完整保留；真实新账本从199期开始</p></div>
+          <div className="ar-tabs">{[3, 4, 5].map((count) => <button key={count} className={selectedTier === count ? 'active' : ''} onClick={() => setSelectedTier(count)}>{count}码</button>)}</div>
+        </div>
+        {tier && <Ledger tier={tier}/>}
       </section>
 
-      <div className="rcf-note">{data.methodology.warning} 当前页面的历史滚动回测仍继承已有公式的历史研发偏差，因此不会把历史成绩包装成未来100%保证；真正可信的成绩从第199期起单独累计。</div>
+      <section className="ar-panel ar-section">
+        <div className="ar-section-head"><div><h2>下一期风险排序</h2><p>数值越低，模型估计的出现风险越低；它是排序指标，不是保证概率</p></div><Balls compact numbers={data.current.tiers[0].numberValues}/></div>
+        <div className="ar-candidates">{data.current.candidatePool.map((item, index) => <div className="ar-candidate" key={item.number}>
+          <div className="ar-candidate-head"><b className="ar-mini">{item.display}</b><span>#{index + 1}</span></div>
+          <strong>{pct(item.riskIndex)}</strong><small>{item.familyVotes}类信号支持 · {item.supportSources?.slice(0, 2).join('、') || '综合风险排序'}</small>
+        </div>)}</div>
+      </section>
+
+      <div className="ar-warning">{data.engine.warning} 若目标是“尽量连续”，优先使用3码档；4码与5码天然会显著降低整组全部不出现的概率。</div>
     </>}
   </div></main>;
 }

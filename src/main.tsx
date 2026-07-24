@@ -15,6 +15,8 @@ import KillPredictor from './KillPredictor.jsx';
 // @ts-ignore
 import KillTenPositionStats from './KillTenPositionStats.jsx';
 // @ts-ignore
+import Likely22PositionStats from './Likely22PositionStats.jsx';
+// @ts-ignore
 import NewKillPredictor from './NewKillPredictor.jsx';
 // @ts-ignore
 import Markov2PositionSixStats from './Markov2PositionSixStats.jsx';
@@ -100,6 +102,12 @@ const routes = [
     section: '杀码',
     element: <KillTenPositionStats />,
   },
+  {
+    path: '/kill/likely22-position-stats',
+    label: '22码反向未出现概率',
+    section: '杀码',
+    element: <Likely22PositionStats />,
+  },
   { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
   {
     path: '/kill/markov2-position-six',
@@ -107,12 +115,12 @@ const routes = [
     section: '杀码',
     element: <Markov2PositionSixStats />,
   },
-  {
-    path: '/kill/smart7-position-stats',
-    label: '智能7码位置概率',
-    section: '杀码',
-    element: <SmartSevenPositionStats />,
-  },
+  // {
+  //   path: '/kill/smart7-position-stats',
+  //   label: '智能7码位置概率',
+  //   section: '杀码',
+  //   element: <SmartSevenPositionStats />,
+  // },
   {
     path: '/kill/h47',
     label: 'Hybrid 4-7 固定策略',

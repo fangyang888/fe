@@ -184,6 +184,133 @@ export class KillComboBacktestService {
     return calculation;
   }
 
+  async getLikely22PositionStats(forceRefresh = false) {
+    const rawRows = await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+    const latest = history[history.length - 1];
+    const cacheKey = `likely22-position-stats:v1:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const memoryCached = this.memoryCache.get(cacheKey);
+    if (memoryCached && !forceRefresh) {
+      return {
+        ...memoryCached,
+        cacheMeta: { ...memoryCached.cacheMeta, hit: true, store: 'memory' },
+      };
+    }
+
+    const diskCachePath = this.getPositionStatsDiskCachePath('likely22', cacheKey);
+    if (!forceRefresh) {
+      const diskCached = await this.readSmart7StatsDiskCache(diskCachePath);
+      if (diskCached) {
+        const response = {
+          ...diskCached,
+          cacheMeta: {
+            ...diskCached.cacheMeta,
+            hit: true,
+            store: 'disk',
+            key: cacheKey,
+          },
+        };
+        this.memoryCache.set(cacheKey, response);
+        return response;
+      }
+    }
+
+    const pending = this.pendingSmart7Stats.get(cacheKey);
+    if (pending && !forceRefresh) return pending;
+    const calculation = this.calculateLikely22PositionStats(
+      history,
+      cacheKey,
+      diskCachePath,
+    ).finally(() => this.pendingSmart7Stats.delete(cacheKey));
+    this.pendingSmart7Stats.set(cacheKey, calculation);
+    return calculation;
+  }
+
+  private async calculateLikely22PositionStats(
+    history: DrawRow[],
+    cacheKey: string,
+    diskCachePath: string,
+  ) {
+    const latest = history[history.length - 1];
+    const start = Math.max(10, history.length - 100);
+    const results: Array<{
+      year?: number;
+      No?: number;
+      predictions: number[];
+      actual: number[];
+      absent: boolean[];
+    }> = [];
+    for (let target = start; target < history.length; target++) {
+      const predictions = this.likely22(history.slice(0, target));
+      const actual = history[target].numbers;
+      results.push({
+        year: history[target].year,
+        No: history[target].No,
+        predictions,
+        actual,
+        absent: predictions.map((number) => !actual.includes(number)),
+      });
+    }
+
+    const windows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const positions = Array.from({ length: 22 }, (_, index) => {
+        const absentCount = sample.filter((row) => row.absent[index]).length;
+        return {
+          position: index + 1,
+          samples: sample.length,
+          absentCount,
+          appearedCount: sample.length - absentCount,
+          rate: sample.length
+            ? Math.round((absentCount / sample.length) * 1000) / 10
+            : 0,
+        };
+      });
+      const bestRate = Math.max(...positions.map((item) => item.rate));
+      return {
+        periods,
+        positions,
+        bestPositions: positions.filter((item) => item.rate === bestRate),
+      };
+    });
+
+    const currentPredictions = this.likely22(history);
+    const overall = Array.from({ length: 22 }, (_, index) => {
+      const rates = windows.map((window) => window.positions[index].rate);
+      return {
+        position: index + 1,
+        averageRate:
+          Math.round((rates.reduce((sum, rate) => sum + rate, 0) / rates.length) * 10) /
+          10,
+      };
+    }).sort((a, b) => b.averageRate - a.averageRate || a.position - b.position);
+
+    const response = {
+      model: 'likely22-absent',
+      modelLabel: '最可能出现的22码反向未出现统计',
+      metricLabel: '未出现率',
+      currentPredictions,
+      windows,
+      overallBest: overall[0],
+      historyMeta: {
+        count: history.length,
+        latest: latest
+          ? { id: latest.id, year: latest.year, No: latest.No, numbers: latest.numbers }
+          : null,
+      },
+      recentResults: results.slice(-10).reverse(),
+      cacheMeta: {
+        hit: false,
+        store: 'disk',
+        key: cacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    this.memoryCache.set(cacheKey, response);
+    await this.writeSmart7StatsDiskCache(diskCachePath, response);
+    return response;
+  }
+
   private async calculateKill10PositionStats(
     history: DrawRow[],
     cacheKey: string,
@@ -397,7 +524,10 @@ export class KillComboBacktestService {
     return this.getPositionStatsDiskCachePath('smart7', cacheKey);
   }
 
-  private getPositionStatsDiskCachePath(type: 'smart7' | 'kill10', cacheKey: string) {
+  private getPositionStatsDiskCachePath(
+    type: 'smart7' | 'kill10' | 'likely22',
+    cacheKey: string,
+  ) {
     const hash = createHash('sha256').update(cacheKey).digest('hex').slice(0, 24);
     return join(process.cwd(), '.cache', `${type}-position-stats`, `${hash}.json`);
   }

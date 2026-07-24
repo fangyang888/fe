@@ -51,6 +51,16 @@ export class KillComboBacktestController {
     return this.service.getKill10PositionStats(true);
   }
 
+  @Get('likely22-position-stats')
+  likely22PositionStats() {
+    return this.service.getLikely22PositionStats();
+  }
+
+  @Post('likely22-position-stats/cache/refresh')
+  refreshLikely22PositionStats() {
+    return this.service.getLikely22PositionStats(true);
+  }
+
   private parseCount(value?: string) {
     const parsed = Number(value || 20);
     if (!Number.isFinite(parsed)) return 20;

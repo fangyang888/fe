@@ -1,4 +1,7 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname, join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { FivePeriodKillService } from './five-period-kill.service';
 import { FixedHybridKillService } from './fixed-hybrid-kill.service';
@@ -68,6 +71,7 @@ interface PeriodSnapshot {
 @Injectable()
 export class KillComboBacktestService {
   private readonly memoryCache = new Map<string, any>();
+  private readonly pendingSmart7Stats = new Map<string, Promise<any>>();
   private kill5AdaptiveCache: { opts: any | null; learnedAt: number; score: number } = {
     opts: null,
     learnedAt: -1,
@@ -106,6 +110,193 @@ export class KillComboBacktestService {
       };
     }
 
+    const diskCachePath = this.getSmart7StatsDiskCachePath(cacheKey);
+    if (!forceRefresh) {
+      const diskCached = await this.readSmart7StatsDiskCache(diskCachePath);
+      if (diskCached) {
+        const response = {
+          ...diskCached,
+          cacheMeta: {
+            ...diskCached.cacheMeta,
+            hit: true,
+            store: 'disk',
+            key: cacheKey,
+          },
+        };
+        this.memoryCache.set(cacheKey, response);
+        return response;
+      }
+    }
+
+    const pending = this.pendingSmart7Stats.get(cacheKey);
+    if (pending && !forceRefresh) return pending;
+
+    const calculation = this.calculateSmart7PositionStats(
+      history,
+      cacheKey,
+      diskCachePath,
+    ).finally(() => {
+      this.pendingSmart7Stats.delete(cacheKey);
+    });
+    this.pendingSmart7Stats.set(cacheKey, calculation);
+    return calculation;
+  }
+
+  async getKill10PositionStats(forceRefresh = false) {
+    const rawRows = await this.historyService.findAll();
+    const history = this.normalizeRows(rawRows);
+    const latest = history[history.length - 1];
+    const cacheKey = `kill10-position-stats:v1:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const memoryCached = this.memoryCache.get(cacheKey);
+    if (memoryCached && !forceRefresh) {
+      return {
+        ...memoryCached,
+        cacheMeta: { ...memoryCached.cacheMeta, hit: true, store: 'memory' },
+      };
+    }
+
+    const diskCachePath = this.getPositionStatsDiskCachePath('kill10', cacheKey);
+    if (!forceRefresh) {
+      const diskCached = await this.readSmart7StatsDiskCache(diskCachePath);
+      if (diskCached) {
+        const response = {
+          ...diskCached,
+          cacheMeta: {
+            ...diskCached.cacheMeta,
+            hit: true,
+            store: 'disk',
+            key: cacheKey,
+          },
+        };
+        this.memoryCache.set(cacheKey, response);
+        return response;
+      }
+    }
+
+    const pending = this.pendingSmart7Stats.get(cacheKey);
+    if (pending && !forceRefresh) return pending;
+    const calculation = this.calculateKill10PositionStats(
+      history,
+      cacheKey,
+      diskCachePath,
+    ).finally(() => this.pendingSmart7Stats.delete(cacheKey));
+    this.pendingSmart7Stats.set(cacheKey, calculation);
+    return calculation;
+  }
+
+  private async calculateKill10PositionStats(
+    history: DrawRow[],
+    cacheKey: string,
+    diskCachePath: string,
+  ) {
+    const hist = this.toMatrix(history);
+    const latest = history[history.length - 1];
+    const start = Math.max(30, hist.length - 100);
+    const results: Array<{
+      year?: number;
+      No?: number;
+      predictions: number[];
+      actual: number[];
+      success: boolean[];
+    }> = [];
+
+    for (let target = start; target < hist.length; target++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      this.kill10AdaptiveCache = {
+        opts: null,
+        learnedAt: -1,
+        score: 0,
+        strategyName: '',
+      };
+      const training = hist.slice(0, target);
+      const options = this.getAdaptiveKill10Opts(training).opts;
+      const predictions = this.strategyAbsoluteSafeMatrix(training, options).map(
+        (item) => item.num,
+      );
+      const actual = hist[target];
+      results.push({
+        year: history[target].year,
+        No: history[target].No,
+        predictions,
+        actual,
+        success: predictions.map((number) => !actual.includes(number)),
+      });
+    }
+
+    const windows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const positions = Array.from({ length: 10 }, (_, index) => {
+        const successCount = sample.filter((row) => row.success[index]).length;
+        return {
+          position: index + 1,
+          samples: sample.length,
+          successCount,
+          failureCount: sample.length - successCount,
+          rate: sample.length
+            ? Math.round((successCount / sample.length) * 1000) / 10
+            : 0,
+        };
+      });
+      const bestRate = Math.max(...positions.map((item) => item.rate));
+      return {
+        periods,
+        positions,
+        bestPositions: positions.filter((item) => item.rate === bestRate),
+      };
+    });
+
+    this.kill10AdaptiveCache = {
+      opts: null,
+      learnedAt: -1,
+      score: 0,
+      strategyName: '',
+    };
+    const currentOptions = this.getAdaptiveKill10Opts(hist).opts;
+    const currentPredictions = this.strategyAbsoluteSafeMatrix(
+      hist,
+      currentOptions,
+    ).map((item) => item.num);
+    const overall = Array.from({ length: 10 }, (_, index) => {
+      const rates = windows.map((window) => window.positions[index].rate);
+      return {
+        position: index + 1,
+        averageRate:
+          Math.round((rates.reduce((sum, rate) => sum + rate, 0) / rates.length) * 10) /
+          10,
+      };
+    }).sort((a, b) => b.averageRate - a.averageRate || a.position - b.position);
+
+    const response = {
+      model: 'kill10',
+      modelLabel: '预测下期不会出现的10个数字',
+      currentPredictions,
+      windows,
+      overallBest: overall[0],
+      historyMeta: {
+        count: history.length,
+        latest: latest
+          ? { id: latest.id, year: latest.year, No: latest.No, numbers: latest.numbers }
+          : null,
+      },
+      recentResults: results.slice(-10).reverse(),
+      cacheMeta: {
+        hit: false,
+        store: 'disk',
+        key: cacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    this.memoryCache.set(cacheKey, response);
+    await this.writeSmart7StatsDiskCache(diskCachePath, response);
+    return response;
+  }
+
+  private async calculateSmart7PositionStats(
+    history: DrawRow[],
+    cacheKey: string,
+    diskCachePath: string,
+  ) {
+    const latest = history[history.length - 1];
     const start = Math.max(30, history.length - 100);
     const results: Array<{
       year?: number;
@@ -116,6 +307,8 @@ export class KillComboBacktestService {
     }> = [];
 
     for (let target = start; target < history.length; target++) {
+      // 将100期重计算拆开执行，避免长时间占满 Node 事件循环。
+      await new Promise<void>((resolve) => setTimeout(resolve, 50));
       // 每个样本模拟当时首次打开页面，不能沿用未来期学习缓存。
       this.kill5AdaptiveCache = { opts: null, learnedAt: -1, score: 0 };
       this.kill10AdaptiveCache = {
@@ -196,7 +389,37 @@ export class KillComboBacktestService {
       },
     };
     this.memoryCache.set(cacheKey, response);
+    await this.writeSmart7StatsDiskCache(diskCachePath, response);
     return response;
+  }
+
+  private getSmart7StatsDiskCachePath(cacheKey: string) {
+    return this.getPositionStatsDiskCachePath('smart7', cacheKey);
+  }
+
+  private getPositionStatsDiskCachePath(type: 'smart7' | 'kill10', cacheKey: string) {
+    const hash = createHash('sha256').update(cacheKey).digest('hex').slice(0, 24);
+    return join(process.cwd(), '.cache', `${type}-position-stats`, `${hash}.json`);
+  }
+
+  private async readSmart7StatsDiskCache(filePath: string) {
+    try {
+      return JSON.parse(await readFile(filePath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  private async writeSmart7StatsDiskCache(filePath: string, value: any) {
+    try {
+      await mkdir(dirname(filePath), { recursive: true });
+      await writeFile(filePath, JSON.stringify(value), 'utf8');
+    } catch (error) {
+      console.warn(
+        '[smart7-position-stats] disk cache write failed:',
+        (error as Error).message,
+      );
+    }
   }
 
   async search(options: SearchOptions, forceRefresh = false) {

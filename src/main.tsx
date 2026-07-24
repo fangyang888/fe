@@ -11,7 +11,9 @@ import NumberDigitPredictor from './NumberDigitPredictor.jsx';
 // @ts-ignore
 import Crawler from './Crawler.jsx';
 // @ts-ignore
-import KillPredictor, { KillTenPositionStats } from './KillPredictor.jsx';
+import KillPredictor from './KillPredictor.jsx';
+// @ts-ignore
+import KillTenPositionStats from './KillTenPositionStats.jsx';
 // @ts-ignore
 import NewKillPredictor from './NewKillPredictor.jsx';
 // @ts-ignore

@@ -41,6 +41,16 @@ export class KillComboBacktestController {
     return this.service.getSmart7PositionStats(true);
   }
 
+  @Get('kill10-position-stats')
+  kill10PositionStats() {
+    return this.service.getKill10PositionStats();
+  }
+
+  @Post('kill10-position-stats/cache/refresh')
+  refreshKill10PositionStats() {
+    return this.service.getKill10PositionStats(true);
+  }
+
   private parseCount(value?: string) {
     const parsed = Number(value || 20);
     if (!Number.isFinite(parsed)) return 20;

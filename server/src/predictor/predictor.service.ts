@@ -1,6 +1,9 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, type RedisClientType } from 'redis';
+import { createHash } from 'crypto';
+import { mkdir, readFile, writeFile } from 'fs/promises';
+import { dirname, join } from 'path';
 import { HistoryService } from '../history/history.service';
 import { HistoryHkService } from '../history-hk/history-hk.service';
 
@@ -175,6 +178,7 @@ export class PredictorService implements OnModuleDestroy {
   private memoKillPredictionResponse = new BoundedCache<string, any>(100);
   private memoKillSevenResponse = new BoundedCache<string, any>(100);
   private memoKillSevenBacktestResponse = new BoundedCache<string, any>(100);
+  private memoFrequencyPositionFiveResponse = new BoundedCache<string, any>(100);
   private lastHistLength = 0;
   private lastHistorySource: HistorySourceType = 'default';
   private readonly predictorRedisTtlSeconds = 12 * 60 * 60;
@@ -306,6 +310,20 @@ export class PredictorService implements OnModuleDestroy {
 
   private getKillSevenBacktestCacheKey(rawHist: any[]) {
     return `predictor:kill-seven-backtest:v1:default:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
+  private getFrequencyPositionFiveCacheKey(rawHist: any[]) {
+    return `predictor:frequency-position-five:v1:default:${this.getHistoryCacheKey(rawHist)}`;
+  }
+
+  private getFrequencyPositionFiveDiskPath(cacheKey: string) {
+    const hash = createHash('sha256').update(cacheKey).digest('hex').slice(0, 24);
+    return join(
+      process.cwd(),
+      '.cache',
+      'frequency-position-five',
+      `${hash}.json`,
+    );
   }
 
   private getHistArrayCacheKey(hist: number[][]) {
@@ -550,6 +568,128 @@ export class PredictorService implements OnModuleDestroy {
       historyMeta: this.getHistoryMeta(rawHist, 'default'),
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  async getFrequencyPositionFiveStats(forceRefresh = false) {
+    const rawHist = await this.historyService.findAll();
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+    const cacheKey = this.getFrequencyPositionFiveCacheKey(rawHist);
+    const memoKey = this.getHistoryCacheKey(rawHist);
+
+    if (!forceRefresh && this.memoFrequencyPositionFiveResponse.has(memoKey)) {
+      const cached = this.memoFrequencyPositionFiveResponse.get(memoKey);
+      return {
+        ...cached,
+        cacheMeta: { ...cached.cacheMeta, hit: true, store: 'memory' },
+      };
+    }
+    if (!forceRefresh) {
+      const cached = await this.getJsonCache<any>(cacheKey);
+      if (cached) {
+        const response = {
+          ...cached,
+          cacheMeta: { ...cached.cacheMeta, hit: true, store: 'redis' },
+        };
+        this.memoFrequencyPositionFiveResponse.set(memoKey, response);
+        return response;
+      }
+      try {
+        const diskCached = JSON.parse(
+          await readFile(this.getFrequencyPositionFiveDiskPath(cacheKey), 'utf8'),
+        );
+        const response = {
+          ...diskCached,
+          cacheMeta: { ...diskCached.cacheMeta, hit: true, store: 'disk' },
+        };
+        this.memoFrequencyPositionFiveResponse.set(memoKey, response);
+        return response;
+      } catch {
+        // No matching persistent cache yet.
+      }
+    }
+
+    const getPositionFive = (rows: number[][]) => {
+      const opts = this.getAdaptiveKill10Opts(rows);
+      const candidate = this.kill10WithOpts(rows, opts)[4];
+      return candidate?.n ?? null;
+    };
+    const start = Math.max(30, hist.length - 100);
+    const results: Array<{
+      year?: number;
+      No: number;
+      predicted: number | null;
+      actual: number[];
+      success: boolean;
+    }> = [];
+    for (let index = start; index < hist.length; index++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+      const predicted = getPositionFive(hist.slice(0, index));
+      const actual = hist[index];
+      results.push({
+        year: rawHist[index].year,
+        No: rawHist[index].No,
+        predicted,
+        actual,
+        success: predicted !== null && !actual.includes(predicted),
+      });
+    }
+    const windows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const successCount = sample.filter((item) => item.success).length;
+      return {
+        periods,
+        samples: sample.length,
+        successCount,
+        failureCount: sample.length - successCount,
+        rate: sample.length
+          ? Math.round((successCount / sample.length) * 1000) / 10
+          : 0,
+      };
+    });
+    const current = getPositionFive(hist);
+    const response = {
+      model: 'frequency',
+      modelLabel: '频率模型',
+      position: 5,
+      prediction: { n: current },
+      windows,
+      recentResults: results.slice(-20).reverse(),
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
+      cacheMeta: {
+        hit: false,
+        store: 'memory',
+        key: cacheKey,
+        ttlSeconds: this.predictorRedisTtlSeconds,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    const cachedInRedis = await this.setJsonCache(
+      cacheKey,
+      response,
+      this.predictorRedisTtlSeconds,
+    );
+    response.cacheMeta.store = cachedInRedis ? 'redis' : 'memory';
+    this.memoFrequencyPositionFiveResponse.set(memoKey, response);
+    try {
+      const diskPath = this.getFrequencyPositionFiveDiskPath(cacheKey);
+      await mkdir(dirname(diskPath), { recursive: true });
+      await writeFile(diskPath, JSON.stringify(response), 'utf8');
+      if (!cachedInRedis) response.cacheMeta.store = 'disk';
+    } catch (error) {
+      console.warn(
+        '[frequency-position-five] disk cache write failed:',
+        (error as Error).message,
+      );
+    }
+    return response;
   }
 
   async clearKillCache() {

@@ -15,6 +15,16 @@ export class PredictorController {
     return this.predictorService.getMarkov2PositionSixStats();
   }
 
+  @Get('frequency-position-five')
+  async getFrequencyPositionFiveStats() {
+    return this.predictorService.getFrequencyPositionFiveStats();
+  }
+
+  @Post('frequency-position-five/cache/refresh')
+  async refreshFrequencyPositionFiveStats() {
+    return this.predictorService.getFrequencyPositionFiveStats(true);
+  }
+
   @Post('kill/cache/clear')
   async clearKillCache() {
     return this.predictorService.clearKillCache();

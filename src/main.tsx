@@ -23,6 +23,8 @@ import Markov2PositionSixStats from './Markov2PositionSixStats.jsx';
 // @ts-ignore
 import SmartSevenPositionStats from './SmartSevenPositionStats.jsx';
 // @ts-ignore
+import FrequencyPositionFiveStats from './FrequencyPositionFiveStats.jsx';
+// @ts-ignore
 import HotPickPredictor from './HotPickPredictor.jsx';
 // @ts-ignore
 import HotPickPredictorOpt from './HotPickPredictorOpt.jsx';
@@ -114,6 +116,12 @@ const routes = [
     label: '二阶马尔可夫第6位',
     section: '杀码',
     element: <Markov2PositionSixStats />,
+  },
+  {
+    path: '/kill/frequency-position-five',
+    label: '频率模型第5位',
+    section: '杀码',
+    element: <FrequencyPositionFiveStats />,
   },
   // {
   //   path: '/kill/smart7-position-stats',

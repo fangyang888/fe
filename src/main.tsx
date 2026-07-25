@@ -168,12 +168,12 @@ const routes = [
     section: '杀码',
     element: <GapScoreKill />,
   },
-  {
-    path: '/kill/state-risk',
-    label: '状态条件风险第5位',
-    section: '杀码',
-    element: <StateRiskKill />,
-  },
+  // {
+  //   path: '/kill/state-risk',
+  //   label: '状态条件风险第5位',
+  //   section: '杀码',
+  //   element: <StateRiskKill />,
+  // },
   // {
   //   path: '/kill/ten-anchor-shift',
   //   label: '十期锚点位移',
@@ -186,12 +186,12 @@ const routes = [
   //   section: '杀码',
   //   element: <PreviousSevenQuadKill />,
   // },
-  {
-    path: '/kill/quadratic-anchor-53',
-    label: '53期二次锚点',
-    section: '杀码',
-    element: <QuadraticAnchor53Kill />,
-  },
+  // {
+  //   path: '/kill/quadratic-anchor-53',
+  //   label: '53期二次锚点',
+  //   section: '杀码',
+  //   element: <QuadraticAnchor53Kill />,
+  // },
   {
     path: '/kill/anchor-phase-14',
     label: '14期锚点＋期号相位',
@@ -216,24 +216,24 @@ const routes = [
     section: '杀码',
     element: <DualTimeAnchorKill />,
   },
-  {
-    path: '/kill/tiered-combo',
-    label: '分档组合杀码',
-    section: '杀码',
-    element: <TieredKillCombo />,
-  },
-  {
-    path: '/kill/risk-controlled-five',
-    label: '风险受控五码',
-    section: '杀码',
-    element: <RiskControlledFive />,
-  },
-  {
-    path: '/kill/tail-gated-dual',
-    label: '期号尾门控双公式',
-    section: '杀码',
-    element: <TailGatedDualKill />,
-  },
+  // {
+  //   path: '/kill/tiered-combo',
+  //   label: '分档组合杀码',
+  //   section: '杀码',
+  //   element: <TieredKillCombo />,
+  // },
+  // {
+  //   path: '/kill/risk-controlled-five',
+  //   label: '风险受控五码',
+  //   section: '杀码',
+  //   element: <RiskControlledFive />,
+  // },
+  // {
+  //   path: '/kill/tail-gated-dual',
+  //   label: '期号尾门控双公式',
+  //   section: '杀码',
+  //   element: <TailGatedDualKill />,
+  // },
   // {
   //   path: '/kill/stable-five',
   //   label: '稳健5杀三连',

@@ -143,7 +143,7 @@ const routes = [
   // { path: '/kill/ten', label: '十码全杀', section: '杀码', element: <KillTen /> },
   // { path: '/kill/one', label: '一杀（单杀）', section: '杀码', element: <KillOne /> },
   // { path: '/kill/tail-ten', label: '尾数十位单杀', section: '杀码', element: <TailTenKill /> },
-  { path: '/kill/multi-dim', label: '多维单杀择优', section: '杀码', element: <MultiDimKill /> },
+  // { path: '/kill/multi-dim', label: '多维单杀择优', section: '杀码', element: <MultiDimKill /> },
   // {
   //   path: '/kill/experimental-98',
   //   label: '98实验单杀',

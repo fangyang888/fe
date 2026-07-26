@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 const DIGITS = Array.from({ length: 10 }, (_, i) => i);
 const WINDOWS = [20, 50, 100];
+const HOLDOUT_COUNT = 20;
+const ROBUST_CONFIG = {
+  window: 80,
+  prior: 100,
+  markovPrior: 30,
+  transitionWeight: 0.1,
+};
 
 const toPct = (value) => `${(value * 100).toFixed(1)}%`;
 
@@ -29,6 +36,74 @@ const countTails = (rows) => {
     counts[row.tail] += 1;
   });
   return counts;
+};
+
+const scoreRobustDigits = (history, t) => {
+  const available = history.slice(0, t);
+  const recent = countTails(available.slice(-ROBUST_CONFIG.window));
+  const lastTail = available[available.length - 1]?.tail;
+  const transitions = Array(10).fill(0);
+  let transitionTotal = 0;
+
+  for (let i = Math.max(1, available.length - 500); i < available.length; i += 1) {
+    if (available[i - 1].tail === lastTail) {
+      transitions[available[i].tail] += 1;
+      transitionTotal += 1;
+    }
+  }
+
+  return DIGITS.map((digit) => {
+    // 1-9 各对应 5 个号码；尾 0 只有 10/20/30/40，先验概率应更低。
+    const baseRate = digit === 0 ? 4 / 49 : 5 / 49;
+    const sampleSize = Math.min(t, ROBUST_CONFIG.window);
+    const recentRate =
+      (recent[digit] + ROBUST_CONFIG.prior * baseRate) /
+      (sampleSize + ROBUST_CONFIG.prior);
+    const transitionRate =
+      (transitions[digit] + ROBUST_CONFIG.markovPrior * baseRate) /
+      (transitionTotal + ROBUST_CONFIG.markovPrior);
+    let miss = available.length;
+    for (let i = available.length - 1; i >= 0; i -= 1) {
+      if (available[i].tail === digit) {
+        miss = available.length - 1 - i;
+        break;
+      }
+    }
+    return {
+      digit,
+      score: recentRate + transitionRate * ROBUST_CONFIG.transitionWeight,
+      miss,
+      recent20: countTails(available.slice(-20))[digit],
+      recent50: countTails(available.slice(-50))[digit],
+      transition: transitions[digit],
+    };
+  }).sort((a, b) => b.score - a.score || a.digit - b.digit);
+};
+
+const predictRobust = (history, t) => scoreRobustDigits(history, t).slice(0, 5);
+
+const runRobustBacktest = (history, start, end) => {
+  const rows = [];
+  let hits = 0;
+  for (let t = start; t < end; t += 1) {
+    const prediction = predictRobust(history, t).map((item) => item.digit);
+    const hit = prediction.includes(history[t].tail);
+    if (hit) hits += 1;
+    rows.push({
+      year: history[t].year,
+      No: history[t].No,
+      special: history[t].special,
+      tail: history[t].tail,
+      prediction,
+      hit,
+    });
+  }
+  return {
+    count: rows.length,
+    hits,
+    rate: rows.length ? hits / rows.length : 0,
+    rows: rows.reverse(),
+  };
 };
 
 const scoreDigits = (history, t, mode) => {
@@ -214,49 +289,31 @@ export default function SpecialTailPredictor() {
   }, []);
 
   const report = useMemo(() => {
-    if (history.length < 20) return null;
+    if (history.length < 120) return null;
+    const holdoutStart = history.length - HOLDOUT_COUNT;
+    const prediction = predictRobust(history, history.length);
+    const trainingBacktests = WINDOWS.map((count) =>
+      runRobustBacktest(history, Math.max(20, holdoutStart - count), holdoutStart),
+    );
+    const holdout = runRobustBacktest(history, holdoutStart, history.length);
     const modes = [
-      'contrarian',
-      'antiHot',
-      'repeatPattern',
-      'overdue',
-      'transition',
-      'hybrid',
-      'balance',
-      'recentHot',
-      'longHot',
+      'contrarian', 'antiHot', 'repeatPattern', 'overdue', 'transition',
+      'hybrid', 'balance', 'recentHot', 'longHot',
     ];
-    const chosen = chooseBestCurrentMode(history, modes);
-    const prediction = predictByMode(history, history.length, chosen.mode);
-    const backtests = WINDOWS.map((count) => runModeBacktest(history, chosen.mode, count));
-    const adaptiveBacktests = WINDOWS.map((count) => {
-      const start = Math.max(12, history.length - count);
-      let hits = 0;
-      for (let t = start; t < history.length; t += 1) {
-        const adaptive = chooseAdaptiveMode(history, t, modes);
-        const picked = predictByMode(history, t, adaptive.mode).map((item) => item.digit);
-        if (picked.includes(history[t].tail)) hits += 1;
-      }
-      return { count: history.length - start, hits, rate: (history.length - start) ? hits / (history.length - start) : 0 };
-    });
     const modeStats = modes
-      .map((mode) => ({ mode, ...evaluateMode(history, history.length, mode, validationWindow) }))
+      .map((mode) => ({ mode, ...evaluateMode(history, holdoutStart, mode, validationWindow) }))
       .sort((a, b) => b.rate - a.rate || b.hits - a.hits);
     const latest = history[history.length - 1];
 
     return {
       latest,
-      chosen,
       prediction,
-      backtests,
-      adaptiveBacktests,
+      trainingBacktests,
+      holdout,
       modeStats,
-      recentRows: backtests[0]?.rows || [],
+      recentRows: holdout.rows,
     };
   }, [history, validationWindow]);
-
-  const bestRate = report ? Math.max(...report.backtests.map((item) => item.rate)) : 0;
-  const reaches90 = bestRate >= 0.9;
 
   return (
     <div className="special-tail-page">
@@ -265,7 +322,7 @@ export default function SpecialTailPredictor() {
           <p className="special-tail-kicker">特别号尾数预测</p>
           <h1>下期 5 个尾数</h1>
           <p className="special-tail-copy">
-            读取数据库接口 /api/history 的历史开奖，取每期最后一个号码作为特别号，用滚动回测自动选择当前最稳的尾数策略。
+            读取历史开奖，取每期最后一个号码作为特别号。最近 20 期固定留作盲测，不参与模型选择和参数调整。
           </p>
         </div>
         <div className="special-tail-status">
@@ -282,7 +339,7 @@ export default function SpecialTailPredictor() {
               <div className="special-tail-panel-head">
                 <div>
                   <span>推荐尾数</span>
-                  <strong>{describeMode(report.chosen.mode)}</strong>
+                  <strong>先验校准 · 80 期稳健模型</strong>
                 </div>
                 <small>
                   最新：{report.latest.year || '--'} 年第 {report.latest.No || '--'} 期，特别号 {report.latest.special}
@@ -297,10 +354,8 @@ export default function SpecialTailPredictor() {
                 ))}
               </div>
               <div className="special-tail-note">
-                {reaches90
-                  ? `当前回测窗口最高达到 ${toPct(bestRate)}。`
-                  : `目前历史回测最高为 ${toPct(bestRate)}，5 选 1 尾数要长期稳定到 90% 以上很难，页面会按真实回测动态更新。`}
-                {' '}滚动择优近20/50/100为 {report.adaptiveBacktests.map((item) => toPct(item.rate)).join(' / ')}。
+                留出 20 期真实盲测为 {toPct(report.holdout.rate)}（{report.holdout.hits}/{report.holdout.count}）。
+                该结果样本较小，不等于长期命中率；随机基准约为 50%，应结合训练区滚动结果判断。
               </div>
             </div>
 
@@ -308,7 +363,7 @@ export default function SpecialTailPredictor() {
               <div className="special-tail-panel-head">
                 <div>
                   <span>策略验证</span>
-                  <strong>近 {validationWindow} 期</strong>
+                  <strong>训练区近 {validationWindow} 期</strong>
                 </div>
                 <select value={validationWindow} onChange={(e) => setValidationWindow(Number(e.target.value))}>
                   <option value={20}>近 20 期</option>
@@ -331,9 +386,14 @@ export default function SpecialTailPredictor() {
           </section>
 
           <section className="special-tail-backtests">
-            {report.backtests.map((item) => (
-              <div className="special-tail-card" key={item.count}>
-                <span>近 {item.count} 期回测</span>
+            <div className="special-tail-card">
+              <span>留出 20 期真实盲测</span>
+              <strong>{toPct(report.holdout.rate)}</strong>
+              <small>命中 {report.holdout.hits} / {report.holdout.count}</small>
+            </div>
+            {report.trainingBacktests.map((item) => (
+              <div className="special-tail-card" key={`training-${item.count}`}>
+                <span>训练区前 {item.count} 期</span>
                 <strong>{toPct(item.rate)}</strong>
                 <small>
                   命中 {item.hits} / {item.count}
@@ -346,7 +406,7 @@ export default function SpecialTailPredictor() {
             <div className="special-tail-panel-head">
               <div>
                 <span>最近回测明细</span>
-                <strong>近 20 期</strong>
+                <strong>留出 20 期 · 未参与调参</strong>
               </div>
             </div>
             <div className="special-tail-table">

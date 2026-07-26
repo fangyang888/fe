@@ -94,6 +94,8 @@ import DynamicSevenKill from './DynamicSevenKill.jsx';
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
 // @ts-ignore
 import StableFiveKill from './StableFiveKill.jsx';
+// @ts-ignore
+import SpecialCodeTracker from './SpecialCodeTracker.jsx';
 
 const routes = [
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
@@ -260,6 +262,12 @@ const routes = [
     label: '特别号尾数预测',
     section: '预测',
     element: <SpecialTailPredictor />,
+  },
+  {
+    path: '/special-code-tracker',
+    label: '特别码跟踪',
+    section: '预测',
+    element: <SpecialCodeTracker />,
   },
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },

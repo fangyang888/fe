@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
+import { Controller, Get, Header, Post, Query } from '@nestjs/common';
 import { PredictorService } from './predictor.service';
 
 @Controller('api/predictor')
@@ -16,11 +16,13 @@ export class PredictorController {
   }
 
   @Get('knn-position-five')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
   async getKnnPositionFiveStats() {
     return this.predictorService.getKnnPositionFiveStats();
   }
 
   @Get('markov-position-eight')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
   async getMarkovPositionEightStats() {
     return this.predictorService.getMarkovPositionEightStats();
   }

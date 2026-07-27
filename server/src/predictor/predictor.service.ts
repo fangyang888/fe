@@ -596,7 +596,7 @@ export class PredictorService implements OnModuleDestroy {
     const getPrediction = (rows: number[][]) => {
       const probabilities =
         model === 'knn'
-          ? this.getKnnPredictionsMemo(rows, 30)
+          ? this.getKnnPredictions(rows, 30)
           : this.getMarkovPredictions(rows);
       return Array.from({ length: 49 }, (_, index) => ({
         n: index + 1,

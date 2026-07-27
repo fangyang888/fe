@@ -17,10 +17,15 @@ export default function FocusedModelPositionStats({
 }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [requestVersion, setRequestVersion] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(endpoint, {
+    setLoading(true);
+    setError('');
+    const separator = endpoint.includes('?') ? '&' : '?';
+    fetch(`${endpoint}${separator}_=${Date.now()}`, {
       cache: 'no-store',
       signal: controller.signal,
     })
@@ -33,9 +38,12 @@ export default function FocusedModelPositionStats({
         if (requestError.name !== 'AbortError') {
           setError(`统计加载失败：${requestError.message}`);
         }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [endpoint]);
+  }, [endpoint, requestVersion]);
 
   return (
     <main
@@ -46,6 +54,7 @@ export default function FocusedModelPositionStats({
         .focused-position-page{min-height:100vh;padding:72px 20px 48px;color:#e2e8f0;background:radial-gradient(circle at 50% 0%,var(--focused-accent-soft) 0,#111827 44%,#030712 100%);font-family:Inter,system-ui,sans-serif}
         .focused-position-shell{width:min(980px,100%);margin:0 auto}.focused-position-eyebrow{color:var(--focused-accent);font-size:13px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
         .focused-position-title{margin:12px 0 8px;color:#f8fafc;font-size:clamp(32px,6vw,56px);line-height:1.05}.focused-position-subtitle{max-width:780px;margin:0;color:#94a3b8;font-size:16px;line-height:1.7}
+        .focused-position-actions{display:flex;justify-content:flex-end;margin-top:16px}.focused-position-refresh{padding:9px 15px;border:1px solid color-mix(in srgb,var(--focused-accent) 38%,transparent);border-radius:10px;color:var(--focused-accent);background:rgba(15,23,42,.55);cursor:pointer}.focused-position-refresh:disabled{cursor:wait;opacity:.55}
         .focused-position-current{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;margin-top:24px;padding:28px;border:1px solid color-mix(in srgb,var(--focused-accent) 32%,transparent);border-radius:24px;background:rgba(15,23,42,.72);box-shadow:0 24px 70px rgba(0,0,0,.28)}
         .focused-position-ball{display:grid;place-items:center;width:104px;height:104px;border-radius:50%;color:#fff;font-size:42px;font-weight:900;background:linear-gradient(145deg,var(--focused-accent),#7c3aed);box-shadow:0 14px 35px color-mix(in srgb,var(--focused-accent) 32%,transparent)}
         .focused-position-label,.focused-position-count{color:#94a3b8;font-size:13px}.focused-position-value{margin:6px 0;color:#f8fafc;font-size:26px;font-weight:900}.focused-position-meta{color:var(--focused-accent);font-size:14px}
@@ -60,10 +69,20 @@ export default function FocusedModelPositionStats({
         <div className="focused-position-eyebrow">{eyebrow}</div>
         <h1 className="focused-position-title">{title}</h1>
         <p className="focused-position-subtitle">{description}</p>
+        <div className="focused-position-actions">
+          <button
+            className="focused-position-refresh"
+            type="button"
+            disabled={loading}
+            onClick={() => setRequestVersion((version) => version + 1)}
+          >
+            {loading ? '正在读取数据库…' : '重新读取数据库'}
+          </button>
+        </div>
 
         {error ? (
           <div className="focused-position-status">{error}</div>
-        ) : !data ? (
+        ) : !data && loading ? (
           <div className="focused-position-status">正在计算滚动统计…</div>
         ) : (
           <>
@@ -121,6 +140,8 @@ export default function FocusedModelPositionStats({
               数据库共 {data.historyMeta.count} 期，最新为{' '}
               {data.historyMeta.latest.year} 年第 {data.historyMeta.latest.No}{' '}
               期。每个回测样本只使用当期开奖前已有的数据重新生成模型排序；成功表示预测号码未出现在下一期7个号码中。
+              本次计算时间：
+              {new Date(data.generatedAt).toLocaleString('zh-CN')}。
             </div>
           </>
         )}

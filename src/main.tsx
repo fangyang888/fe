@@ -25,6 +25,8 @@ import SmartSevenPositionStats from './SmartSevenPositionStats.jsx';
 // @ts-ignore
 import FrequencyPositionFiveStats from './FrequencyPositionFiveStats.jsx';
 // @ts-ignore
+import FocusedModelPositionStats from './FocusedModelPositionStats.jsx';
+// @ts-ignore
 import HotPickPredictor from './HotPickPredictor.jsx';
 // @ts-ignore
 import HotPickPredictorOpt from './HotPickPredictorOpt.jsx';
@@ -124,6 +126,36 @@ const routes = [
     label: '频率模型第5位',
     section: '杀码',
     element: <FrequencyPositionFiveStats />,
+  },
+  {
+    path: '/kill/knn-position-five',
+    label: '相似期KNN第5位',
+    section: '杀码',
+    element: (
+      <FocusedModelPositionStats
+        endpoint="/api/predictor/knn-position-five"
+        title="相似期 KNN · 第5位"
+        eyebrow="Similar-period KNN position statistics"
+        description="从 NewKill 多模型中的相似期 KNN 排序取第5位，逐期滚动验证近10、20、50、100期杀码成功率。"
+        accent="#22d3ee"
+        accentSoft="#164e63"
+      />
+    ),
+  },
+  {
+    path: '/kill/markov-position-eight',
+    label: '一阶马尔可夫第8位',
+    section: '杀码',
+    element: (
+      <FocusedModelPositionStats
+        endpoint="/api/predictor/markov-position-eight"
+        title="一阶马尔可夫 · 第8位"
+        eyebrow="First-order Markov position statistics"
+        description="从 NewKill 多模型中的一阶马尔可夫排序取第8位，逐期滚动验证近10、20、50、100期杀码成功率。"
+        accent="#f59e0b"
+        accentSoft="#78350f"
+      />
+    ),
   },
   // {
   //   path: '/kill/smart7-position-stats',

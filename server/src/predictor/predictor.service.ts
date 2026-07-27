@@ -570,6 +570,103 @@ export class PredictorService implements OnModuleDestroy {
     };
   }
 
+  async getKnnPositionFiveStats() {
+    return this.getFocusedModelPositionStats('knn', 5);
+  }
+
+  async getMarkovPositionEightStats() {
+    return this.getFocusedModelPositionStats('markov', 8);
+  }
+
+  private async getFocusedModelPositionStats(
+    model: 'knn' | 'markov',
+    position: number,
+  ) {
+    const rawHist = await this.historyService.findAll();
+    const hist = rawHist.map((item) => [
+      item.n1,
+      item.n2,
+      item.n3,
+      item.n4,
+      item.n5,
+      item.n6,
+      item.n7,
+    ]);
+
+    const getPrediction = (rows: number[][]) => {
+      const probabilities =
+        model === 'knn'
+          ? this.getKnnPredictionsMemo(rows, 30)
+          : this.getMarkovPredictions(rows);
+      return Array.from({ length: 49 }, (_, index) => ({
+        n: index + 1,
+        appearProbability:
+          probabilities[index + 1] || this.randomAppearProb,
+      }))
+        .sort(
+          (a, b) =>
+            a.appearProbability - b.appearProbability || a.n - b.n,
+        )[position - 1];
+    };
+
+    type FocusedPositionResult = {
+      year?: number;
+      No: number;
+      predicted: number;
+      appearProbability: number;
+      success: boolean;
+      actual: number[];
+    };
+
+    const results: FocusedPositionResult[] = [];
+    const start = Math.max(10, hist.length - 100);
+    for (let index = start; index < hist.length; index++) {
+      const prediction = getPrediction(hist.slice(0, index));
+      const actual = hist[index];
+      results.push({
+        year: rawHist[index].year,
+        No: rawHist[index].No,
+        predicted: prediction.n,
+        appearProbability:
+          Math.round(prediction.appearProbability * 1000) / 10,
+        success: !actual.includes(prediction.n),
+        actual,
+      });
+    }
+
+    const windows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const successCount = sample.filter((item) => item.success).length;
+      return {
+        periods,
+        samples: sample.length,
+        successCount,
+        failureCount: sample.length - successCount,
+        rate: sample.length
+          ? Math.round((successCount / sample.length) * 1000) / 10
+          : 0,
+      };
+    });
+
+    const current = getPrediction(hist);
+    return {
+      model,
+      modelLabel: model === 'knn' ? '相似期 KNN' : '一阶马尔可夫',
+      position,
+      prediction: {
+        n: current.n,
+        appearProbability:
+          Math.round(current.appearProbability * 1000) / 10,
+        killProbability:
+          Math.round((1 - current.appearProbability) * 1000) / 10,
+      },
+      windows,
+      recentResults: results.slice(-20).reverse(),
+      historyMeta: this.getHistoryMeta(rawHist, 'default'),
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
   async getFrequencyPositionFiveStats(forceRefresh = false) {
     const rawHist = await this.historyService.findAll();
     const hist = rawHist.map((item) => [

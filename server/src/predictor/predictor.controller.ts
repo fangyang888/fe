@@ -15,6 +15,16 @@ export class PredictorController {
     return this.predictorService.getMarkov2PositionSixStats();
   }
 
+  @Get('knn-position-five')
+  async getKnnPositionFiveStats() {
+    return this.predictorService.getKnnPositionFiveStats();
+  }
+
+  @Get('markov-position-eight')
+  async getMarkovPositionEightStats() {
+    return this.predictorService.getMarkovPositionEightStats();
+  }
+
   @Get('frequency-position-five')
   async getFrequencyPositionFiveStats() {
     return this.predictorService.getFrequencyPositionFiveStats();

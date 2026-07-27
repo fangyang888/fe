@@ -112,7 +112,7 @@ const routes = [
     section: '杀码',
     element: <Likely22PositionStats />,
   },
-  { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
+  // { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
   {
     path: '/kill/markov2-position-six',
     label: '二阶马尔可夫第6位',
@@ -194,12 +194,12 @@ const routes = [
   //   section: '杀码',
   //   element: <QuadraticAnchor53Kill />,
   // },
-  {
-    path: '/kill/anchor-phase-14',
-    label: '14期锚点＋期号相位',
-    section: '杀码',
-    element: <AnchorPhase14Kill />,
-  },
+  // {
+  //   path: '/kill/anchor-phase-14',
+  //   label: '14期锚点＋期号相位',
+  //   section: '杀码',
+  //   element: <AnchorPhase14Kill />,
+  // },
   {
     path: '/kill/quadratic-anchor-49-seven',
     label: '49期七码二次锚点',

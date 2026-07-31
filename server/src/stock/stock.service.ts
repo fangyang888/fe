@@ -84,6 +84,22 @@ interface MarketCandidate {
   quoteId: string;
 }
 
+interface IndustryEntry {
+  industry: string;
+  candidate: MarketCandidate;
+}
+
+interface IndustryHeatSignal {
+  industry: string;
+  score: number;
+  label: string;
+  averageChange: number;
+  positiveRatio: number;
+  sampleCount: number;
+  totalAmount: number;
+  totalAmountFormatted: string;
+}
+
 const EASTMONEY_SEARCH_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
 const FINANCE_KEYWORDS = [
   '银行',
@@ -131,6 +147,33 @@ export class StockService {
     | undefined;
 
   private picksPromise: Promise<JsonRecord> | undefined;
+
+  async getHealth(): Promise<JsonRecord> {
+    const probes = await Promise.all([
+      this.probeSource(
+        '新浪A股市场列表',
+        'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page=1&num=1&sort=amount&asc=0&node=hs_a',
+        (text) => Array.isArray(JSON.parse(text)),
+      ),
+      this.probeSource(
+        '腾讯实时行情',
+        'https://qt.gtimg.cn/q=sh600519',
+        (text) => text.includes('600519') && text.length > 30,
+      ),
+      this.probeSource(
+        '东方财富证券搜索',
+        `http://searchapi.eastmoney.com/api/suggest/get?input=600519&type=14&token=${EASTMONEY_SEARCH_TOKEN}&count=1`,
+        (text) => text.includes('600519'),
+      ),
+    ]);
+
+    return {
+      status: probes.every((item) => item.status === 'ok') ? 'ok' : 'degraded',
+      timestamp: new Date().toISOString(),
+      service: 'stock-api',
+      sources: probes,
+    };
+  }
 
   async getPicks(rawLimit?: string, rawRefresh?: string): Promise<JsonRecord> {
     const limit = this.clamp(Math.round(Number(rawLimit) || 10), 1, 10);
@@ -241,7 +284,8 @@ export class StockService {
 
     const secucode = this.toSecucode(stock);
     const company = await this.fetchCompany(secucode);
-    const industry = this.asString(company.EM2016) || this.asString(company.INDUSTRYCSRC1);
+    const industry =
+      this.asString(company.EM2016) || this.asString(company.INDUSTRYCSRC1);
     const financeKeyword = FINANCE_KEYWORDS.find((keyword) =>
       `${industry} ${stock.Name}`.includes(keyword),
     );
@@ -273,7 +317,12 @@ export class StockService {
       .slice(0, 8);
     const scores = this.calculateScores(quote, klines, financeRows, events);
     const hardChecks = this.buildHardChecks(financeRows, events);
-    const assessment = this.buildAssessment(scores, financeRows, klines, hardChecks);
+    const assessment = this.buildAssessment(
+      scores,
+      financeRows,
+      klines,
+      hardChecks,
+    );
     const latestKline = klines.at(-1);
     const latestFinance = financeRows[0];
     const annualFinancials = financeRows
@@ -282,10 +331,17 @@ export class StockService {
       .reverse();
     const displayFinancials = [
       ...annualFinancials,
-      ...(latestFinance && !latestFinance.reportType.includes('年报') ? [latestFinance] : []),
+      ...(latestFinance && !latestFinance.reportType.includes('年报')
+        ? [latestFinance]
+        : []),
     ].slice(-4);
     const priceSignals = this.buildPriceSignals(klines);
-    const riskFactors = this.buildRiskFactors(financeRows, klines, events, quote);
+    const riskFactors = this.buildRiskFactors(
+      financeRows,
+      klines,
+      events,
+      quote,
+    );
     const positives = this.buildPositiveFactors(financeRows, klines, scores);
     const watchlist = this.buildWatchlist(financeRows, klines, scores);
     const pe = this.scaledNumber(quote.f162);
@@ -349,7 +405,10 @@ export class StockService {
         roe: row.roe,
         cash: this.cashQuality(row),
       })),
-      chart: this.downsample(klines.map((item) => item.close), 24),
+      chart: this.downsample(
+        klines.map((item) => item.close),
+        24,
+      ),
       performance: this.buildPeriodPerformance(klines),
       valuation: [
         {
@@ -532,9 +591,33 @@ export class StockService {
 
     const uniqueEligible = Array.from(
       new Map(eligible.map((entry) => [entry.candidate.code, entry])).values(),
-    ).slice(0, 10);
+    );
 
-    const picks = uniqueEligible.map((entry, index) => {
+    const industryEntries: IndustryEntry[] = detailed.map((entry) => ({
+      industry: entry.industry,
+      candidate: entry.candidate,
+    }));
+    const industryHeat = this.buildIndustryHeat(industryEntries);
+    const rankedEligible = uniqueEligible
+      .map((entry) => {
+        const capitalScore = this.capitalActivityScore(entry.candidate);
+        const industryGroup = this.industryGroup(entry.industry);
+        const heat =
+          industryHeat.get(industryGroup) ??
+          this.neutralIndustryHeat(industryGroup);
+        return {
+          ...entry,
+          capitalScore,
+          industryHeat: heat,
+          selectionScore: Math.round(
+            entry.scores.total * 0.7 + capitalScore * 0.18 + heat.score * 0.12,
+          ),
+        };
+      })
+      .sort((a, b) => b.selectionScore - a.selectionScore)
+      .slice(0, 10);
+
+    const picks = rankedEligible.map((entry, index) => {
       const latest = entry.financeRows[0];
       const latestKline = entry.klines.at(-1);
       const assessment = this.buildAssessment(
@@ -543,13 +626,27 @@ export class StockService {
         entry.klines,
         entry.hardChecks,
       );
-      const reasons = this.buildPickReasons(
+      const modelReasons = this.buildPickReasons(
         latest,
         entry.scores,
         entry.klines,
         entry.events,
         entry.candidate,
       );
+      const contextReasons: string[] = [];
+      if (entry.capitalScore >= 78) {
+        contextReasons.push(
+          `当日成交额 ${this.formatAmount(entry.candidate.amount)}，资金活跃度位于模型优选区间`,
+        );
+      }
+      if (entry.industryHeat.score >= 70) {
+        contextReasons.push(
+          `${entry.industryHeat.industry}候选样本平均涨跌 ${this.formatPercent(entry.industryHeat.averageChange)}，行业热度较高`,
+        );
+      }
+      const reasons = Array.from(
+        new Set([...contextReasons, ...modelReasons]),
+      ).slice(0, 3);
       const riskItems = this.buildRiskFactors(
         entry.financeRows,
         entry.klines,
@@ -564,14 +661,13 @@ export class StockService {
         industry: entry.industry,
         price: entry.candidate.price,
         changePercent: entry.candidate.changePercent,
-        score: entry.scores.total,
-        rating:
-          assessment.rating === '可以关注' ? '优先关注' : '模型关注',
+        score: entry.selectionScore,
+        baseScore: entry.scores.total,
+        rating: assessment.rating === '可以关注' ? '优先关注' : '模型关注',
         reasons,
         risk:
-          riskItems.find(
-            (item) => !item.includes('未触发重大风险扣分项'),
-          ) || '当前公开数据未触发硬性风险红线',
+          riskItems.find((item) => !item.includes('未触发重大风险扣分项')) ||
+          '当前公开数据未触发硬性风险红线',
         metrics: {
           pe: entry.candidate.pe,
           pb: entry.candidate.pb,
@@ -583,6 +679,14 @@ export class StockService {
             60,
           ),
         },
+        capital: {
+          score: entry.capitalScore,
+          label: this.activityLabel(entry.capitalScore),
+          amount: entry.candidate.amount,
+          amountFormatted: this.formatAmount(entry.candidate.amount),
+          turnover: entry.candidate.turnover,
+        },
+        industryHeat: entry.industryHeat,
         dimensions: {
           quality: entry.scores.quality,
           growth: entry.scores.growth,
@@ -605,12 +709,12 @@ export class StockService {
     return {
       generatedAt: new Date().toISOString(),
       cached: false,
-      model: 'A股六维横截面学习模型 v1',
+      model: 'A股资金与行业增强学习模型 v2',
       scannedCount: universe.length,
       detailedCount: detailed.length,
       picks,
       methodology:
-        '从活跃A股中排除ST、金融、近期上市及异常估值公司，再以公司质量30%、成长20%、估值20%、催化15%、价格10%、财务安全5%复评，并执行年度亏损、经营现金流、高杠杆和重大风险事件红线。',
+        '从活跃A股中排除ST、金融、近期上市及异常估值公司，先按六维基本面模型复评，再以六维得分70%、成交资金活跃度18%、候选样本行业热度12%形成最终排序，并执行年度亏损、经营现金流、高杠杆和重大风险事件红线。资金活跃度基于成交额、换手率与当日价格方向，不等同于主力净流入。',
       disclaimer:
         '候选池依据公开市场数据和规则模型生成，仅用于缩小研究范围，不构成买入建议或收益保证。',
       dataSources: [
@@ -706,6 +810,136 @@ export class StockService {
     );
   }
 
+  private capitalActivityScore(candidate: MarketCandidate): number {
+    const amountScore =
+      candidate.amount >= 5_000_000_000
+        ? 95
+        : candidate.amount >= 2_000_000_000
+          ? 88
+          : candidate.amount >= 1_000_000_000
+            ? 80
+            : candidate.amount >= 500_000_000
+              ? 72
+              : candidate.amount >= 200_000_000
+                ? 64
+                : 54;
+    const turnoverScore =
+      candidate.turnover >= 1 && candidate.turnover <= 5
+        ? 88
+        : candidate.turnover >= 0.5 && candidate.turnover <= 8
+          ? 76
+          : candidate.turnover <= 12
+            ? 62
+            : 45;
+    const directionScore =
+      candidate.changePercent >= 0.3 && candidate.changePercent <= 4
+        ? 82
+        : candidate.changePercent > 4
+          ? 62
+          : candidate.changePercent >= -1
+            ? 68
+            : candidate.changePercent >= -3
+              ? 52
+              : 36;
+
+    return Math.round(
+      amountScore * 0.55 + turnoverScore * 0.25 + directionScore * 0.2,
+    );
+  }
+
+  private buildIndustryHeat(
+    entries: IndustryEntry[],
+  ): Map<string, IndustryHeatSignal> {
+    const groups = new Map<string, MarketCandidate[]>();
+    for (const entry of entries) {
+      const industry = this.industryGroup(entry.industry);
+      groups.set(industry, [...(groups.get(industry) ?? []), entry.candidate]);
+    }
+
+    const totals = Array.from(groups.values()).map((candidates) =>
+      candidates.reduce((sum, candidate) => sum + candidate.amount, 0),
+    );
+    const maximumAmount = Math.max(...totals, 1);
+    const result = new Map<string, IndustryHeatSignal>();
+
+    for (const [industry, candidates] of groups) {
+      if (industry === '行业信息暂缺') {
+        result.set(industry, this.neutralIndustryHeat(industry));
+        continue;
+      }
+      const averageChange = this.average(
+        candidates.map((candidate) => candidate.changePercent),
+      );
+      const positiveCount = candidates.filter(
+        (candidate) => candidate.changePercent > 0,
+      ).length;
+      const positiveRatio =
+        ((positiveCount + 1.5) / (candidates.length + 3)) * 100;
+      const totalAmount = candidates.reduce(
+        (sum, candidate) => sum + candidate.amount,
+        0,
+      );
+      const changeScore = this.clamp(50 + averageChange * 8, 25, 92);
+      const liquidityScore = 45 + 55 * Math.sqrt(totalAmount / maximumAmount);
+      const rawScore =
+        changeScore * 0.45 + positiveRatio * 0.3 + liquidityScore * 0.25;
+      const confidence = Math.min(candidates.length / 3, 1);
+      const score = Math.round(50 + (rawScore - 50) * confidence);
+      result.set(industry, {
+        industry,
+        score,
+        label:
+          score >= 75
+            ? '高热'
+            : score >= 60
+              ? '活跃'
+              : score >= 45
+                ? '中性'
+                : '偏冷',
+        averageChange: Number(averageChange.toFixed(2)),
+        positiveRatio: Number(positiveRatio.toFixed(1)),
+        sampleCount: candidates.length,
+        totalAmount,
+        totalAmountFormatted: this.formatAmount(totalAmount),
+      });
+    }
+    return result;
+  }
+
+  private neutralIndustryHeat(industry = '行业信息暂缺'): IndustryHeatSignal {
+    return {
+      industry,
+      score: 50,
+      label: '样本不足',
+      averageChange: 0,
+      positiveRatio: 0,
+      sampleCount: 0,
+      totalAmount: 0,
+      totalAmountFormatted: '--',
+    };
+  }
+
+  private industryGroup(value: string): string {
+    return value.split(/[-—>\/]/)[0]?.trim() || '行业信息暂缺';
+  }
+
+  private activityLabel(score: number): string {
+    return score >= 82
+      ? '强势活跃'
+      : score >= 70
+        ? '较活跃'
+        : score >= 58
+          ? '中性'
+          : '偏弱';
+  }
+
+  private formatAmount(value: number): string {
+    if (!Number.isFinite(value)) return '--';
+    if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}亿`;
+    if (value >= 10_000) return `${(value / 10_000).toFixed(0)}万`;
+    return value.toFixed(0);
+  }
+
   private marketCandidateQuote(candidate: MarketCandidate): JsonRecord {
     return {
       f43: candidate.price * 100,
@@ -740,10 +974,14 @@ export class StockService {
   ): string[] {
     const reasons: string[] = [];
     if ((latest?.roe ?? 0) >= 12) {
-      reasons.push(`最新披露ROE为 ${latest?.roe?.toFixed(2)}%，盈利能力达到模型优选线`);
+      reasons.push(
+        `最新披露ROE为 ${latest?.roe?.toFixed(2)}%，盈利能力达到模型优选线`,
+      );
     }
     if ((latest?.cashProfitRatio ?? 0) >= 0.8) {
-      reasons.push(`经营现金流/净利润为 ${latest?.cashProfitRatio?.toFixed(2)}，利润含金量较好`);
+      reasons.push(
+        `经营现金流/净利润为 ${latest?.cashProfitRatio?.toFixed(2)}，利润含金量较好`,
+      );
     }
     if (
       (latest?.revenueGrowth ?? -1) >= 8 &&
@@ -766,16 +1004,16 @@ export class StockService {
     );
     if (scores.trend >= 70 && return60 > 0) {
       reasons.push(
-        `中期价格结构偏强，近60日涨跌幅 ${this.formatPercent(
-          return60,
-        )}`,
+        `中期价格结构偏强，近60日涨跌幅 ${this.formatPercent(return60)}`,
       );
     }
     if (scores.safety >= 75) {
       reasons.push('年度盈利、经营现金流和杠杆红线均通过');
     }
     if (reasons.length < 3) {
-      reasons.push(`公司质量与估值综合得分分别为 ${scores.quality}、${scores.valuation}`);
+      reasons.push(
+        `公司质量与估值综合得分分别为 ${scores.quality}、${scores.valuation}`,
+      );
     }
     if (reasons.length < 3) {
       reasons.push(`六维综合评分为 ${scores.total}，位于本轮市场候选前列`);
@@ -826,7 +1064,9 @@ export class StockService {
 
     const normalized = query.toUpperCase();
     return (
-      candidates.find((item) => item.Code === normalized || item.Name === query) ||
+      candidates.find(
+        (item) => item.Code === normalized || item.Name === query,
+      ) ||
       candidates[0] ||
       null
     );
@@ -910,11 +1150,15 @@ export class StockService {
     return rows.map((item) => {
       const row = this.asRecord(item);
       return {
-        period: this.asString(row.REPORT_DATE_NAME) || this.shortDate(row.REPORT_DATE),
+        period:
+          this.asString(row.REPORT_DATE_NAME) ||
+          this.shortDate(row.REPORT_DATE),
         reportType: this.asString(row.REPORT_TYPE),
         noticeDate: this.shortDate(row.NOTICE_DATE),
         revenueGrowth: this.nullableNumber(row.TOTALOPERATEREVETZ),
-        profitGrowth: this.nullableNumber(row.KCFJCXSYJLRTZ ?? row.PARENTNETPROFITTZ),
+        profitGrowth: this.nullableNumber(
+          row.KCFJCXSYJLRTZ ?? row.PARENTNETPROFITTZ,
+        ),
         roe: this.nullableNumber(row.ROEJQ),
         grossMargin: this.nullableNumber(row.XSMLL),
         debtRatio: this.nullableNumber(row.ZCFZL),
@@ -1019,7 +1263,10 @@ export class StockService {
           type: '新闻',
           tone: this.eventTone(title),
           title,
-          detail: this.truncate(this.stripHtml(this.asString(row.content)), 150),
+          detail: this.truncate(
+            this.stripHtml(this.asString(row.content)),
+            150,
+          ),
           source: this.asString(row.mediaName) || '财经媒体',
           url: this.asString(row.url) || undefined,
         };
@@ -1044,9 +1291,17 @@ export class StockService {
       this.scaledNumber(quote.f167),
     );
     const trend = this.trendScore(klines);
-    const eventPositive = events.filter((item) => item.tone === 'positive').length;
-    const eventNegative = events.filter((item) => item.tone === 'warning').length;
-    const catalysts = this.clamp(50 + eventPositive * 6 - eventNegative * 8, 10, 90);
+    const eventPositive = events.filter(
+      (item) => item.tone === 'positive',
+    ).length;
+    const eventNegative = events.filter(
+      (item) => item.tone === 'warning',
+    ).length;
+    const catalysts = this.clamp(
+      50 + eventPositive * 6 - eventNegative * 8,
+      10,
+      90,
+    );
     const safety = latest ? this.safetyScore(latest, annual) : 35;
     let riskPenalty = 0;
 
@@ -1057,7 +1312,8 @@ export class StockService {
     }
     if ((annual?.operatingCash ?? 0) < 0) riskPenalty += 10;
     if ((annual?.netProfit ?? 0) < 0) riskPenalty += 15;
-    if (events.some((item) => this.isSeriousRiskEvent(item.title))) riskPenalty += 10;
+    if (events.some((item) => this.isSeriousRiskEvent(item.title)))
+      riskPenalty += 10;
     if ((this.scaledNumber(quote.f162) ?? 0) > 80) riskPenalty += 5;
     riskPenalty = this.clamp(riskPenalty, 0, 35);
 
@@ -1110,10 +1366,7 @@ export class StockService {
       row.netProfit === null ? 50 : row.netProfit > 0 ? 82 : 10;
 
     return Math.round(
-      roe * 0.34 +
-        margin * 0.22 +
-        cash * 0.3 +
-        profitQuality * 0.14,
+      roe * 0.34 + margin * 0.22 + cash * 0.3 + profitQuality * 0.14,
     );
   }
 
@@ -1144,8 +1397,7 @@ export class StockService {
     const positivePeriods =
       recent.filter(
         (row) =>
-          (row.revenueGrowth ?? -1) >= 0 &&
-          (row.profitGrowth ?? -1) >= 0,
+          (row.revenueGrowth ?? -1) >= 0 && (row.profitGrowth ?? -1) >= 0,
       ).length / recent.length;
     const consistency = 35 + positivePeriods * 60;
     const score = Math.round(
@@ -1252,7 +1504,7 @@ export class StockService {
     const ma120 = this.average(closes.slice(-120));
     const return60 = this.periodReturn(closes, 60);
     const high120 = Math.max(...closes.slice(-120));
-    const drawdown = high120 > 0 ? ((latest / high120) - 1) * 100 : 0;
+    const drawdown = high120 > 0 ? (latest / high120 - 1) * 100 : 0;
     const volume5 = this.average(klines.slice(-5).map((item) => item.volume));
     const volume20 = this.average(klines.slice(-20).map((item) => item.volume));
     const volumeRatio = volume20 > 0 ? volume5 / volume20 : 1;
@@ -1282,7 +1534,12 @@ export class StockService {
       },
       {
         label: '成交状态',
-        value: volumeRatio >= 1.25 ? '近期放量' : volumeRatio <= 0.75 ? '近期缩量' : '量能平稳',
+        value:
+          volumeRatio >= 1.25
+            ? '近期放量'
+            : volumeRatio <= 0.75
+              ? '近期缩量'
+              : '量能平稳',
         tone: volumeRatio >= 1.25 ? 'positive' : 'neutral',
       },
       {
@@ -1318,7 +1575,7 @@ export class StockService {
       const start = klines.at(-(period.days + 1));
       const value =
         start && start.close > 0
-          ? ((latest.close / start.close) - 1) * 100
+          ? (latest.close / start.close - 1) * 100
           : null;
 
       return {
@@ -1389,8 +1646,7 @@ export class StockService {
       summary: failedChecks.length
         ? `触发 ${failedChecks.length} 项准入红线：${failedChecks.map((item) => item.label).join('、')}。即使部分评分较高，也优先归入回避。`
         : `${growth}，${valuation}；价格形态为“${trendSignal}”。六维综合评分已扣除 ${scores.riskPenalty} 分风险项，结论适用于未来 3—12 个月的跟踪观察。`,
-      rule:
-        '“可以关注”要求无红线失败、总分≥75、公司质量≥65、成长≥55、估值≥55；总分≥60为“等待机会”，其余为“回避”。',
+      rule: '“可以关注”要求无红线失败、总分≥75、公司质量≥65、成长≥55、估值≥55；总分≥60为“等待机会”，其余为“回避”。',
     };
   }
 
@@ -1488,12 +1744,25 @@ export class StockService {
   ): string[] {
     const latest = rows[0];
     const items: string[] = [];
-    if ((latest?.roe ?? 0) >= 15) items.push(`最新披露 ROE 为 ${latest?.roe?.toFixed(2)}%，盈利能力较强`);
-    if ((latest?.cashProfitRatio ?? 0) >= 0.7) items.push('经营现金流与净利润匹配度较好');
-    if ((latest?.debtRatio ?? 100) <= 40) items.push(`资产负债率为 ${latest?.debtRatio?.toFixed(2)}%，财务杠杆较低`);
+    if ((latest?.roe ?? 0) >= 15)
+      items.push(`最新披露 ROE 为 ${latest?.roe?.toFixed(2)}%，盈利能力较强`);
+    if ((latest?.cashProfitRatio ?? 0) >= 0.7)
+      items.push('经营现金流与净利润匹配度较好');
+    if ((latest?.debtRatio ?? 100) <= 40)
+      items.push(
+        `资产负债率为 ${latest?.debtRatio?.toFixed(2)}%，财务杠杆较低`,
+      );
     if (scores.trend >= 70) items.push('中期价格趋势评分较强');
-    if (this.periodReturn(klines.map((item) => item.close), 60) > 0) items.push('近60个交易日价格收益为正');
-    return items.slice(0, 4).length ? items.slice(0, 4) : ['当前没有足够强的积极信号'];
+    if (
+      this.periodReturn(
+        klines.map((item) => item.close),
+        60,
+      ) > 0
+    )
+      items.push('近60个交易日价格收益为正');
+    return items.slice(0, 4).length
+      ? items.slice(0, 4)
+      : ['当前没有足够强的积极信号'];
   }
 
   private buildRiskFactors(
@@ -1504,17 +1773,36 @@ export class StockService {
   ): string[] {
     const latest = rows[0];
     const items: string[] = [];
-    if ((latest?.revenueGrowth ?? 0) < 0) items.push(`最新营收同比下降 ${Math.abs(latest?.revenueGrowth ?? 0).toFixed(2)}%`);
-    if ((latest?.profitGrowth ?? 0) < 0) items.push(`最新扣非利润同比下降 ${Math.abs(latest?.profitGrowth ?? 0).toFixed(2)}%`);
+    if ((latest?.revenueGrowth ?? 0) < 0)
+      items.push(
+        `最新营收同比下降 ${Math.abs(latest?.revenueGrowth ?? 0).toFixed(2)}%`,
+      );
+    if ((latest?.profitGrowth ?? 0) < 0)
+      items.push(
+        `最新扣非利润同比下降 ${Math.abs(latest?.profitGrowth ?? 0).toFixed(2)}%`,
+      );
     if ((latest?.operatingCash ?? 0) < 0) items.push('最新披露经营现金流为负');
-    if ((latest?.debtRatio ?? 0) > 70) items.push(`资产负债率达到 ${latest?.debtRatio?.toFixed(2)}%`);
+    if ((latest?.debtRatio ?? 0) > 70)
+      items.push(`资产负债率达到 ${latest?.debtRatio?.toFixed(2)}%`);
     const pe = this.scaledNumber(quote.f162);
-    if ((pe ?? 0) > 60) items.push(`当前 PE-TTM 约为 ${pe?.toFixed(2)} 倍，估值风险较高`);
+    if ((pe ?? 0) > 60)
+      items.push(`当前 PE-TTM 约为 ${pe?.toFixed(2)} 倍，估值风险较高`);
     const negativeEvents = events.filter((item) => item.tone === 'warning');
-    if (negativeEvents.length) items.push(`近期发现 ${negativeEvents.length} 条风险类公告或新闻，需要核实影响`);
-    const return20 = this.periodReturn(klines.map((item) => item.close), 20);
-    if (return20 < -10) items.push(`近20个交易日下跌 ${Math.abs(return20).toFixed(2)}%，价格趋势偏弱`);
-    return items.slice(0, 4).length ? items.slice(0, 4) : ['当前公开数据未触发重大风险扣分项'];
+    if (negativeEvents.length)
+      items.push(
+        `近期发现 ${negativeEvents.length} 条风险类公告或新闻，需要核实影响`,
+      );
+    const return20 = this.periodReturn(
+      klines.map((item) => item.close),
+      20,
+    );
+    if (return20 < -10)
+      items.push(
+        `近20个交易日下跌 ${Math.abs(return20).toFixed(2)}%，价格趋势偏弱`,
+      );
+    return items.slice(0, 4).length
+      ? items.slice(0, 4)
+      : ['当前公开数据未触发重大风险扣分项'];
   }
 
   private buildWatchlist(
@@ -1536,8 +1824,10 @@ export class StockService {
     if (/没有回购计划|暂无回购计划|无回购计划|不实施回购/.test(text)) {
       return 'neutral';
     }
-    if (NEGATIVE_EVENT_WORDS.some((word) => text.includes(word))) return 'warning';
-    if (POSITIVE_EVENT_WORDS.some((word) => text.includes(word))) return 'positive';
+    if (NEGATIVE_EVENT_WORDS.some((word) => text.includes(word)))
+      return 'warning';
+    if (POSITIVE_EVENT_WORDS.some((word) => text.includes(word)))
+      return 'positive';
     return 'neutral';
   }
 
@@ -1594,7 +1884,7 @@ export class StockService {
     if (values.length < 2) return 0;
     const latest = values.at(-1) ?? 0;
     const base = values.at(-Math.min(days + 1, values.length)) ?? latest;
-    return base > 0 ? ((latest / base) - 1) * 100 : 0;
+    return base > 0 ? (latest / base - 1) * 100 : 0;
   }
 
   private average(values: number[]): number {
@@ -1616,7 +1906,10 @@ export class StockService {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
       try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: this.sourceHeaders(url),
+        });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -1624,7 +1917,9 @@ export class StockService {
       } catch (error) {
         lastError = error;
         if (attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+          await new Promise((resolve) =>
+            setTimeout(resolve, 200 * (attempt + 1)),
+          );
         }
       } finally {
         clearTimeout(timeout);
@@ -1645,12 +1940,7 @@ export class StockService {
       try {
         const response = await fetch(url, {
           signal: controller.signal,
-          headers: {
-            Accept: 'application/json,text/plain,*/*',
-            Referer: 'https://www.eastmoney.com/',
-            'User-Agent':
-              'Mozilla/5.0 (compatible; AStockResearch/1.0; public-market-data)',
-          },
+          headers: this.sourceHeaders(url),
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -1678,6 +1968,50 @@ export class StockService {
     );
   }
 
+  private sourceHeaders(url: string): Record<string, string> {
+    const hostname = new URL(url).hostname;
+    const referer = hostname.includes('qq.com')
+      ? 'https://gu.qq.com/'
+      : hostname.includes('sina.com.cn')
+        ? 'https://finance.sina.com.cn/'
+        : 'https://www.eastmoney.com/';
+    return {
+      Accept: 'application/json,text/plain,*/*',
+      Referer: referer,
+      'User-Agent':
+        'Mozilla/5.0 (compatible; AStockResearch/2.0; public-market-data)',
+    };
+  }
+
+  private async probeSource(
+    name: string,
+    url: string,
+    validate: (text: string) => boolean,
+  ): Promise<JsonRecord> {
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: this.sourceHeaders(url),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      if (!validate(text)) throw new Error('返回内容校验失败');
+      return { name, status: 'ok', latencyMs: Date.now() - startedAt };
+    } catch (error) {
+      return {
+        name,
+        status: 'failed',
+        latencyMs: Date.now() - startedAt,
+        message: error instanceof Error ? error.message : '请求失败',
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private toSecucode(stock: SearchStock): string {
     const suffix = this.marketPrefix(stock.QuoteID).toUpperCase();
     return `${stock.Code}.${suffix}`;
@@ -1685,7 +2019,11 @@ export class StockService {
 
   private exchangeName(quoteId: string): string {
     const prefix = this.marketPrefix(quoteId);
-    return prefix === 'sh' ? '沪市A股' : prefix === 'bj' ? '北交所A股' : '深市A股';
+    return prefix === 'sh'
+      ? '沪市A股'
+      : prefix === 'bj'
+        ? '北交所A股'
+        : '深市A股';
   }
 
   private f10Code(quoteId: string): string {
@@ -1715,13 +2053,17 @@ export class StockService {
   }
 
   private formatNullablePercent(value?: number | null): string {
-    return value === null || value === undefined ? '--' : this.formatPercent(value);
+    return value === null || value === undefined
+      ? '--'
+      : this.formatPercent(value);
   }
 
   private formatMarketCap(value: number | null): string {
     if (value === null) return '--';
     const yi = value / 100_000_000;
-    return yi >= 10_000 ? `${(yi / 10_000).toFixed(2)}万亿` : `${yi.toFixed(2)}亿`;
+    return yi >= 10_000
+      ? `${(yi / 10_000).toFixed(2)}万亿`
+      : `${yi.toFixed(2)}亿`;
   }
 
   private scaledNumber(value: unknown): number | null {
@@ -1730,7 +2072,12 @@ export class StockService {
   }
 
   private nullableNumber(value: unknown): number | null {
-    if (value === null || value === undefined || value === '' || value === '-') {
+    if (
+      value === null ||
+      value === undefined ||
+      value === '' ||
+      value === '-'
+    ) {
       return null;
     }
     const number = Number(value);
@@ -1756,7 +2103,10 @@ export class StockService {
   }
 
   private stripHtml(value: string): string {
-    return value.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    return value
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private truncate(value: string, maxLength: number): string {

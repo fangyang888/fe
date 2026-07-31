@@ -10,12 +10,23 @@
   min-height: 100vh;
   padding: 76px 22px 64px;
   background:
-    radial-gradient(circle at 85% -10%, rgba(31, 114, 95, 0.12), transparent 31rem),
+    radial-gradient(
+      circle at 85% -10%,
+      rgba(31, 114, 95, 0.12),
+      transparent 31rem
+    ),
     linear-gradient(180deg, #f8faf7 0%, #f1f4f0 100%);
   color: var(--ink);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    "PingFang SC", "Microsoft YaHei", sans-serif;
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
 }
 
 .stock-analyzer-page *,
@@ -1525,6 +1536,58 @@
   color: #218267;
 }
 
+.stock-ai-signal-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.stock-ai-signal-row > div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dce8e2;
+  border-radius: 5px;
+  background: #f8fbf9;
+}
+
+.stock-ai-signal-row span {
+  display: block;
+  color: #7f8f88;
+  font-size: 0.58rem;
+}
+
+.stock-ai-signal-row strong {
+  display: block;
+  margin-top: 5px;
+  color: #31584b;
+  font-size: 0.72rem;
+}
+
+.stock-ai-signal-row p {
+  overflow: hidden;
+  margin: 4px 0 8px;
+  color: #87938e;
+  font-size: 0.58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-ai-signal-row i {
+  display: block;
+  overflow: hidden;
+  height: 3px;
+  border-radius: 99px;
+  background: #e1e9e5;
+}
+
+.stock-ai-signal-row b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6a9d89, var(--green));
+}
+
 .stock-ai-reasons {
   flex: 1;
   margin-top: 15px;
@@ -2010,6 +2073,10 @@
 
   .stock-ai-market-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stock-ai-signal-row {
+    grid-template-columns: 1fr;
   }
 
   .stock-ai-pick-footer {

@@ -5,6 +5,12 @@ import { StockService } from './stock.service';
 export class StockController {
   constructor(private readonly stockService: StockService) {}
 
+  /** GET /api/stock/health */
+  @Get('health')
+  health(): Promise<unknown> {
+    return this.stockService.getHealth();
+  }
+
   /** GET /api/stock/analyze?query=600519 */
   @Get('analyze')
   analyze(@Query('query') query?: string): Promise<unknown> {

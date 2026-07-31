@@ -83,7 +83,7 @@ import { StockModule } from './stock/stock.module';
 
     // 生产环境：托管前端 dist 静态文件
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', '..', 'dist'),
+      rootPath: join(process.cwd(), '..', 'dist'),
       serveRoot: '/fe',
       exclude: ['/api/(.*)'],
     }),

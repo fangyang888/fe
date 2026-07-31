@@ -70,6 +70,20 @@ interface HardCheck {
   detail: string;
 }
 
+interface MarketCandidate {
+  symbol: string;
+  code: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  amount: number;
+  pe: number;
+  pb: number;
+  marketCap: number;
+  turnover: number;
+  quoteId: string;
+}
+
 const EASTMONEY_SEARCH_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
 const FINANCE_KEYWORDS = [
   '银行',
@@ -109,6 +123,52 @@ const NEGATIVE_EVENT_WORDS = [
 
 @Injectable()
 export class StockService {
+  private picksCache:
+    | {
+        expiresAt: number;
+        payload: JsonRecord;
+      }
+    | undefined;
+
+  private picksPromise: Promise<JsonRecord> | undefined;
+
+  async getPicks(rawLimit?: string, rawRefresh?: string): Promise<JsonRecord> {
+    const limit = this.clamp(Math.round(Number(rawLimit) || 10), 1, 10);
+    const forceRefresh = rawRefresh === '1' || rawRefresh === 'true';
+    const now = Date.now();
+
+    if (!forceRefresh && this.picksCache && this.picksCache.expiresAt > now) {
+      return {
+        ...this.picksCache.payload,
+        cached: true,
+        picks: (this.picksCache.payload.picks as unknown[]).slice(0, limit),
+      };
+    }
+
+    if (this.picksPromise) {
+      const payload = await this.picksPromise;
+      return {
+        ...payload,
+        picks: (payload.picks as unknown[]).slice(0, limit),
+      };
+    }
+
+    this.picksPromise = this.buildMarketPicks();
+    try {
+      const payload = await this.picksPromise;
+      this.picksCache = {
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        payload,
+      };
+      return {
+        ...payload,
+        picks: (payload.picks as unknown[]).slice(0, limit),
+      };
+    } finally {
+      this.picksPromise = undefined;
+    }
+  }
+
   async getQuotes(rawCodes?: string) {
     const codes = Array.from(
       new Set(
@@ -349,6 +409,391 @@ export class StockService {
       disclaimer:
         '数据来自公开市场信息，可能存在延迟、字段缺失或第三方接口变更。评分用于研究整理，不构成投资建议。',
     };
+  }
+
+  private async buildMarketPicks(): Promise<JsonRecord> {
+    const universe = await this.fetchMarketUniverse();
+    const preselected = universe
+      .map((candidate) => ({
+        candidate,
+        score: this.broadCandidateScore(candidate),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 36)
+      .map((item) => item.candidate);
+
+    const detailed = (
+      await this.processInBatches(preselected, 4, async (candidate) => {
+        try {
+          const stock: SearchStock = {
+            Code: candidate.code,
+            Name: candidate.name,
+            QuoteID: candidate.quoteId,
+          };
+          const company = await this.fetchCompany(this.toSecucode(stock));
+          const industry =
+            this.asString(company.EM2016) ||
+            this.asString(company.INDUSTRYCSRC1) ||
+            '行业信息暂缺';
+          if (
+            FINANCE_KEYWORDS.some((keyword) => industry.includes(keyword)) ||
+            this.looksLikeFinanceName(candidate.name)
+          ) {
+            return null;
+          }
+
+          const [financeRows, klines] = await Promise.all([
+            this.fetchFinancials(this.toSecucode(stock)),
+            this.fetchKlines(candidate.quoteId),
+          ]);
+          if (!financeRows.length || klines.length < 120) return null;
+
+          const quote = this.marketCandidateQuote(candidate);
+          const scores = this.calculateScores(quote, klines, financeRows, []);
+          const hardChecks = this.buildHardChecks(financeRows, []);
+          if (hardChecks.some((item) => item.status === 'failed')) return null;
+
+          return {
+            candidate,
+            industry,
+            financeRows,
+            klines,
+            quote,
+            scores,
+          };
+        } catch {
+          return null;
+        }
+      })
+    )
+      .filter((item) => item !== null)
+      .sort((a, b) => b.scores.total - a.scores.total);
+
+    if (detailed.length < 10) {
+      throw new BadGatewayException(
+        '本轮真实数据覆盖不足，未能形成10家公司候选池，请稍后重试',
+      );
+    }
+
+    const eventCandidates = detailed.slice(0, Math.min(22, detailed.length));
+    const rescored = (
+      await this.processInBatches(eventCandidates, 3, async (entry) => {
+        const [announcements, news] = await Promise.all([
+          this.fetchAnnouncements(entry.candidate.code),
+          this.fetchNews(entry.candidate.name),
+        ]);
+        const events = [...announcements, ...news]
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 8);
+        const scores = this.calculateScores(
+          entry.quote,
+          entry.klines,
+          entry.financeRows,
+          events,
+        );
+        const hardChecks = this.buildHardChecks(entry.financeRows, events);
+        return {
+          ...entry,
+          events,
+          scores,
+          hardChecks,
+        };
+      })
+    )
+      .filter(
+        (entry) =>
+          !entry.hardChecks.some((item) => item.status === 'failed') &&
+          entry.scores.quality >= 55 &&
+          entry.scores.valuation >= 45 &&
+          entry.scores.safety >= 50,
+      )
+      .sort((a, b) => b.scores.total - a.scores.total);
+
+    const eligible =
+      rescored.length >= 10
+        ? rescored
+        : (
+            await this.processInBatches(
+              detailed.slice(rescored.length, Math.min(30, detailed.length)),
+              3,
+              async (entry) => ({
+                ...entry,
+                events: [] as AnalysisEvent[],
+                hardChecks: this.buildHardChecks(entry.financeRows, []),
+              }),
+            )
+          )
+            .filter(
+              (entry) =>
+                !entry.hardChecks.some((item) => item.status === 'failed'),
+            )
+            .concat(rescored)
+            .sort((a, b) => b.scores.total - a.scores.total);
+
+    const uniqueEligible = Array.from(
+      new Map(eligible.map((entry) => [entry.candidate.code, entry])).values(),
+    ).slice(0, 10);
+
+    const picks = uniqueEligible.map((entry, index) => {
+      const latest = entry.financeRows[0];
+      const latestKline = entry.klines.at(-1);
+      const assessment = this.buildAssessment(
+        entry.scores,
+        entry.financeRows,
+        entry.klines,
+        entry.hardChecks,
+      );
+      const reasons = this.buildPickReasons(
+        latest,
+        entry.scores,
+        entry.klines,
+        entry.events,
+        entry.candidate,
+      );
+      const riskItems = this.buildRiskFactors(
+        entry.financeRows,
+        entry.klines,
+        entry.events,
+        entry.quote,
+      );
+
+      return {
+        rank: index + 1,
+        code: entry.candidate.code,
+        name: entry.candidate.name,
+        industry: entry.industry,
+        price: entry.candidate.price,
+        changePercent: entry.candidate.changePercent,
+        score: entry.scores.total,
+        rating:
+          assessment.rating === '可以关注' ? '优先关注' : '模型关注',
+        reasons,
+        risk:
+          riskItems.find(
+            (item) => !item.includes('未触发重大风险扣分项'),
+          ) || '当前公开数据未触发硬性风险红线',
+        metrics: {
+          pe: entry.candidate.pe,
+          pb: entry.candidate.pb,
+          roe: latest?.roe ?? null,
+          revenueGrowth: latest?.revenueGrowth ?? null,
+          profitGrowth: latest?.profitGrowth ?? null,
+          return60: this.periodReturn(
+            entry.klines.map((item) => item.close),
+            60,
+          ),
+        },
+        dimensions: {
+          quality: entry.scores.quality,
+          growth: entry.scores.growth,
+          valuation: entry.scores.valuation,
+          catalysts: entry.scores.catalysts,
+          trend: entry.scores.trend,
+          safety: entry.scores.safety,
+        },
+        dataAsOf: latestKline?.date || '',
+        reportDate: latest?.noticeDate || '',
+      };
+    });
+
+    if (picks.length < 10) {
+      throw new BadGatewayException(
+        '本轮通过硬性红线与数据完整性检查的公司不足10家，请稍后重新学习',
+      );
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      cached: false,
+      model: 'A股六维横截面学习模型 v1',
+      scannedCount: universe.length,
+      detailedCount: detailed.length,
+      picks,
+      methodology:
+        '从活跃A股中排除ST、金融、近期上市及异常估值公司，再以公司质量30%、成长20%、估值20%、催化15%、价格10%、财务安全5%复评，并执行年度亏损、经营现金流、高杠杆和重大风险事件红线。',
+      disclaimer:
+        '候选池依据公开市场数据和规则模型生成，仅用于缩小研究范围，不构成买入建议或收益保证。',
+      dataSources: [
+        '新浪财经A股实时列表',
+        '腾讯证券前复权历史行情',
+        '东方财富财务数据、公告与新闻',
+      ],
+    };
+  }
+
+  private async fetchMarketUniverse(): Promise<MarketCandidate[]> {
+    const params = new URLSearchParams({
+      page: '1',
+      num: '400',
+      sort: 'amount',
+      asc: '0',
+      node: 'hs_a',
+      symbol: '',
+      _s_r_a: 'page',
+    });
+    const text = await this.fetchText(
+      `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?${params.toString()}`,
+    );
+    const rows = JSON.parse(text) as unknown;
+    if (!Array.isArray(rows)) {
+      throw new BadGatewayException('全市场行情数据格式异常');
+    }
+
+    return rows
+      .map((item) => this.asRecord(item))
+      .map((row) => {
+        const code = this.asString(row.code);
+        const symbol = this.asString(row.symbol);
+        return {
+          symbol,
+          code,
+          name: this.asString(row.name),
+          price: this.asNumber(row.trade) ?? 0,
+          changePercent: this.asNumber(row.changepercent) ?? 0,
+          amount: this.asNumber(row.amount) ?? 0,
+          pe: this.asNumber(row.per) ?? 0,
+          pb: this.asNumber(row.pb) ?? 0,
+          marketCap: (this.asNumber(row.mktcap) ?? 0) * 10_000,
+          turnover: this.asNumber(row.turnoverratio) ?? 0,
+          quoteId: `${symbol.startsWith('sh') ? '1' : '0'}.${code}`,
+        };
+      })
+      .filter(
+        (item) =>
+          /^(00|30|60|68)\d{4}$/.test(item.code) &&
+          item.name &&
+          !/(^|\s)\*?ST|退市/i.test(item.name) &&
+          !/^[NC]/i.test(item.name) &&
+          !this.looksLikeFinanceName(item.name) &&
+          item.price >= 2 &&
+          item.amount >= 50_000_000 &&
+          item.marketCap >= 10_000_000_000 &&
+          item.pe >= 4 &&
+          item.pe <= 60 &&
+          item.pb >= 0.3 &&
+          item.pb <= 10 &&
+          item.turnover >= 0.15 &&
+          item.turnover <= 15 &&
+          Math.abs(item.changePercent) <= 7,
+      );
+  }
+
+  private broadCandidateScore(candidate: MarketCandidate): number {
+    const valuation = this.valuationScore(candidate.pe, candidate.pb);
+    const sizeScore =
+      candidate.marketCap >= 100_000_000_000
+        ? 90
+        : candidate.marketCap >= 30_000_000_000
+          ? 75
+          : 60;
+    const liquidityScore =
+      candidate.amount >= 2_000_000_000
+        ? 90
+        : candidate.amount >= 800_000_000
+          ? 76
+          : 62;
+    const stabilityScore =
+      Math.abs(candidate.changePercent) <= 3
+        ? 82
+        : Math.abs(candidate.changePercent) <= 5
+          ? 68
+          : 52;
+    return Math.round(
+      valuation * 0.58 +
+        sizeScore * 0.18 +
+        liquidityScore * 0.14 +
+        stabilityScore * 0.1,
+    );
+  }
+
+  private marketCandidateQuote(candidate: MarketCandidate): JsonRecord {
+    return {
+      f43: candidate.price * 100,
+      f116: candidate.marketCap,
+      f162: candidate.pe * 100,
+      f167: candidate.pb * 100,
+      f168: candidate.turnover * 100,
+      f170: candidate.changePercent * 100,
+    };
+  }
+
+  private looksLikeFinanceName(name: string): boolean {
+    return [
+      ...FINANCE_KEYWORDS,
+      '人寿',
+      '人保',
+      '太保',
+      '平安',
+      '金控',
+      '金租',
+      '资本',
+      '产融',
+    ].some((keyword) => name.includes(keyword));
+  }
+
+  private buildPickReasons(
+    latest: FinancialRow | undefined,
+    scores: ScoreBreakdown,
+    klines: KlinePoint[],
+    events: AnalysisEvent[],
+    candidate: MarketCandidate,
+  ): string[] {
+    const reasons: string[] = [];
+    if ((latest?.roe ?? 0) >= 12) {
+      reasons.push(`最新披露ROE为 ${latest?.roe?.toFixed(2)}%，盈利能力达到模型优选线`);
+    }
+    if ((latest?.cashProfitRatio ?? 0) >= 0.8) {
+      reasons.push(`经营现金流/净利润为 ${latest?.cashProfitRatio?.toFixed(2)}，利润含金量较好`);
+    }
+    if (
+      (latest?.revenueGrowth ?? -1) >= 8 &&
+      (latest?.profitGrowth ?? -1) >= 8
+    ) {
+      reasons.push(
+        `营收与扣非利润分别增长 ${latest?.revenueGrowth?.toFixed(2)}%、${latest?.profitGrowth?.toFixed(2)}%`,
+      );
+    }
+    if (candidate.pe > 0 && candidate.pe <= 25) {
+      reasons.push(`PE约 ${candidate.pe.toFixed(2)} 倍，处于模型偏好估值区间`);
+    }
+    const positiveEvent = events.find((item) => item.tone === 'positive');
+    if (positiveEvent) {
+      reasons.push(`近期催化：${this.truncate(positiveEvent.title, 42)}`);
+    }
+    const return60 = this.periodReturn(
+      klines.map((item) => item.close),
+      60,
+    );
+    if (scores.trend >= 70 && return60 > 0) {
+      reasons.push(
+        `中期价格结构偏强，近60日涨跌幅 ${this.formatPercent(
+          return60,
+        )}`,
+      );
+    }
+    if (scores.safety >= 75) {
+      reasons.push('年度盈利、经营现金流和杠杆红线均通过');
+    }
+    if (reasons.length < 3) {
+      reasons.push(`公司质量与估值综合得分分别为 ${scores.quality}、${scores.valuation}`);
+    }
+    if (reasons.length < 3) {
+      reasons.push(`六维综合评分为 ${scores.total}，位于本轮市场候选前列`);
+    }
+    return Array.from(new Set(reasons)).slice(0, 3);
+  }
+
+  private async processInBatches<T, R>(
+    items: T[],
+    batchSize: number,
+    worker: (item: T) => Promise<R>,
+  ): Promise<R[]> {
+    const results: R[] = [];
+    for (let index = 0; index < items.length; index += batchSize) {
+      const batch = items.slice(index, index + batchSize);
+      results.push(...(await Promise.all(batch.map(worker))));
+    }
+    return results;
   }
 
   private async resolveStock(query: string): Promise<SearchStock | null> {
@@ -1088,6 +1533,9 @@ export class StockService {
   }
 
   private eventTone(text: string): 'positive' | 'neutral' | 'warning' {
+    if (/没有回购计划|暂无回购计划|无回购计划|不实施回购/.test(text)) {
+      return 'neutral';
+    }
     if (NEGATIVE_EVENT_WORDS.some((word) => text.includes(word))) return 'warning';
     if (POSITIVE_EVENT_WORDS.some((word) => text.includes(word))) return 'positive';
     return 'neutral';

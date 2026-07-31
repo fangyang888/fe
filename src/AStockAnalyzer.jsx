@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import './AStockAnalyzer.css';
+import AStockAIPicks from './AStockAIPicks';
 
 const FINANCE_KEYWORDS = ['银行', '证券', '保险', '信托', '期货', '券商', '多元金融'];
 const FAVORITES_STORAGE_KEY = 'a-stock-analyzer-favorites-v1';
@@ -421,6 +422,8 @@ export default function AStockAnalyzer() {
           <p>行情、历史日线、财务指标、公司公告和财经新闻均来自公开市场数据源，不使用页面内置示例值。</p>
         </section>
       )}
+
+      <AStockAIPicks onAnalyze={runAnalysis} />
 
       {status === 'ready' && analysis && (
         <div className="stock-analyzer-content">

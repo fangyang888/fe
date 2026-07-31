@@ -1219,6 +1219,433 @@
   text-align: center;
 }
 
+.stock-ai-picks {
+  width: min(1180px, 100%);
+  margin: 20px auto 0;
+  padding: 28px;
+  border: 1px solid #cedbd5;
+  border-radius: 11px;
+  background:
+    linear-gradient(135deg, rgba(231, 243, 238, 0.75), transparent 42%),
+    rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 55px rgba(31, 59, 50, 0.06);
+}
+
+.stock-ai-picks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+}
+
+.stock-ai-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.stock-ai-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #153f34;
+  color: #fff;
+  font-family: Georgia, serif;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.stock-ai-title > div > span {
+  color: var(--green);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.16em;
+}
+
+.stock-ai-title h2 {
+  margin: 4px 0;
+  color: #152721;
+  font-family: Georgia, "Songti SC", "STSong", serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+}
+
+.stock-ai-title p {
+  margin: 0;
+  color: #77847f;
+  font-size: 0.76rem;
+}
+
+.stock-ai-run-button {
+  flex: none;
+  min-width: 128px;
+  padding: 11px 17px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.stock-ai-run-button:hover:not(:disabled) {
+  background: var(--green-dark);
+}
+
+.stock-ai-run-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.stock-ai-method {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 20px;
+}
+
+.stock-ai-method span {
+  padding: 5px 8px;
+  border: 1px solid #d8e2dd;
+  border-radius: 4px;
+  background: #f8faf8;
+  color: #6d7b75;
+  font-size: 0.66rem;
+}
+
+.stock-ai-idle,
+.stock-ai-loading,
+.stock-ai-error {
+  margin-top: 20px;
+  padding: 24px;
+  border: 1px dashed #c9d8d1;
+  border-radius: 8px;
+  background: rgba(249, 251, 249, 0.76);
+  text-align: center;
+}
+
+.stock-ai-idle strong,
+.stock-ai-loading strong,
+.stock-ai-error strong {
+  color: #365047;
+  font-size: 0.86rem;
+}
+
+.stock-ai-idle p,
+.stock-ai-loading p,
+.stock-ai-error p {
+  margin: 7px 0 0;
+  color: #83908b;
+  font-size: 0.72rem;
+  line-height: 1.65;
+}
+
+.stock-ai-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: left;
+}
+
+.stock-ai-loading i {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #cfe0d8;
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: stock-ai-spin 0.8s linear infinite;
+}
+
+@keyframes stock-ai-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.stock-ai-error {
+  border-color: #e4cbbf;
+  background: #fff9f6;
+}
+
+.stock-ai-error button {
+  margin-top: 13px;
+  padding: 6px 10px;
+  border: 1px solid #d6b5a7;
+  border-radius: 4px;
+  background: #fff;
+  color: #96573e;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.stock-ai-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 22px 0 12px;
+  padding: 13px 15px;
+  border-left: 3px solid var(--green);
+  background: #f0f6f3;
+}
+
+.stock-ai-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stock-ai-summary strong {
+  color: #344b43;
+  font-size: 0.76rem;
+}
+
+.stock-ai-summary span {
+  color: #81908a;
+  font-size: 0.65rem;
+}
+
+.stock-ai-summary em {
+  flex: none;
+  color: #56766b;
+  font-size: 0.65rem;
+  font-style: normal;
+}
+
+.stock-ai-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stock-ai-pick-card {
+  display: flex;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #dce4e0;
+  border-radius: 8px;
+  background: #fff;
+  flex-direction: column;
+}
+
+.stock-ai-pick-head {
+  display: grid;
+  grid-template-columns: 33px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.stock-ai-rank {
+  display: grid;
+  place-items: center;
+  width: 31px;
+  height: 31px;
+  border: 1px solid #bdd0c7;
+  border-radius: 50%;
+  color: var(--green);
+  font-family: Georgia, serif;
+  font-size: 0.7rem;
+}
+
+.stock-ai-pick-head h3 {
+  margin: 1px 0 3px;
+  color: #253a32;
+  font-family: Georgia, "Songti SC", "STSong", serif;
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.stock-ai-pick-head p {
+  overflow: hidden;
+  margin: 0;
+  color: #89958f;
+  font-size: 0.64rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-ai-score {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+}
+
+.stock-ai-score strong {
+  color: #1b5f4e;
+  font-family: Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.stock-ai-score span {
+  margin-top: 4px;
+  color: #71827b;
+  font-size: 0.59rem;
+}
+
+.stock-ai-market-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 14px;
+}
+
+.stock-ai-market-row > div {
+  display: flex;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: #f5f7f5;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stock-ai-market-row span {
+  color: #8b9691;
+  font-size: 0.57rem;
+}
+
+.stock-ai-market-row strong {
+  overflow: hidden;
+  color: #42534d;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+}
+
+.stock-ai-market-row strong.is-up {
+  color: #b34b42;
+}
+
+.stock-ai-market-row strong.is-down {
+  color: #218267;
+}
+
+.stock-ai-reasons {
+  flex: 1;
+  margin-top: 15px;
+}
+
+.stock-ai-reasons > span,
+.stock-ai-risk > span {
+  color: #7e8c86;
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.stock-ai-reasons ul {
+  display: flex;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stock-ai-reasons li {
+  position: relative;
+  padding-left: 12px;
+  color: #52625c;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.stock-ai-reasons li::before {
+  position: absolute;
+  top: 0.62em;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--green);
+  content: "";
+}
+
+.stock-ai-risk {
+  display: flex;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 9px 10px;
+  border-left: 2px solid #d7a987;
+  background: #fdf8f4;
+}
+
+.stock-ai-risk > span {
+  flex: none;
+  color: #9b6849;
+}
+
+.stock-ai-risk p {
+  margin: 0;
+  color: #7c6658;
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.stock-ai-pick-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid #e4e9e6;
+}
+
+.stock-ai-pick-footer span {
+  color: #919c98;
+  font-size: 0.58rem;
+}
+
+.stock-ai-pick-footer button {
+  flex: none;
+  padding: 5px 8px;
+  border: 1px solid #bfd1c8;
+  border-radius: 4px;
+  background: #f6faf8;
+  color: var(--green);
+  cursor: pointer;
+  font-size: 0.64rem;
+  font-weight: 750;
+}
+
+.stock-ai-pick-footer button:hover {
+  background: var(--green-soft);
+}
+
+.stock-ai-disclosure {
+  display: flex;
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 6px;
+  background: #eef3f0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stock-ai-disclosure p,
+.stock-ai-disclosure strong,
+.stock-ai-disclosure span {
+  margin: 0;
+  color: #708079;
+  font-size: 0.64rem;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.stock-ai-disclosure strong {
+  color: #8f5c43;
+  font-weight: 750;
+}
+
+.stock-ai-disclosure span {
+  color: #8e9995;
+}
+
 .stock-drawer-backdrop {
   position: fixed;
   z-index: 3000;
@@ -1502,6 +1929,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .stock-ai-pick-grid {
+    grid-template-columns: 1fr;
+  }
+
   .stock-watch-grid {
     grid-template-columns: 1fr;
   }
@@ -1544,6 +1975,46 @@
 
   .stock-idle-card p {
     text-align: left;
+  }
+
+  .stock-ai-picks {
+    padding: 20px 15px;
+  }
+
+  .stock-ai-picks-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stock-ai-title {
+    align-items: flex-start;
+  }
+
+  .stock-ai-mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .stock-ai-title h2 {
+    font-size: 1.3rem;
+  }
+
+  .stock-ai-run-button {
+    width: 100%;
+  }
+
+  .stock-ai-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stock-ai-market-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stock-ai-pick-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .stock-analyzer-hero h1 {

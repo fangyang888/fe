@@ -16,4 +16,13 @@ export class StockController {
   quotes(@Query('codes') codes?: string): Promise<unknown> {
     return this.stockService.getQuotes(codes);
   }
+
+  /** GET /api/stock/picks?limit=10&refresh=1 */
+  @Get('picks')
+  picks(
+    @Query('limit') limit?: string,
+    @Query('refresh') refresh?: string,
+  ): Promise<unknown> {
+    return this.stockService.getPicks(limit, refresh);
+  }
 }

@@ -142,8 +142,3 @@ jobs:
 
             # 再验证一次公网入口使用的 Nginx 代理链路
             curl --fail --show-error --max-time 45 http://127.0.0.1/api/stock/health
-
-            # 部署后从 ECS 本机预热 Redis 缓存，避免用户第一次访问承担冷启动计算
-            curl --max-time 900 -sS -X POST http://127.0.0.1:3000/api/predictor/kill/cache/refresh > /tmp/fe-kill-cache-warmup.json || true
-            curl --max-time 900 -sS -X POST http://127.0.0.1:3000/api/predictor/hot-pick/cache/refresh > /tmp/fe-hot-pick-cache-warmup.json || true
-            curl --max-time 900 -sS -X POST 'http://127.0.0.1:3000/api/predictor/hot-pick/cache/refresh?type=hk' > /tmp/fe-hot-pick-hk-cache-warmup.json || true

@@ -110,9 +110,8 @@ jobs:
               echo "管理员账号已就绪：$ADMIN_USER"
             fi
 
-            # 安装依赖并重启服务
-            corepack enable
-            pnpm install --prod --frozen-lockfile
+            # ECS 的系统 Node 可能不附带 corepack，直接使用固定版本 pnpm
+            npm_config_cache=/home/deploy/fe/.npm-cache npx --yes pnpm@9 install --prod --frozen-lockfile
             cd ..
 
             # 清除可能仍指向旧 dist/main.js 的进程，再按本次配置启动

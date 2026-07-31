@@ -38,6 +38,7 @@ import { Favorite } from './favorite/favorite.entity';
 import { FavoriteModule } from './favorite/favorite.module';
 import { Event } from './track/event.entity';
 import { TrackModule } from './track/track.module';
+import { StockModule } from './stock/stock.module';
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { TrackModule } from './track/track.module';
     CouponModule,
     FavoriteModule,
     TrackModule,
+    StockModule,
   ],
   controllers: [AppController],
 })

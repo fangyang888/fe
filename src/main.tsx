@@ -98,8 +98,16 @@ import SpecialTailPredictor from './SpecialTailPredictor.jsx';
 import StableFiveKill from './StableFiveKill.jsx';
 // @ts-ignore
 import SpecialCodeTracker from './SpecialCodeTracker.jsx';
+// @ts-ignore
+import AStockAnalyzer from './AStockAnalyzer.jsx';
 
 const routes = [
+  {
+    path: '/stock-analyzer',
+    label: 'A股研究助手',
+    section: '股票研究',
+    element: <AStockAnalyzer />,
+  },
   // { path: '/', label: '首页香港预测', section: '预测', element: <KillPredictorHK /> },
   { path: '/kill', label: '基础杀码', section: '杀码', element: <KillPredictor /> },
   {

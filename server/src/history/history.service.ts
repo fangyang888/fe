@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { History } from './history.entity';
@@ -45,10 +50,15 @@ export class HistoryService {
   }
 
   /** 新增一行 */
-  async create(numbers: number[], year?: number, No?: number): Promise<History> {
+  async create(
+    numbers: number[],
+    year?: number,
+    No?: number,
+  ): Promise<History> {
     if (numbers.length !== 7) {
-      throw new Error('需要恰好 7 个数字');
+      throw new BadRequestException('需要恰好 7 个数字');
     }
+    this.validatePeriodPair(year, No);
     if (await this.existsByYearNo(year, No)) {
       throw new ConflictException(`第 ${year} 年第 ${No} 期数据已存在`);
     }
@@ -93,7 +103,8 @@ export class HistoryService {
   }
 
   private async fetchOnlineYear(year: number): Promise<HistorySyncItem[]> {
-    const baseUrl = process.env.HISTORY_SYNC_SOURCE_URL || 'http://47.106.103.79/api/history';
+    const baseUrl =
+      process.env.HISTORY_SYNC_SOURCE_URL || 'http://47.106.103.79/api/history';
     const url = `${baseUrl}?year=${encodeURIComponent(year)}`;
     const res = await fetch(url);
 
@@ -157,10 +168,16 @@ export class HistoryService {
   }
 
   /** 修改一行 */
-  async update(id: number, numbers: number[], year?: number, No?: number): Promise<History> {
+  async update(
+    id: number,
+    numbers: number[],
+    year?: number,
+    No?: number,
+  ): Promise<History> {
     if (numbers.length !== 7) {
-      throw new Error('需要恰好 7 个数字');
+      throw new BadRequestException('需要恰好 7 个数字');
     }
+    this.validatePeriodPair(year, No);
     const record = await this.findOne(id);
     record.n1 = numbers[0];
     record.n2 = numbers[1];
@@ -186,5 +203,19 @@ export class HistoryService {
     return records
       .map((r) => `${r.n1},${r.n2},${r.n3},${r.n4},${r.n5},${r.n6},${r.n7}`)
       .join('\n');
+  }
+
+  /**
+   * year 和 No 描述同一期数据，必须同时提供或同时省略。
+   * 这是跨字段业务规则，因此放在 Service，而不是单个字段的 DTO 装饰器中。
+   */
+  private validatePeriodPair(year?: number, No?: number): void {
+    const onlyOneProvided =
+      (year !== undefined && No === undefined) ||
+      (year === undefined && No !== undefined);
+
+    if (onlyOneProvided) {
+      throw new BadRequestException('year 和 No 必须同时提供');
+    }
   }
 }

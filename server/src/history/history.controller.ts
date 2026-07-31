@@ -9,21 +9,21 @@ import {
   ParseIntPipe,
   Header,
   Query,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { HistoryService } from './history.service';
 import { History } from './history.entity';
-
-class CreateHistoryDto {
-  numbers: number[];
-  year?: number;
-  No?: number;
-}
-
-class SyncHistoryDto {
-  year: number;
-}
+import { CreateHistoryDto, SyncHistoryDto } from './history.dto';
 
 @Controller('api/history')
+@UsePipes(
+  new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }),
+)
 export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
 

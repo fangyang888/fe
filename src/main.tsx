@@ -125,7 +125,7 @@ const routes = [
   // { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
   {
     path: '/kill/markov2-position-six',
-    label: '二阶马尔可夫第6位',
+    label: '二阶马尔可夫第6位-1',
     section: '杀码',
     element: <Markov2PositionSixStats />,
   },
@@ -137,7 +137,7 @@ const routes = [
   },
   {
     path: '/kill/knn-position-five',
-    label: '相似期KNN第5位',
+    label: '相似期KNN第5位-1',
     section: '杀码',
     element: (
       <FocusedModelPositionStats

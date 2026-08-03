@@ -135,6 +135,19 @@ interface SetupSignal {
   volatilityRatio: number;
 }
 
+interface DividendSignal {
+  score: number;
+  label: string;
+  trailingYield: number;
+  trailingCashPerShare: number;
+  yearsPaid: number;
+  payoutRatio: number | null;
+  latestPlan: string;
+  latestExDate: string;
+  available: boolean;
+  trapWarning: boolean;
+}
+
 interface IndustryRelativeSignal {
   score: number;
   label: string;
@@ -668,16 +681,26 @@ export class StockService {
     const industryRelativeScores = this.buildIndustryRelativeScores(detailed);
     const backtest = this.buildWalkForwardBacktest(detailed);
     const sampleIndustryHeat = this.buildIndustryHeat(industryEntries);
-    const [marketIndustryHeat, capitalFlows] = await Promise.all([
-      this.fetchMarketIndustryHeat(),
-      this.fetchCapitalFlows(uniqueEligible.map((entry) => entry.candidate)),
-    ]);
+    const [marketIndustryHeat, capitalFlows, dividendSignals] =
+      await Promise.all([
+        this.fetchMarketIndustryHeat(),
+        this.fetchCapitalFlows(uniqueEligible.map((entry) => entry.candidate)),
+        this.fetchDividendSignals(uniqueEligible),
+      ]);
     const capitalCoverageCount = Array.from(capitalFlows.values()).filter(
       (signal) => signal.available,
     ).length;
     if (capitalCoverageCount < marketRegime.targetPickCount) {
       throw new BadGatewayException(
         `本轮主力资金流覆盖不足${marketRegime.targetPickCount}家公司，为避免用成交活跃度冒充资金流入，请稍后重新学习`,
+      );
+    }
+    const dividendCoverageCount = Array.from(dividendSignals.values()).filter(
+      (signal) => signal.available,
+    ).length;
+    if (dividendCoverageCount < marketRegime.targetPickCount) {
+      throw new BadGatewayException(
+        `本轮红利数据覆盖不足${marketRegime.targetPickCount}家公司，为避免用估算值代替真实分红记录，请稍后重新学习`,
       );
     }
     const capitalIndustryHeat = this.buildCapitalIndustryHeat(
@@ -695,6 +718,9 @@ export class StockService {
         const capital =
           capitalFlows.get(entry.candidate.code) ?? this.neutralCapitalFlow();
         const setup = this.buildSetupSignal(entry.klines);
+        const dividend =
+          dividendSignals.get(entry.candidate.code) ??
+          this.neutralDividendSignal();
         const relative =
           industryRelativeScores.get(entry.candidate.code) ??
           this.neutralIndustryRelative(entry.industry);
@@ -705,31 +731,49 @@ export class StockService {
             heat.score >= 63,
           setup.score >= 68,
           relative.score >= 68,
+          dividend.score >= 68 && dividend.trailingYield >= 2,
         ].filter(Boolean).length;
+        const dividendWeight =
+          marketRegime.label === '防守'
+            ? 0.2
+            : marketRegime.label === '进攻'
+              ? 0.1
+              : 0.15;
+        const setupWeight = 0.26 - dividendWeight;
         return {
           ...entry,
           capital,
           industryHeat: heat,
           setup,
+          dividend,
           relative,
           signalCount,
           selectionScore: Math.round(
-            entry.scores.total * 0.34 +
-              relative.score * 0.16 +
-              capital.score * 0.22 +
-              heat.score * 0.16 +
-              setup.score * 0.12 +
-              (signalCount >= 3 ? 5 : signalCount === 2 ? 2 : -4),
+            entry.scores.total * 0.3 +
+              relative.score * 0.13 +
+              capital.score * 0.18 +
+              heat.score * 0.13 +
+              setup.score * setupWeight +
+              dividend.score * dividendWeight +
+              (signalCount >= 4 ? 5 : signalCount >= 2 ? 2 : -4),
           ),
         };
       })
       .sort((a, b) => b.selectionScore - a.selectionScore);
-    const highSignal = fullyRanked.filter((entry) => entry.signalCount >= 2);
+    const defensiveDividendPool = fullyRanked.filter(
+      (entry) => entry.dividend.score >= 56 && !entry.dividend.trapWarning,
+    );
+    const regimeRanked =
+      marketRegime.label === '防守' &&
+      defensiveDividendPool.length >= marketRegime.targetPickCount
+        ? defensiveDividendPool
+        : fullyRanked;
+    const highSignal = regimeRanked.filter((entry) => entry.signalCount >= 2);
     const rankingPool =
       highSignal.length >= marketRegime.targetPickCount
         ? highSignal
         : highSignal.concat(
-            fullyRanked.filter((entry) => entry.signalCount < 2),
+            regimeRanked.filter((entry) => entry.signalCount < 2),
           );
     const rankedEligible = this.selectDiversifiedPicks(
       rankingPool,
@@ -756,6 +800,11 @@ export class StockService {
       if (entry.capital.available && entry.capital.score >= 68) {
         contextReasons.push(
           `近${entry.capital.flowDays}日主力净流入 ${entry.capital.mainNetInflowFormatted}（日均占比 ${this.formatPercent(entry.capital.mainNetRatio)}），大单资金重点流入`,
+        );
+      }
+      if (entry.dividend.score >= 68) {
+        contextReasons.push(
+          `近12个月现金分红 ${entry.dividend.trailingCashPerShare.toFixed(2)} 元/股，股息率约 ${this.formatPercent(entry.dividend.trailingYield)}，近5年有 ${entry.dividend.yearsPaid} 年实施分红`,
         );
       }
       if (entry.industryHeat.score >= 70) {
@@ -795,6 +844,9 @@ export class StockService {
         rating: assessment.rating === '可以关注' ? '优先关注' : '模型关注',
         reasons,
         risk:
+          (entry.dividend.trapWarning
+            ? '股息率较高，但派息率、利润增速或经营现金流存在至少一项压力，需警惕高息陷阱'
+            : '') ||
           riskItems.find((item) => !item.includes('未触发重大风险扣分项')) ||
           '当前公开数据未触发硬性风险红线',
         metrics: {
@@ -816,6 +868,7 @@ export class StockService {
         },
         industryHeat: entry.industryHeat,
         setup: entry.setup,
+        dividend: entry.dividend,
         industryRelative: entry.relative,
         signalCount: entry.signalCount,
         dimensions: {
@@ -840,22 +893,23 @@ export class StockService {
     return {
       generatedAt: new Date().toISOString(),
       cached: false,
-      model: 'A股市场自适应相对价值模型 v4',
+      model: 'A股市场自适应红利增强模型 v5',
       scannedCount: universe.length,
       detailedCount: detailed.length,
       capitalCoverageCount,
+      dividendCoverageCount,
       marketRegime,
       backtest,
       targetPickCount: marketRegime.targetPickCount,
       picks,
       methodology:
-        '从活跃A股中排除ST、金融及异常估值公司，执行年度亏损、负净资产、经营现金流、高杠杆、商誉、应收账款和重大风险事件红线；最终按六维基本面34%、行业内相对排名16%、个股近1—5日主力净流入22%、行业资金热度16%、蓄势结构12%排序。模型根据沪深300趋势、全市场涨跌广度与波动率切换进攻、均衡、防守状态，分别最多输出10、7、4家公司；同一一级行业最多优先保留3家。滚动评估只使用各检查点之前已披露的财报和价格，不使用未来数据。',
+        '从活跃A股中排除ST、金融及异常估值公司，执行年度亏损、负净资产、经营现金流、高杠杆、商誉、应收账款和重大风险事件红线；基础权重为六维基本面30%、行业内相对排名13%、个股近1—5日主力净流入18%、行业资金热度13%，其余26%由蓄势结构与红利质量动态分配。红利质量综合近12个月真实现金分红、近5年连续性、派息率与盈利现金流，高股息但利润或现金流恶化会扣分。防守状态红利权重20%并优先剔除红利偏弱或高息陷阱，均衡15%，进攻10%。模型分别最多输出10、7、4家公司；同一一级行业最多优先保留3家。',
       disclaimer:
         '候选池依据公开市场数据和规则模型生成，仅用于缩小研究范围，不构成买入建议或收益保证。',
       dataSources: [
         '新浪财经A股实时列表',
         '腾讯证券前复权历史行情',
-        '东方财富主力资金流、行业板块、财务数据、公告与新闻',
+        '东方财富主力资金流、行业板块、历年分红、财务数据、公告与新闻',
       ],
     };
   }
@@ -1164,6 +1218,192 @@ export class StockService {
       available: false,
       flowDays: 0,
       positiveDays: 0,
+    };
+  }
+
+  private async fetchDividendSignals(
+    entries: Array<{
+      candidate: MarketCandidate;
+      financeRows: FinancialRow[];
+    }>,
+  ): Promise<Map<string, DividendSignal>> {
+    const result = new Map<string, DividendSignal>();
+    const rows = await this.processInBatches(entries, 6, async (entry) => {
+      const params = new URLSearchParams({
+        reportName: 'RPT_SHAREBONUS_DET',
+        columns: 'ALL',
+        filter: `(SECURITY_CODE="${entry.candidate.code}")`,
+        pageNumber: '1',
+        pageSize: '30',
+        sortTypes: '-1',
+        sortColumns: 'REPORT_DATE',
+      });
+      const payload = await this.fetchOptionalJson(
+        `https://datacenter-web.eastmoney.com/api/data/v1/get?${params.toString()}`,
+      );
+      if (!payload) return null;
+      const data = this.asRecord(payload.result);
+      const records = Array.isArray(data.data) ? data.data : [];
+      return {
+        code: entry.candidate.code,
+        signal: this.buildDividendSignal(
+          records.map((item) => this.asRecord(item)),
+          entry.candidate,
+          entry.financeRows,
+        ),
+      };
+    });
+    for (const item of rows) {
+      if (item) result.set(item.code, item.signal);
+    }
+    return result;
+  }
+
+  private buildDividendSignal(
+    records: JsonRecord[],
+    candidate: MarketCandidate,
+    financeRows: FinancialRow[],
+  ): DividendSignal {
+    const now = new Date();
+    const nowTime = now.getTime();
+    const implemented = records.filter((row) => {
+      const cashPerTen = this.asNumber(row.PRETAX_BONUS_RMB) ?? 0;
+      const progress = this.asString(row.ASSIGN_PROGRESS);
+      const exDate = new Date(this.asString(row.EX_DIVIDEND_DATE)).getTime();
+      return (
+        cashPerTen > 0 &&
+        progress.includes('实施') &&
+        Number.isFinite(exDate) &&
+        exDate <= nowTime
+      );
+    });
+    const trailingRows = implemented.filter((row) => {
+      const exDate = new Date(this.asString(row.EX_DIVIDEND_DATE)).getTime();
+      const ageDays = (nowTime - exDate) / 86_400_000;
+      return ageDays >= 0 && ageDays <= 370;
+    });
+    const trailingCashPerShare = trailingRows.reduce(
+      (sum, row) => sum + (this.asNumber(row.PRETAX_BONUS_RMB) ?? 0) / 10,
+      0,
+    );
+    const trailingYield =
+      candidate.price > 0 ? (trailingCashPerShare / candidate.price) * 100 : 0;
+    const currentYear = now.getFullYear();
+    const paidYears = new Set(
+      implemented
+        .map((row) => Number(this.shortDate(row.REPORT_DATE).slice(0, 4)))
+        .filter(
+          (year) =>
+            Number.isFinite(year) &&
+            year >= currentYear - 4 &&
+            year <= currentYear,
+        ),
+    );
+    const annualRow = implemented.find((row) => {
+      const reportDate = this.shortDate(row.REPORT_DATE);
+      return (
+        reportDate.endsWith('12-31') && (this.asNumber(row.BASIC_EPS) ?? 0) > 0
+      );
+    });
+    const annualYear = annualRow
+      ? this.shortDate(annualRow.REPORT_DATE).slice(0, 4)
+      : '';
+    const annualDividendPerShare = annualYear
+      ? implemented
+          .filter((row) =>
+            this.shortDate(row.REPORT_DATE).startsWith(annualYear),
+          )
+          .reduce(
+            (sum, row) => sum + (this.asNumber(row.PRETAX_BONUS_RMB) ?? 0) / 10,
+            0,
+          )
+      : 0;
+    const annualEps = annualRow ? this.asNumber(annualRow.BASIC_EPS) : null;
+    const payoutRatio =
+      annualEps !== null && annualEps > 0
+        ? (annualDividendPerShare / annualEps) * 100
+        : null;
+    const latestFinance = financeRows[0];
+    const yieldScore = this.rangeScore(trailingYield, [
+      [6, 95],
+      [4.5, 88],
+      [3, 76],
+      [2, 64],
+      [1, 48],
+      [0.01, 35],
+    ]);
+    const continuityScore = [20, 38, 52, 68, 84, 96][paidYears.size] ?? 96;
+    const payoutScore =
+      payoutRatio === null
+        ? 50
+        : payoutRatio >= 30 && payoutRatio <= 70
+          ? 92
+          : payoutRatio >= 15 && payoutRatio <= 90
+            ? 78
+            : payoutRatio > 0 && payoutRatio <= 110
+              ? 58
+              : 25;
+    const coverageScore =
+      (latestFinance?.netProfit ?? 0) > 0 &&
+      (latestFinance?.cashProfitRatio ?? 0) >= 0.7
+        ? 88
+        : (latestFinance?.netProfit ?? 0) > 0 &&
+            (latestFinance?.cashProfitRatio ?? 0) >= 0.35
+          ? 65
+          : 32;
+    const trapWarning =
+      trailingYield >= 5 &&
+      ((payoutRatio ?? 0) > 110 ||
+        (latestFinance?.profitGrowth ?? 0) < -15 ||
+        (latestFinance?.cashProfitRatio ?? 0) < 0.35);
+    const score = this.clamp(
+      Math.round(
+        yieldScore * 0.4 +
+          continuityScore * 0.25 +
+          payoutScore * 0.2 +
+          coverageScore * 0.15 -
+          (trapWarning ? 18 : 0),
+      ),
+      0,
+      100,
+    );
+    const latest = implemented[0];
+    return {
+      score,
+      label: trapWarning
+        ? '警惕高息陷阱'
+        : score >= 82
+          ? '红利核心'
+          : score >= 70
+            ? '稳定红利'
+            : score >= 56
+              ? '红利观察'
+              : '红利偏弱',
+      trailingYield: Number(trailingYield.toFixed(2)),
+      trailingCashPerShare: Number(trailingCashPerShare.toFixed(4)),
+      yearsPaid: Math.min(paidYears.size, 5),
+      payoutRatio: payoutRatio === null ? null : Number(payoutRatio.toFixed(1)),
+      latestPlan: latest
+        ? this.asString(latest.IMPL_PLAN_PROFILE)
+        : '暂无实施分红记录',
+      latestExDate: latest ? this.shortDate(latest.EX_DIVIDEND_DATE) : '',
+      available: true,
+      trapWarning,
+    };
+  }
+
+  private neutralDividendSignal(): DividendSignal {
+    return {
+      score: 20,
+      label: '红利数据暂缺',
+      trailingYield: 0,
+      trailingCashPerShare: 0,
+      yearsPaid: 0,
+      payoutRatio: null,
+      latestPlan: '--',
+      latestExDate: '',
+      available: false,
+      trapWarning: false,
     };
   }
 

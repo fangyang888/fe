@@ -66,9 +66,9 @@ export default function AStockAIPicks({ onAnalyze }) {
           <span className="stock-ai-mark">AI</span>
           <div>
             <span>MARKET LEARNING</span>
-            <h2>市场自适应选股候选池</h2>
+            <h2>市场自适应红利增强候选池</h2>
             <p>
-              根据市场状态输出4、7或10家公司，并结合行业相对排名与历史滚动验证。
+              根据市场状态输出4、7或10家公司，兼顾资金热点、蓄势结构与可持续现金分红。
             </p>
           </div>
         </div>
@@ -87,11 +87,12 @@ export default function AStockAIPicks({ onAnalyze }) {
       </div>
 
       <div className="stock-ai-method">
-        <span>六维基本面 34%</span>
-        <span>行业相对排名 16%</span>
-        <span>真实主力净流入 22%</span>
-        <span>全市场行业热度 16%</span>
-        <span>蓄势待发结构 12%</span>
+        <span>六维基本面 30%</span>
+        <span>行业相对排名 13%</span>
+        <span>真实主力净流入 18%</span>
+        <span>全市场行业热度 13%</span>
+        <span>蓄势结构 6%—16%</span>
+        <span>红利质量 10%—20%</span>
         <span>进攻 / 均衡 / 防守</span>
         <span>排除 ST / 金融</span>
       </div>
@@ -133,7 +134,8 @@ export default function AStockAIPicks({ onAnalyze }) {
               <span>
                 初筛通过 {result.scannedCount} 家 · 深度复评{" "}
                 {result.detailedCount} 家 · 资金覆盖{" "}
-                {result.capitalCoverageCount ?? "--"} 家 · 生成于{" "}
+                {result.capitalCoverageCount ?? "--"} 家 · 红利覆盖{" "}
+                {result.dividendCoverageCount ?? "--"} 家 · 生成于{" "}
                 {formatGeneratedAt(result.generatedAt)}
               </span>
             </div>
@@ -283,6 +285,22 @@ export default function AStockAIPicks({ onAnalyze }) {
                       <b
                         style={{ width: `${pick.industryHeat?.score ?? 0}%` }}
                       />
+                    </i>
+                  </div>
+                  <div>
+                    <span>现金红利质量</span>
+                    <strong>
+                      {pick.dividend?.label || "--"} ·{" "}
+                      {pick.dividend?.score ?? "--"}
+                    </strong>
+                    <p>
+                      近12月股息率{" "}
+                      {formatMetric(pick.dividend?.trailingYield, "%")} · 近5年{" "}
+                      {pick.dividend?.yearsPaid ?? 0}年分红 · 派息率{" "}
+                      {formatMetric(pick.dividend?.payoutRatio, "%")}
+                    </p>
+                    <i>
+                      <b style={{ width: `${pick.dividend?.score ?? 0}%` }} />
                     </i>
                   </div>
                   <div>

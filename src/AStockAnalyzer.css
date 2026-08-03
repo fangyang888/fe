@@ -1455,6 +1455,11 @@
   border-top-color: #607d98;
 }
 
+.stock-ai-context-card.is-learning {
+  grid-column: 1 / -1;
+  border-top-color: #795f9b;
+}
+
 .stock-ai-context-head {
   display: flex;
   align-items: center;
@@ -2159,6 +2164,10 @@
 
   .stock-ai-context-grid {
     grid-template-columns: 1fr;
+  }
+
+  .stock-ai-context-card.is-learning {
+    grid-column: auto;
   }
 
   .stock-ai-context-metrics {

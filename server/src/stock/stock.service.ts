@@ -187,6 +187,46 @@ interface WalkForwardSummary {
   limitation: string;
 }
 
+type LearnedFeatureKey = 'quality' | 'growth' | 'safety' | 'trend' | 'setup';
+
+interface LearnedFeatureStat {
+  key: LearnedFeatureKey;
+  label: string;
+  weight: number;
+  rankIc: number;
+  direction: 'positive' | 'negative';
+}
+
+interface LearnedRankingModel {
+  available: boolean;
+  label: string;
+  confidence: '高' | '中' | '低';
+  horizonDays: number;
+  trainingWindows: number;
+  validationWindows: number;
+  observations: number;
+  validationExcessReturn: number;
+  reliability: number;
+  features: LearnedFeatureStat[];
+  weights: Record<LearnedFeatureKey, number>;
+  limitation: string;
+}
+
+interface LearnedFeatureVector {
+  quality: number;
+  growth: number;
+  safety: number;
+  trend: number;
+  setup: number;
+}
+
+interface LearnedTrainingSample {
+  checkpoint: string;
+  features: LearnedFeatureVector;
+  targetRank: number;
+  forwardExcessReturn: number;
+}
+
 const EASTMONEY_SEARCH_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
 const FINANCE_KEYWORDS = [
   '银行',
@@ -222,6 +262,16 @@ const NEGATIVE_EVENT_WORDS = [
   '终止',
   '退市',
   '减值',
+];
+const LEARNED_FEATURES: Array<{
+  key: LearnedFeatureKey;
+  label: string;
+}> = [
+  { key: 'quality', label: '公司质量' },
+  { key: 'growth', label: '成长' },
+  { key: 'safety', label: '财务安全' },
+  { key: 'trend', label: '趋势' },
+  { key: 'setup', label: '蓄势结构' },
 ];
 
 @Injectable()
@@ -680,6 +730,11 @@ export class StockService {
     }));
     const industryRelativeScores = this.buildIndustryRelativeScores(detailed);
     const backtest = this.buildWalkForwardBacktest(detailed);
+    const learnedModel = this.buildLearnedRankingModel(detailed);
+    const learnedScores = this.scoreCurrentLearnedRanking(
+      uniqueEligible,
+      learnedModel,
+    );
     const sampleIndustryHeat = this.buildIndustryHeat(industryEntries);
     const [marketIndustryHeat, capitalFlows, dividendSignals] =
       await Promise.all([
@@ -737,9 +792,10 @@ export class StockService {
           marketRegime.label === '防守'
             ? 0.2
             : marketRegime.label === '进攻'
-              ? 0.1
-              : 0.15;
+              ? 0.12
+              : 0.16;
         const setupWeight = 0.26 - dividendWeight;
+        const learnedRank = learnedScores.get(entry.candidate.code) ?? 50;
         return {
           ...entry,
           capital,
@@ -747,12 +803,14 @@ export class StockService {
           setup,
           dividend,
           relative,
+          learnedRank,
           signalCount,
           selectionScore: Math.round(
-            entry.scores.total * 0.3 +
-              relative.score * 0.13 +
+            learnedRank * 0.24 +
+              entry.scores.total * 0.1 +
+              relative.score * 0.1 +
               capital.score * 0.18 +
-              heat.score * 0.13 +
+              heat.score * 0.12 +
               setup.score * setupWeight +
               dividend.score * dividendWeight +
               (signalCount >= 4 ? 5 : signalCount >= 2 ? 2 : -4),
@@ -768,12 +826,22 @@ export class StockService {
       defensiveDividendPool.length >= marketRegime.targetPickCount
         ? defensiveDividendPool
         : fullyRanked;
-    const highSignal = regimeRanked.filter((entry) => entry.signalCount >= 2);
+    const flowConfirmedPool = regimeRanked.filter(
+      (entry) =>
+        (entry.capital.available && entry.capital.mainNetInflow > 0) ||
+        (entry.industryHeat.score >= 63 &&
+          (entry.industryHeat.mainNetInflow ?? 0) > 0),
+    );
+    const signalRanked =
+      flowConfirmedPool.length >= marketRegime.targetPickCount
+        ? flowConfirmedPool
+        : regimeRanked;
+    const highSignal = signalRanked.filter((entry) => entry.signalCount >= 2);
     const rankingPool =
       highSignal.length >= marketRegime.targetPickCount
         ? highSignal
         : highSignal.concat(
-            regimeRanked.filter((entry) => entry.signalCount < 2),
+            signalRanked.filter((entry) => entry.signalCount < 2),
           );
     const rankedEligible = this.selectDiversifiedPicks(
       rankingPool,
@@ -805,6 +873,16 @@ export class StockService {
       if (entry.dividend.score >= 68) {
         contextReasons.push(
           `近12个月现金分红 ${entry.dividend.trailingCashPerShare.toFixed(2)} 元/股，股息率约 ${this.formatPercent(entry.dividend.trailingYield)}，近5年有 ${entry.dividend.yearsPaid} 年实施分红`,
+        );
+      }
+      if (entry.learnedRank >= 68 && learnedModel.available) {
+        const leadingFeatures = learnedModel.features
+          .filter((feature) => feature.weight > 0)
+          .slice(0, 2)
+          .map((feature) => feature.label)
+          .join('、');
+        contextReasons.push(
+          `历史滚动学习排序分 ${entry.learnedRank.toFixed(0)}，${leadingFeatures || '综合特征'}在当前样本中相对占优`,
         );
       }
       if (entry.industryHeat.score >= 70) {
@@ -870,6 +948,7 @@ export class StockService {
         setup: entry.setup,
         dividend: entry.dividend,
         industryRelative: entry.relative,
+        learnedRank: entry.learnedRank,
         signalCount: entry.signalCount,
         dimensions: {
           quality: entry.scores.quality,
@@ -893,17 +972,18 @@ export class StockService {
     return {
       generatedAt: new Date().toISOString(),
       cached: false,
-      model: 'A股市场自适应红利增强模型 v5',
+      model: 'A股市场自适应学习排序模型 v6',
       scannedCount: universe.length,
       detailedCount: detailed.length,
       capitalCoverageCount,
       dividendCoverageCount,
       marketRegime,
       backtest,
+      learnedModel,
       targetPickCount: marketRegime.targetPickCount,
       picks,
       methodology:
-        '从活跃A股中排除ST、金融及异常估值公司，执行年度亏损、负净资产、经营现金流、高杠杆、商誉、应收账款和重大风险事件红线；基础权重为六维基本面30%、行业内相对排名13%、个股近1—5日主力净流入18%、行业资金热度13%，其余26%由蓄势结构与红利质量动态分配。红利质量综合近12个月真实现金分红、近5年连续性、派息率与盈利现金流，高股息但利润或现金流恶化会扣分。防守状态红利权重20%并优先剔除红利偏弱或高息陷阱，均衡15%，进攻10%。模型分别最多输出10、7、4家公司；同一一级行业最多优先保留3家。',
+        '从活跃A股中排除ST、金融及异常估值公司，并执行财务与事件红线。历史学习排序占24%：每个滚动检查点仅使用当时已披露财报与当时价格，学习公司质量、成长、安全、趋势和蓄势结构对随后20日行业相对收益的贡献，并用最近检查点进行样本外验证；验证为负时学习结果最多只保留10%影响，其余退回稳健先验。其余权重为基本面10%、行业相对排名10%、主力净流入18%、行业资金热度12%，剩余26%由蓄势与红利按市场状态动态分配。资金与红利因缺少完整历史快照，不进入历史训练，继续以真实当前数据独立评分；覆盖足够时，最终候选必须获得个股或行业资金流入确认。',
       disclaimer:
         '候选池依据公开市场数据和规则模型生成，仅用于缩小研究范围，不构成买入建议或收益保证。',
       dataSources: [
@@ -1789,6 +1869,373 @@ export class StockService {
     const lower = values.filter((item) => item < value).length;
     const equal = values.filter((item) => item === value).length;
     return ((lower + equal * 0.5) / values.length) * 100;
+  }
+
+  private buildLearnedRankingModel(
+    entries: Array<{
+      candidate: MarketCandidate;
+      industry: string;
+      financeRows: FinancialRow[];
+      klines: KlinePoint[];
+    }>,
+  ): LearnedRankingModel {
+    const horizonDays = 20;
+    const fallbackWeights = this.defaultLearnedWeights();
+    const reference = entries.find(
+      (entry) => entry.klines.length >= 380,
+    )?.klines;
+    if (!reference) {
+      return this.unavailableLearnedModel(horizonDays, fallbackWeights);
+    }
+
+    const lastCheckpoint = reference.length - horizonDays - 1;
+    const firstCheckpoint = Math.max(140, lastCheckpoint - 14 * horizonDays);
+    const checkpoints: string[] = [];
+    for (
+      let index = firstCheckpoint;
+      index <= lastCheckpoint;
+      index += horizonDays
+    ) {
+      const date = reference[index]?.date;
+      if (date) checkpoints.push(date);
+    }
+
+    const samples: LearnedTrainingSample[] = [];
+    for (const checkpoint of checkpoints) {
+      const snapshots = entries.flatMap((entry) => {
+        const index = entry.klines.findIndex(
+          (item) => item.date === checkpoint,
+        );
+        if (index < 120 || index + horizonDays >= entry.klines.length)
+          return [];
+        const disclosed = entry.financeRows.filter(
+          (row) => row.noticeDate && row.noticeDate <= checkpoint,
+        );
+        if (!disclosed.length) return [];
+        const latest = disclosed[0];
+        const annual = disclosed.find((row) => row.reportType.includes('年报'));
+        const history = entry.klines.slice(0, index + 1);
+        const startPrice = entry.klines[index]?.close ?? 0;
+        const endPrice = entry.klines[index + horizonDays]?.close ?? 0;
+        if (startPrice <= 0 || endPrice <= 0) return [];
+        return [
+          {
+            industry: this.industryGroup(entry.industry),
+            rawFeatures: {
+              quality: this.qualityScore(latest),
+              growth: this.growthScore(disclosed),
+              safety: this.safetyScore(latest, annual),
+              trend: this.trendScore(history),
+              setup: this.buildSetupSignal(history).score,
+            } satisfies LearnedFeatureVector,
+            forwardReturn: (endPrice / startPrice - 1) * 100,
+          },
+        ];
+      });
+      if (snapshots.length < 10) continue;
+
+      const industryGroups = new Map<string, typeof snapshots>();
+      for (const snapshot of snapshots) {
+        industryGroups.set(snapshot.industry, [
+          ...(industryGroups.get(snapshot.industry) ?? []),
+          snapshot,
+        ]);
+      }
+      const marketReturn = this.average(
+        snapshots.map((snapshot) => snapshot.forwardReturn),
+      );
+      const enriched = snapshots.map((snapshot) => {
+        const peers = industryGroups.get(snapshot.industry) ?? [];
+        const benchmark =
+          peers.length >= 3
+            ? this.average(peers.map((item) => item.forwardReturn))
+            : marketReturn;
+        return {
+          ...snapshot,
+          forwardExcessReturn: snapshot.forwardReturn - benchmark,
+        };
+      });
+      const excessValues = enriched.map((item) => item.forwardExcessReturn);
+      const featureValues = Object.fromEntries(
+        LEARNED_FEATURES.map(({ key }) => [
+          key,
+          enriched.map((item) => item.rawFeatures[key]),
+        ]),
+      ) as Record<LearnedFeatureKey, number[]>;
+
+      for (const item of enriched) {
+        samples.push({
+          checkpoint,
+          features: Object.fromEntries(
+            LEARNED_FEATURES.map(({ key }) => [
+              key,
+              this.percentileOf(item.rawFeatures[key], featureValues[key]) /
+                50 -
+                1,
+            ]),
+          ) as unknown as LearnedFeatureVector,
+          targetRank:
+            this.percentileOf(item.forwardExcessReturn, excessValues) / 50 - 1,
+          forwardExcessReturn: item.forwardExcessReturn,
+        });
+      }
+    }
+
+    const usedCheckpoints = Array.from(
+      new Set(samples.map((sample) => sample.checkpoint)),
+    ).sort();
+    if (samples.length < 50 || usedCheckpoints.length < 5) {
+      return this.unavailableLearnedModel(
+        horizonDays,
+        fallbackWeights,
+        samples.length,
+        usedCheckpoints.length,
+      );
+    }
+
+    const splitIndex = Math.max(3, Math.floor(usedCheckpoints.length * 0.7));
+    const trainingDates = new Set(usedCheckpoints.slice(0, splitIndex));
+    const validationDates = usedCheckpoints.slice(splitIndex);
+    const trainingSamples = samples.filter((sample) =>
+      trainingDates.has(sample.checkpoint),
+    );
+    const validationSamples = samples.filter((sample) =>
+      validationDates.includes(sample.checkpoint),
+    );
+    const validationWeights = this.fitLearnedWeights(trainingSamples);
+    const validationExcessReturns = validationDates.flatMap((date) => {
+      const windowSamples = validationSamples
+        .filter((sample) => sample.checkpoint === date)
+        .sort(
+          (a, b) =>
+            this.learnedPrediction(b.features, validationWeights) -
+            this.learnedPrediction(a.features, validationWeights),
+        );
+      if (!windowSamples.length) return [];
+      const selectedCount = Math.min(
+        5,
+        Math.max(3, Math.ceil(windowSamples.length * 0.25)),
+      );
+      return [
+        this.average(
+          windowSamples
+            .slice(0, selectedCount)
+            .map((sample) => sample.forwardExcessReturn),
+        ),
+      ];
+    });
+    const validationExcessReturn = this.average(validationExcessReturns);
+    const reliability =
+      validationExcessReturn >= 1.5
+        ? 1
+        : validationExcessReturn > 0
+          ? 0.7
+          : validationExcessReturn > -0.5
+            ? 0.3
+            : 0.1;
+    const weights = this.fitLearnedWeights(samples);
+    const features = LEARNED_FEATURES.map(({ key, label }) => {
+      const rankIc = this.correlation(
+        samples.map((sample) => sample.features[key]),
+        samples.map((sample) => sample.targetRank),
+      );
+      return {
+        key,
+        label,
+        weight: Number((weights[key] * 100).toFixed(1)),
+        rankIc: Number(rankIc.toFixed(3)),
+        direction: weights[key] >= 0 ? 'positive' : 'negative',
+      } satisfies LearnedFeatureStat;
+    }).sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+
+    return {
+      available: true,
+      label:
+        validationExcessReturn >= 1.5
+          ? '学习信号有效'
+          : validationExcessReturn > 0
+            ? '学习信号可用'
+            : '学习信号偏弱',
+      confidence:
+        validationExcessReturn >= 1.5
+          ? '高'
+          : validationExcessReturn > 0
+            ? '中'
+            : '低',
+      horizonDays,
+      trainingWindows: trainingDates.size,
+      validationWindows: validationDates.length,
+      observations: samples.length,
+      validationExcessReturn: Number(validationExcessReturn.toFixed(2)),
+      reliability,
+      features,
+      weights,
+      limitation:
+        '仅用历史检查点当时可见的财报与价格特征训练；样本外验证使用最近滚动窗口。当前样本仍有幸存者偏差，资金、红利和历史事件因缺少完整快照未进入训练。',
+    };
+  }
+
+  private scoreCurrentLearnedRanking(
+    entries: Array<{
+      candidate: MarketCandidate;
+      scores: ScoreBreakdown;
+      klines: KlinePoint[];
+    }>,
+    model: LearnedRankingModel,
+  ): Map<string, number> {
+    const result = new Map<string, number>();
+    if (!entries.length) return result;
+    const vectors = entries.map((entry) => ({
+      code: entry.candidate.code,
+      raw: {
+        quality: entry.scores.quality,
+        growth: entry.scores.growth,
+        safety: entry.scores.safety,
+        trend: entry.scores.trend,
+        setup: this.buildSetupSignal(entry.klines).score,
+      } satisfies LearnedFeatureVector,
+    }));
+    const featureValues = Object.fromEntries(
+      LEARNED_FEATURES.map(({ key }) => [
+        key,
+        vectors.map((item) => item.raw[key]),
+      ]),
+    ) as Record<LearnedFeatureKey, number[]>;
+    const fallbackWeights = this.defaultLearnedWeights();
+
+    for (const item of vectors) {
+      const rankedFeatures = Object.fromEntries(
+        LEARNED_FEATURES.map(({ key }) => [
+          key,
+          this.percentileOf(item.raw[key], featureValues[key]) / 50 - 1,
+        ]),
+      ) as unknown as LearnedFeatureVector;
+      const learnedScore = this.clamp(
+        50 + this.learnedPrediction(rankedFeatures, model.weights) * 45,
+        0,
+        100,
+      );
+      const fallbackScore = this.clamp(
+        50 + this.learnedPrediction(rankedFeatures, fallbackWeights) * 45,
+        0,
+        100,
+      );
+      const reliability = model.available ? model.reliability : 0;
+      result.set(
+        item.code,
+        Number(
+          (
+            learnedScore * reliability +
+            fallbackScore * (1 - reliability)
+          ).toFixed(1),
+        ),
+      );
+    }
+    return result;
+  }
+
+  private fitLearnedWeights(
+    samples: LearnedTrainingSample[],
+  ): Record<LearnedFeatureKey, number> {
+    if (!samples.length) return this.defaultLearnedWeights();
+    const weights = Object.fromEntries(
+      LEARNED_FEATURES.map(({ key }) => [key, 0]),
+    ) as Record<LearnedFeatureKey, number>;
+    const regularization = 0.12;
+    for (let iteration = 0; iteration < 700; iteration += 1) {
+      const gradients = Object.fromEntries(
+        LEARNED_FEATURES.map(({ key }) => [key, 0]),
+      ) as Record<LearnedFeatureKey, number>;
+      for (const sample of samples) {
+        const error =
+          this.learnedPrediction(sample.features, weights) - sample.targetRank;
+        for (const { key } of LEARNED_FEATURES) {
+          gradients[key] += (2 * error * sample.features[key]) / samples.length;
+        }
+      }
+      const learningRate = 0.08 / (1 + iteration / 250);
+      for (const { key } of LEARNED_FEATURES) {
+        gradients[key] += 2 * regularization * weights[key];
+        weights[key] = Math.max(
+          -2,
+          Math.min(2, weights[key] - learningRate * gradients[key]),
+        );
+      }
+    }
+    const scale = LEARNED_FEATURES.reduce(
+      (sum, { key }) => sum + Math.abs(weights[key]),
+      0,
+    );
+    if (scale < 0.0001) return this.defaultLearnedWeights();
+    for (const { key } of LEARNED_FEATURES) weights[key] /= scale;
+    return weights;
+  }
+
+  private learnedPrediction(
+    features: LearnedFeatureVector,
+    weights: Record<LearnedFeatureKey, number>,
+  ): number {
+    return LEARNED_FEATURES.reduce(
+      (sum, { key }) => sum + features[key] * weights[key],
+      0,
+    );
+  }
+
+  private defaultLearnedWeights(): Record<LearnedFeatureKey, number> {
+    return {
+      quality: 0.25,
+      growth: 0.2,
+      safety: 0.15,
+      trend: 0.18,
+      setup: 0.22,
+    };
+  }
+
+  private unavailableLearnedModel(
+    horizonDays: number,
+    weights: Record<LearnedFeatureKey, number>,
+    observations = 0,
+    trainingWindows = 0,
+  ): LearnedRankingModel {
+    return {
+      available: false,
+      label: '学习样本不足',
+      confidence: '低',
+      horizonDays,
+      trainingWindows,
+      validationWindows: 0,
+      observations,
+      validationExcessReturn: 0,
+      reliability: 0,
+      features: LEARNED_FEATURES.map(({ key, label }) => ({
+        key,
+        label,
+        weight: Number((weights[key] * 100).toFixed(1)),
+        rankIc: 0,
+        direction: 'positive',
+      })),
+      weights,
+      limitation:
+        '历史检查点或横截面样本不足，本轮学习排序退回稳健先验，不展示为已训练模型。',
+    };
+  }
+
+  private correlation(left: number[], right: number[]): number {
+    if (left.length !== right.length || left.length < 2) return 0;
+    const leftMean = this.average(left);
+    const rightMean = this.average(right);
+    let numerator = 0;
+    let leftVariance = 0;
+    let rightVariance = 0;
+    for (let index = 0; index < left.length; index += 1) {
+      const leftDelta = left[index] - leftMean;
+      const rightDelta = right[index] - rightMean;
+      numerator += leftDelta * rightDelta;
+      leftVariance += leftDelta * leftDelta;
+      rightVariance += rightDelta * rightDelta;
+    }
+    const denominator = Math.sqrt(leftVariance * rightVariance);
+    return denominator > 0 ? numerator / denominator : 0;
   }
 
   private buildWalkForwardBacktest(

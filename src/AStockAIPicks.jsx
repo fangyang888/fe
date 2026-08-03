@@ -66,9 +66,9 @@ export default function AStockAIPicks({ onAnalyze }) {
           <span className="stock-ai-mark">AI</span>
           <div>
             <span>MARKET LEARNING</span>
-            <h2>市场自适应红利增强候选池</h2>
+            <h2>市场自适应学习排序候选池</h2>
             <p>
-              根据市场状态输出4、7或10家公司，兼顾资金热点、蓄势结构与可持续现金分红。
+              从历史行业超额收益中学习有效特征，并结合资金热点、蓄势结构与可持续现金分红。
             </p>
           </div>
         </div>
@@ -87,12 +87,13 @@ export default function AStockAIPicks({ onAnalyze }) {
       </div>
 
       <div className="stock-ai-method">
-        <span>六维基本面 30%</span>
-        <span>行业相对排名 13%</span>
+        <span>历史学习排序 24%</span>
+        <span>六维基本面 10%</span>
+        <span>行业相对排名 10%</span>
         <span>真实主力净流入 18%</span>
-        <span>全市场行业热度 13%</span>
-        <span>蓄势结构 6%—16%</span>
-        <span>红利质量 10%—20%</span>
+        <span>全市场行业热度 12%</span>
+        <span>蓄势结构 6%—14%</span>
+        <span>红利质量 12%—20%</span>
         <span>进攻 / 均衡 / 防守</span>
         <span>排除 ST / 金融</span>
       </div>
@@ -196,6 +197,44 @@ export default function AStockAIPicks({ onAnalyze }) {
               </div>
               <p>{result.backtest?.limitation || "暂未形成可用历史样本"}</p>
             </section>
+
+            <section className="stock-ai-context-card is-learning">
+              <div className="stock-ai-context-head">
+                <span>20日行业超额学习排序</span>
+                <strong>{result.learnedModel?.label || "--"}</strong>
+              </div>
+              <div className="stock-ai-context-metrics">
+                <div>
+                  <span>可信度</span>
+                  <b>{result.learnedModel?.confidence || "--"}</b>
+                </div>
+                <div>
+                  <span>训练窗口</span>
+                  <b>{result.learnedModel?.trainingWindows ?? 0} 个</b>
+                </div>
+                <div>
+                  <span>训练观测</span>
+                  <b>{result.learnedModel?.observations ?? 0} 条</b>
+                </div>
+                <div>
+                  <span>样本外超额</span>
+                  <b>
+                    {formatSignedPercent(
+                      result.learnedModel?.validationExcessReturn,
+                    )}
+                  </b>
+                </div>
+              </div>
+              <p>
+                {(result.learnedModel?.features || [])
+                  .slice(0, 3)
+                  .map(
+                    (feature) =>
+                      `${feature.label} ${feature.weight > 0 ? "+" : ""}${feature.weight}%`,
+                  )
+                  .join(" · ") || result.learnedModel?.limitation || "学习样本不足"}
+              </p>
+            </section>
           </div>
 
           <div className="stock-ai-pick-grid">
@@ -251,6 +290,22 @@ export default function AStockAIPicks({ onAnalyze }) {
                 </div>
 
                 <div className="stock-ai-signal-row">
+                  <div>
+                    <span>历史学习排序</span>
+                    <strong>
+                      {formatMetric(pick.learnedRank)} ·{" "}
+                      {result.learnedModel?.confidence || "--"}可信度
+                    </strong>
+                    <p>
+                      目标为未来20日行业相对收益 · 样本外{" "}
+                      {formatSignedPercent(
+                        result.learnedModel?.validationExcessReturn,
+                      )}
+                    </p>
+                    <i>
+                      <b style={{ width: `${pick.learnedRank ?? 0}%` }} />
+                    </i>
+                  </div>
                   <div>
                     <span>近{pick.capital?.flowDays || 5}日主力资金</span>
                     <strong>

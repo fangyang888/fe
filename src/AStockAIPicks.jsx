@@ -23,6 +23,12 @@ function formatSignedPercent(value) {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
+function regimeTone(value) {
+  if (value === "进攻") return "is-positive";
+  if (value === "防守") return "is-warning";
+  return "is-neutral";
+}
+
 export default function AStockAIPicks({ onAnalyze }) {
   const [status, setStatus] = useState("idle");
   const [result, setResult] = useState(null);
@@ -60,9 +66,9 @@ export default function AStockAIPicks({ onAnalyze }) {
           <span className="stock-ai-mark">AI</span>
           <div>
             <span>MARKET LEARNING</span>
-            <h2>资金与行业增强候选池</h2>
+            <h2>市场自适应选股候选池</h2>
             <p>
-              扫描活跃A股，执行硬性红线后，结合资金活跃度与行业热度挑选前十家公司。
+              根据市场状态输出4、7或10家公司，并结合行业相对排名与历史滚动验证。
             </p>
           </div>
         </div>
@@ -81,9 +87,12 @@ export default function AStockAIPicks({ onAnalyze }) {
       </div>
 
       <div className="stock-ai-method">
-        <span>六维基本面 70%</span>
-        <span>成交资金活跃度 18%</span>
-        <span>候选样本行业热度 12%</span>
+        <span>六维基本面 34%</span>
+        <span>行业相对排名 16%</span>
+        <span>真实主力净流入 22%</span>
+        <span>全市场行业热度 16%</span>
+        <span>蓄势待发结构 12%</span>
+        <span>进攻 / 均衡 / 防守</span>
         <span>排除 ST / 金融</span>
       </div>
 
@@ -99,7 +108,9 @@ export default function AStockAIPicks({ onAnalyze }) {
           <i />
           <div>
             <strong>正在进行两阶段筛选</strong>
-            <p>全市场初筛 → 财务与价格复评 → 资金、行业与事件复核</p>
+            <p>
+              全市场初筛 → 财务红线复评 → 市场状态、行业排名与滚动历史验证
+            </p>
           </div>
         </div>
       )}
@@ -121,11 +132,68 @@ export default function AStockAIPicks({ onAnalyze }) {
               <strong>{result.model}</strong>
               <span>
                 初筛通过 {result.scannedCount} 家 · 深度复评{" "}
-                {result.detailedCount} 家 · 生成于{" "}
+                {result.detailedCount} 家 · 资金覆盖{" "}
+                {result.capitalCoverageCount ?? "--"} 家 · 生成于{" "}
                 {formatGeneratedAt(result.generatedAt)}
               </span>
             </div>
             <em>{result.cached ? "15分钟缓存结果" : "本轮实时计算"}</em>
+          </div>
+
+          <div className="stock-ai-context-grid">
+            <section
+              className={`stock-ai-context-card ${regimeTone(result.marketRegime?.label)}`}
+            >
+              <div className="stock-ai-context-head">
+                <span>当前市场状态</span>
+                <strong>{result.marketRegime?.label || "--"}</strong>
+              </div>
+              <div className="stock-ai-context-metrics">
+                <div>
+                  <span>状态分</span>
+                  <b>{result.marketRegime?.score ?? "--"}</b>
+                </div>
+                <div>
+                  <span>候选数量</span>
+                  <b>{result.targetPickCount ?? result.picks.length} 家</b>
+                </div>
+                <div>
+                  <span>沪深300近20日</span>
+                  <b>{formatSignedPercent(result.marketRegime?.indexReturn20)}</b>
+                </div>
+                <div>
+                  <span>全市场上涨占比</span>
+                  <b>{formatMetric(result.marketRegime?.breadth, "%")}</b>
+                </div>
+              </div>
+              <p>{result.marketRegime?.reason || "市场状态数据不足"}</p>
+            </section>
+
+            <section className="stock-ai-context-card is-backtest">
+              <div className="stock-ai-context-head">
+                <span>20交易日滚动验证</span>
+                <strong>{result.backtest?.label || "--"}</strong>
+              </div>
+              <div className="stock-ai-context-metrics">
+                <div>
+                  <span>检查点</span>
+                  <b>{result.backtest?.checkpoints ?? 0} 个</b>
+                </div>
+                <div>
+                  <span>平均收益</span>
+                  <b>{formatSignedPercent(result.backtest?.averageReturn)}</b>
+                </div>
+                <div>
+                  <span>相对样本超额</span>
+                  <b>{formatSignedPercent(result.backtest?.excessReturn)}</b>
+                </div>
+                <div>
+                  <span>正收益率</span>
+                  <b>{formatMetric(result.backtest?.positiveRate, "%")}</b>
+                </div>
+              </div>
+              <p>{result.backtest?.limitation || "暂未形成可用历史样本"}</p>
+            </section>
           </div>
 
           <div className="stock-ai-pick-grid">
@@ -143,7 +211,9 @@ export default function AStockAIPicks({ onAnalyze }) {
                   </div>
                   <div className="stock-ai-score">
                     <strong>{pick.score}</strong>
-                    <span>{pick.rating}</span>
+                    <span>
+                      {pick.rating} · {pick.signalCount ?? 0}项共振
+                    </span>
                   </div>
                 </div>
 
@@ -180,33 +250,81 @@ export default function AStockAIPicks({ onAnalyze }) {
 
                 <div className="stock-ai-signal-row">
                   <div>
-                    <span>成交资金活跃度</span>
+                    <span>近{pick.capital?.flowDays || 5}日主力资金</span>
                     <strong>
                       {pick.capital?.label || "--"} ·{" "}
                       {pick.capital?.score ?? "--"}
                     </strong>
                     <p>
-                      当日成交额 {pick.capital?.amountFormatted || "--"} ·
-                      换手率 {formatMetric(pick.capital?.turnover, "%")}
+                      净流入 {pick.capital?.mainNetInflowFormatted || "--"} ·
+                      {pick.capital?.positiveDays ?? 0}日流入 · 日均占比{" "}
+                      {formatSignedPercent(pick.capital?.mainNetRatio)}
                     </p>
                     <i>
                       <b style={{ width: `${pick.capital?.score ?? 0}%` }} />
                     </i>
                   </div>
                   <div>
-                    <span>候选样本行业热度</span>
+                    <span>
+                      {pick.industryHeat?.source === "market-board"
+                        ? "全市场热点行业"
+                        : "行业资金热度"}
+                    </span>
                     <strong>
                       {pick.industryHeat?.label || "--"} ·{" "}
                       {pick.industryHeat?.score ?? "--"}
                     </strong>
                     <p>
-                      {pick.industryHeat?.industry || pick.industry} ·{" "}
-                      {pick.industryHeat?.sampleCount ?? 0} 家样本 · 平均涨跌{" "}
+                      {pick.industryHeat?.industry || pick.industry} · 主力{" "}
+                      {pick.industryHeat?.mainNetInflowFormatted || "--"} · 涨跌{" "}
                       {formatSignedPercent(pick.industryHeat?.averageChange)}
                     </p>
                     <i>
                       <b
                         style={{ width: `${pick.industryHeat?.score ?? 0}%` }}
+                      />
+                    </i>
+                  </div>
+                  <div>
+                    <span>蓄势待发结构</span>
+                    <strong>
+                      {pick.setup?.label || "--"} · {pick.setup?.score ?? "--"}
+                    </strong>
+                    <p>
+                      近20日 {formatSignedPercent(pick.setup?.return20)} · 距60日高点{" "}
+                      {formatSignedPercent(pick.setup?.distanceToHigh60)}
+                    </p>
+                    <i>
+                      <b style={{ width: `${pick.setup?.score ?? 0}%` }} />
+                    </i>
+                  </div>
+                  <div>
+                    <span>
+                      {pick.industryRelative?.peerScope === "industry"
+                        ? "行业内相对排名"
+                        : "复评样本相对排名"}
+                    </span>
+                    <strong>
+                      {pick.industryRelative?.label || "--"} ·{" "}
+                      {pick.industryRelative?.score ?? "--"}
+                    </strong>
+                    <p>
+                      {pick.industryRelative?.peerScope === "industry"
+                        ? pick.industryRelative?.industry || pick.industry
+                        : "同行不足，改用全样本"} · 前{" "}
+                      {typeof pick.industryRelative?.percentile === "number"
+                        ? Math.max(
+                            1,
+                            Math.round(100 - pick.industryRelative.percentile),
+                          )
+                        : "--"}
+                      % · {pick.industryRelative?.sampleCount ?? 0} 家比较
+                    </p>
+                    <i>
+                      <b
+                        style={{
+                          width: `${pick.industryRelative?.score ?? 0}%`,
+                        }}
                       />
                     </i>
                   </div>

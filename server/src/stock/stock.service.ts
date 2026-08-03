@@ -41,6 +41,12 @@ interface FinancialRow {
   operatingCash: number | null;
   netProfit: number | null;
   cashProfitRatio: number | null;
+  totalAssets: number | null;
+  totalEquity: number | null;
+  accountsReceivable: number | null;
+  accountsReceivableGrowth: number | null;
+  goodwill: number | null;
+  inventory: number | null;
 }
 
 interface AnalysisEvent {
@@ -98,6 +104,74 @@ interface IndustryHeatSignal {
   sampleCount: number;
   totalAmount: number;
   totalAmountFormatted: string;
+  mainNetInflow?: number;
+  mainNetInflowFormatted?: string;
+  mainNetRatio?: number;
+  source?: 'market-board' | 'candidate-sample';
+}
+
+interface CapitalFlowSignal {
+  score: number;
+  label: string;
+  mainNetInflow: number;
+  mainNetInflowFormatted: string;
+  mainNetRatio: number;
+  superLargeNetInflow: number;
+  largeNetInflow: number;
+  available: boolean;
+  flowDays: number;
+  positiveDays: number;
+  dataAsOf?: string;
+}
+
+interface SetupSignal {
+  score: number;
+  label: string;
+  return5: number;
+  return20: number;
+  distanceToHigh60: number;
+  distanceToMa20: number;
+  volumeRatio: number;
+  volatilityRatio: number;
+}
+
+interface IndustryRelativeSignal {
+  score: number;
+  label: string;
+  percentile: number;
+  sampleCount: number;
+  industry: string;
+  peerScope: 'industry' | 'market';
+}
+
+interface MarketRegimeSignal {
+  score: number;
+  label: '进攻' | '均衡' | '防守';
+  tone: 'positive' | 'neutral' | 'warning';
+  targetPickCount: number;
+  indexReturn20: number;
+  indexDistanceMa20: number;
+  indexDistanceMa60: number;
+  breadth: number;
+  volatility20: number;
+  dataAsOf: string;
+  reason: string;
+}
+
+interface WalkForwardSummary {
+  available: boolean;
+  checkpoints: number;
+  observations: number;
+  horizonDays: number;
+  averageReturn: number;
+  benchmarkReturn: number;
+  excessReturn: number;
+  positiveRate: number;
+  maxDrawdown: number;
+  label: string;
+  periodStart: string;
+  periodEnd: string;
+  limitation: string;
 }
 
 const EASTMONEY_SEARCH_TOKEN = 'D43BF722C8E33BDC906FB84D85E326E8';
@@ -147,6 +221,13 @@ export class StockService {
     | undefined;
 
   private picksPromise: Promise<JsonRecord> | undefined;
+
+  private capitalFlowCache:
+    | {
+        expiresAt: number;
+        signals: Map<string, CapitalFlowSignal>;
+      }
+    | undefined;
 
   async getHealth(): Promise<JsonRecord> {
     const probes = await Promise.all([
@@ -471,7 +552,11 @@ export class StockService {
   }
 
   private async buildMarketPicks(): Promise<JsonRecord> {
-    const universe = await this.fetchMarketUniverse();
+    const [universe, marketIndexKlines] = await Promise.all([
+      this.fetchMarketUniverse(),
+      this.fetchKlines('1.000300').catch(() => [] as KlinePoint[]),
+    ]);
+    const marketRegime = this.buildMarketRegime(marketIndexKlines, universe);
     const preselected = universe
       .map((candidate) => ({
         candidate,
@@ -568,26 +653,9 @@ export class StockService {
       )
       .sort((a, b) => b.scores.total - a.scores.total);
 
-    const eligible =
-      rescored.length >= 10
-        ? rescored
-        : (
-            await this.processInBatches(
-              detailed.slice(rescored.length, Math.min(30, detailed.length)),
-              3,
-              async (entry) => ({
-                ...entry,
-                events: [] as AnalysisEvent[],
-                hardChecks: this.buildHardChecks(entry.financeRows, []),
-              }),
-            )
-          )
-            .filter(
-              (entry) =>
-                !entry.hardChecks.some((item) => item.status === 'failed'),
-            )
-            .concat(rescored)
-            .sort((a, b) => b.scores.total - a.scores.total);
+    // Only event-checked companies may enter the final pool. Empty event arrays
+    // are acceptable only when the upstream sources really returned no records.
+    const eligible = rescored;
 
     const uniqueEligible = Array.from(
       new Map(eligible.map((entry) => [entry.candidate.code, entry])).values(),
@@ -597,25 +665,76 @@ export class StockService {
       industry: entry.industry,
       candidate: entry.candidate,
     }));
-    const industryHeat = this.buildIndustryHeat(industryEntries);
-    const rankedEligible = uniqueEligible
+    const industryRelativeScores = this.buildIndustryRelativeScores(detailed);
+    const backtest = this.buildWalkForwardBacktest(detailed);
+    const sampleIndustryHeat = this.buildIndustryHeat(industryEntries);
+    const [marketIndustryHeat, capitalFlows] = await Promise.all([
+      this.fetchMarketIndustryHeat(),
+      this.fetchCapitalFlows(uniqueEligible.map((entry) => entry.candidate)),
+    ]);
+    const capitalCoverageCount = Array.from(capitalFlows.values()).filter(
+      (signal) => signal.available,
+    ).length;
+    if (capitalCoverageCount < marketRegime.targetPickCount) {
+      throw new BadGatewayException(
+        `本轮主力资金流覆盖不足${marketRegime.targetPickCount}家公司，为避免用成交活跃度冒充资金流入，请稍后重新学习`,
+      );
+    }
+    const capitalIndustryHeat = this.buildCapitalIndustryHeat(
+      industryEntries,
+      capitalFlows,
+    );
+    const fullyRanked = uniqueEligible
       .map((entry) => {
-        const capitalScore = this.capitalActivityScore(entry.candidate);
         const industryGroup = this.industryGroup(entry.industry);
         const heat =
-          industryHeat.get(industryGroup) ??
+          this.findIndustryHeat(marketIndustryHeat, industryGroup) ??
+          capitalIndustryHeat.get(industryGroup) ??
+          sampleIndustryHeat.get(industryGroup) ??
           this.neutralIndustryHeat(industryGroup);
+        const capital =
+          capitalFlows.get(entry.candidate.code) ?? this.neutralCapitalFlow();
+        const setup = this.buildSetupSignal(entry.klines);
+        const relative =
+          industryRelativeScores.get(entry.candidate.code) ??
+          this.neutralIndustryRelative(entry.industry);
+        const signalCount = [
+          capital.available && capital.mainNetInflow > 0 && capital.score >= 55,
+          heat.mainNetInflow !== undefined &&
+            heat.mainNetInflow > 0 &&
+            heat.score >= 63,
+          setup.score >= 68,
+          relative.score >= 68,
+        ].filter(Boolean).length;
         return {
           ...entry,
-          capitalScore,
+          capital,
           industryHeat: heat,
+          setup,
+          relative,
+          signalCount,
           selectionScore: Math.round(
-            entry.scores.total * 0.7 + capitalScore * 0.18 + heat.score * 0.12,
+            entry.scores.total * 0.34 +
+              relative.score * 0.16 +
+              capital.score * 0.22 +
+              heat.score * 0.16 +
+              setup.score * 0.12 +
+              (signalCount >= 3 ? 5 : signalCount === 2 ? 2 : -4),
           ),
         };
       })
-      .sort((a, b) => b.selectionScore - a.selectionScore)
-      .slice(0, 10);
+      .sort((a, b) => b.selectionScore - a.selectionScore);
+    const highSignal = fullyRanked.filter((entry) => entry.signalCount >= 2);
+    const rankingPool =
+      highSignal.length >= marketRegime.targetPickCount
+        ? highSignal
+        : highSignal.concat(
+            fullyRanked.filter((entry) => entry.signalCount < 2),
+          );
+    const rankedEligible = this.selectDiversifiedPicks(
+      rankingPool,
+      marketRegime.targetPickCount,
+    );
 
     const picks = rankedEligible.map((entry, index) => {
       const latest = entry.financeRows[0];
@@ -634,14 +753,24 @@ export class StockService {
         entry.candidate,
       );
       const contextReasons: string[] = [];
-      if (entry.capitalScore >= 78) {
+      if (entry.capital.available && entry.capital.score >= 68) {
         contextReasons.push(
-          `当日成交额 ${this.formatAmount(entry.candidate.amount)}，资金活跃度位于模型优选区间`,
+          `近${entry.capital.flowDays}日主力净流入 ${entry.capital.mainNetInflowFormatted}（日均占比 ${this.formatPercent(entry.capital.mainNetRatio)}），大单资金重点流入`,
         );
       }
       if (entry.industryHeat.score >= 70) {
         contextReasons.push(
-          `${entry.industryHeat.industry}候选样本平均涨跌 ${this.formatPercent(entry.industryHeat.averageChange)}，行业热度较高`,
+          `${entry.industryHeat.industry}板块主力净流入 ${entry.industryHeat.mainNetInflowFormatted || '--'}，板块热度处于前列`,
+        );
+      }
+      if (entry.setup.score >= 70) {
+        contextReasons.push(
+          `近20日涨跌 ${this.formatPercent(entry.setup.return20)}，距60日高点 ${this.formatPercent(entry.setup.distanceToHigh60)}，形态处于${entry.setup.label}区间`,
+        );
+      }
+      if (entry.relative.score >= 70) {
+        contextReasons.push(
+          `${entry.relative.peerScope === 'industry' ? `${entry.relative.industry}行业内` : '本轮复评样本中'}质量、成长、估值与安全综合位于前 ${Math.max(1, Math.round(100 - entry.relative.percentile))}%`,
         );
       }
       const reasons = Array.from(
@@ -680,13 +809,15 @@ export class StockService {
           ),
         },
         capital: {
-          score: entry.capitalScore,
-          label: this.activityLabel(entry.capitalScore),
+          ...entry.capital,
           amount: entry.candidate.amount,
           amountFormatted: this.formatAmount(entry.candidate.amount),
           turnover: entry.candidate.turnover,
         },
         industryHeat: entry.industryHeat,
+        setup: entry.setup,
+        industryRelative: entry.relative,
+        signalCount: entry.signalCount,
         dimensions: {
           quality: entry.scores.quality,
           growth: entry.scores.growth,
@@ -700,27 +831,31 @@ export class StockService {
       };
     });
 
-    if (picks.length < 10) {
+    if (picks.length < marketRegime.targetPickCount) {
       throw new BadGatewayException(
-        '本轮通过硬性红线与数据完整性检查的公司不足10家，请稍后重新学习',
+        `本轮通过硬性红线与数据完整性检查的公司不足${marketRegime.targetPickCount}家，请稍后重新学习`,
       );
     }
 
     return {
       generatedAt: new Date().toISOString(),
       cached: false,
-      model: 'A股资金与行业增强学习模型 v2',
+      model: 'A股市场自适应相对价值模型 v4',
       scannedCount: universe.length,
       detailedCount: detailed.length,
+      capitalCoverageCount,
+      marketRegime,
+      backtest,
+      targetPickCount: marketRegime.targetPickCount,
       picks,
       methodology:
-        '从活跃A股中排除ST、金融、近期上市及异常估值公司，先按六维基本面模型复评，再以六维得分70%、成交资金活跃度18%、候选样本行业热度12%形成最终排序，并执行年度亏损、经营现金流、高杠杆和重大风险事件红线。资金活跃度基于成交额、换手率与当日价格方向，不等同于主力净流入。',
+        '从活跃A股中排除ST、金融及异常估值公司，执行年度亏损、负净资产、经营现金流、高杠杆、商誉、应收账款和重大风险事件红线；最终按六维基本面34%、行业内相对排名16%、个股近1—5日主力净流入22%、行业资金热度16%、蓄势结构12%排序。模型根据沪深300趋势、全市场涨跌广度与波动率切换进攻、均衡、防守状态，分别最多输出10、7、4家公司；同一一级行业最多优先保留3家。滚动评估只使用各检查点之前已披露的财报和价格，不使用未来数据。',
       disclaimer:
         '候选池依据公开市场数据和规则模型生成，仅用于缩小研究范围，不构成买入建议或收益保证。',
       dataSources: [
         '新浪财经A股实时列表',
         '腾讯证券前复权历史行情',
-        '东方财富财务数据、公告与新闻',
+        '东方财富主力资金流、行业板块、财务数据、公告与新闻',
       ],
     };
   }
@@ -743,16 +878,35 @@ export class StockService {
       throw new BadGatewayException('全市场行情数据格式异常');
     }
 
-    return rows
+    const hasLiveTradingData = rows.some((item) => {
+      const row = this.asRecord(item);
+      return (this.asNumber(row.amount) ?? 0) > 0;
+    });
+    let sourceRows = rows;
+    if (!hasLiveTradingData) {
+      const fallbackParams = new URLSearchParams(params);
+      fallbackParams.set('num', '500');
+      fallbackParams.set('sort', 'mktcap');
+      const fallback = JSON.parse(
+        await this.fetchText(
+          `https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?${fallbackParams.toString()}`,
+        ),
+      ) as unknown;
+      if (Array.isArray(fallback)) sourceRows = fallback;
+    }
+
+    return sourceRows
       .map((item) => this.asRecord(item))
       .map((row) => {
         const code = this.asString(row.code);
         const symbol = this.asString(row.symbol);
+        const trade = this.asNumber(row.trade) ?? 0;
+        const settlement = this.asNumber(row.settlement) ?? 0;
         return {
           symbol,
           code,
           name: this.asString(row.name),
-          price: this.asNumber(row.trade) ?? 0,
+          price: trade > 0 ? trade : settlement,
           changePercent: this.asNumber(row.changepercent) ?? 0,
           amount: this.asNumber(row.amount) ?? 0,
           pe: this.asNumber(row.per) ?? 0,
@@ -770,14 +924,14 @@ export class StockService {
           !/^[NC]/i.test(item.name) &&
           !this.looksLikeFinanceName(item.name) &&
           item.price >= 2 &&
-          item.amount >= 50_000_000 &&
+          (!hasLiveTradingData || item.amount >= 50_000_000) &&
           item.marketCap >= 10_000_000_000 &&
           item.pe >= 4 &&
           item.pe <= 60 &&
           item.pb >= 0.3 &&
           item.pb <= 10 &&
-          item.turnover >= 0.15 &&
-          item.turnover <= 15 &&
+          (!hasLiveTradingData ||
+            (item.turnover >= 0.15 && item.turnover <= 15)) &&
           Math.abs(item.changePercent) <= 7,
       );
   }
@@ -808,6 +962,775 @@ export class StockService {
         liquidityScore * 0.14 +
         stabilityScore * 0.1,
     );
+  }
+
+  private async fetchCapitalFlows(
+    candidates: MarketCandidate[],
+  ): Promise<Map<string, CapitalFlowSignal>> {
+    const result = new Map<string, CapitalFlowSignal>();
+    if (!candidates.length) return result;
+    if (this.capitalFlowCache && this.capitalFlowCache.expiresAt > Date.now()) {
+      for (const candidate of candidates) {
+        const cached = this.capitalFlowCache.signals.get(candidate.code);
+        if (cached) result.set(candidate.code, cached);
+      }
+    }
+
+    const params = new URLSearchParams({
+      fltt: '2',
+      secids: candidates.map((candidate) => candidate.quoteId).join(','),
+      fields: 'f12,f14,f2,f3,f62,f184,f66,f69,f72,f75',
+    });
+    const payload = await this.fetchOptionalJson(
+      `https://push2.eastmoney.com/api/qt/ulist.np/get?${params.toString()}`,
+    );
+    const data = this.asRecord(payload?.data);
+    const rows = Array.isArray(data.diff) ? data.diff : [];
+    const candidateMap = new Map(
+      candidates.map((candidate) => [candidate.code, candidate]),
+    );
+
+    for (const item of rows) {
+      const row = this.asRecord(item);
+      const code = this.asString(row.f12);
+      const candidate = candidateMap.get(code);
+      if (!candidate) continue;
+      const mainNetInflow = this.asNumber(row.f62) ?? 0;
+      const mainNetRatio = this.asNumber(row.f184) ?? 0;
+      const superLargeNetInflow = this.asNumber(row.f66) ?? 0;
+      const largeNetInflow = this.asNumber(row.f72) ?? 0;
+      const amountRatio =
+        candidate.marketCap > 0
+          ? (mainNetInflow / candidate.marketCap) * 100
+          : 0;
+      const ratioScore = this.clamp(50 + mainNetRatio * 5, 5, 96);
+      const scaleScore = this.clamp(50 + amountRatio * 22, 10, 95);
+      const consistencyScore =
+        mainNetInflow > 0 && superLargeNetInflow + largeNetInflow > 0
+          ? 88
+          : mainNetInflow > 0
+            ? 68
+            : mainNetInflow < 0
+              ? 25
+              : 45;
+      const chaseScore =
+        candidate.changePercent > 5
+          ? 35
+          : candidate.changePercent >= 0 && candidate.changePercent <= 3.5
+            ? 82
+            : candidate.changePercent >= -2
+              ? 62
+              : 42;
+      const score = Math.round(
+        ratioScore * 0.45 +
+          scaleScore * 0.25 +
+          consistencyScore * 0.2 +
+          chaseScore * 0.1,
+      );
+      const available =
+        mainNetInflow !== 0 ||
+        superLargeNetInflow !== 0 ||
+        largeNetInflow !== 0;
+      if (!available) continue;
+      result.set(code, {
+        score,
+        label:
+          score >= 78
+            ? '重点流入'
+            : score >= 65
+              ? '温和流入'
+              : score >= 48
+                ? '资金中性'
+                : '资金流出',
+        mainNetInflow,
+        mainNetInflowFormatted: this.formatAmount(mainNetInflow, true),
+        mainNetRatio: Number(mainNetRatio.toFixed(2)),
+        superLargeNetInflow,
+        largeNetInflow,
+        available,
+        flowDays: 1,
+        positiveDays: mainNetInflow > 0 ? 1 : 0,
+      });
+    }
+
+    const missingCandidates = candidates.filter(
+      (candidate) => !result.get(candidate.code)?.available,
+    );
+    const histories = await this.processInBatches(
+      missingCandidates,
+      6,
+      async (candidate) => ({
+        code: candidate.code,
+        signal: await this.fetchCapitalFlowHistory(candidate),
+      }),
+    );
+    for (const item of histories) {
+      if (item.signal) result.set(item.code, item.signal);
+    }
+    const availableSignals = new Map(
+      Array.from(result.entries()).filter(([, signal]) => signal.available),
+    );
+    if (availableSignals.size) {
+      this.capitalFlowCache = {
+        expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+        signals: availableSignals,
+      };
+    }
+    return result;
+  }
+
+  private async fetchCapitalFlowHistory(
+    candidate: MarketCandidate,
+  ): Promise<CapitalFlowSignal | null> {
+    const params = new URLSearchParams({
+      lmt: '5',
+      klt: '101',
+      secid: candidate.quoteId,
+      fields1: 'f1,f2,f3,f7',
+      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63',
+    });
+    const payload = await this.fetchOptionalJson(
+      `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?${params.toString()}`,
+    );
+    const data = this.asRecord(payload?.data);
+    const klines = Array.isArray(data.klines) ? data.klines : [];
+    const rows = klines
+      .map((item) => String(item).split(','))
+      .filter((parts) => parts.length >= 13)
+      .slice(-5);
+    if (!rows.length) return null;
+
+    const mainFlows = rows.map((parts) => Number(parts[1]) || 0);
+    const mainRatios = rows.map((parts) => Number(parts[6]) || 0);
+    const mainNetInflow = mainFlows.reduce((sum, value) => sum + value, 0);
+    const mainNetRatio = this.average(mainRatios);
+    const superLargeNetInflow = rows.reduce(
+      (sum, parts) => sum + (Number(parts[5]) || 0),
+      0,
+    );
+    const largeNetInflow = rows.reduce(
+      (sum, parts) => sum + (Number(parts[4]) || 0),
+      0,
+    );
+    const positiveDays = mainFlows.filter((value) => value > 0).length;
+    const amountRatio =
+      candidate.marketCap > 0 ? (mainNetInflow / candidate.marketCap) * 100 : 0;
+    const ratioScore = this.clamp(50 + mainNetRatio * 5, 5, 96);
+    const scaleScore = this.clamp(50 + amountRatio * 20, 10, 95);
+    const positiveScore = [20, 35, 48, 68, 84, 95][positiveDays] ?? 50;
+    const recentFlows = mainFlows.slice(-2);
+    const recentScore = recentFlows.every((value) => value > 0)
+      ? 90
+      : recentFlows.some((value) => value > 0)
+        ? 60
+        : 25;
+    const score = Math.round(
+      ratioScore * 0.4 +
+        scaleScore * 0.25 +
+        positiveScore * 0.25 +
+        recentScore * 0.1,
+    );
+    return {
+      score,
+      label:
+        score >= 78
+          ? '持续重点流入'
+          : score >= 65
+            ? '资金回流'
+            : score >= 48
+              ? '多空交织'
+              : '持续流出',
+      mainNetInflow,
+      mainNetInflowFormatted: this.formatAmount(mainNetInflow, true),
+      mainNetRatio: Number(mainNetRatio.toFixed(2)),
+      superLargeNetInflow,
+      largeNetInflow,
+      available: mainFlows.some((value) => value !== 0),
+      flowDays: rows.length,
+      positiveDays,
+      dataAsOf: rows.at(-1)?.[0],
+    };
+  }
+
+  private neutralCapitalFlow(): CapitalFlowSignal {
+    return {
+      score: 45,
+      label: '资金数据暂缺',
+      mainNetInflow: 0,
+      mainNetInflowFormatted: '--',
+      mainNetRatio: 0,
+      superLargeNetInflow: 0,
+      largeNetInflow: 0,
+      available: false,
+      flowDays: 0,
+      positiveDays: 0,
+    };
+  }
+
+  private async fetchMarketIndustryHeat(): Promise<
+    Map<string, IndustryHeatSignal>
+  > {
+    const result = new Map<string, IndustryHeatSignal>();
+    const params = new URLSearchParams({
+      pn: '1',
+      pz: '80',
+      po: '1',
+      np: '1',
+      fltt: '2',
+      invt: '2',
+      fid: 'f62',
+      fs: 'm:90+t:2',
+      fields: 'f12,f14,f3,f62,f184,f104,f105',
+    });
+    const payload = await this.fetchOptionalJson(
+      `https://push2.eastmoney.com/api/qt/clist/get?${params.toString()}`,
+    );
+    const data = this.asRecord(payload?.data);
+    const rows = Array.isArray(data.diff) ? data.diff : [];
+    const amounts = rows
+      .map((item) => this.asNumber(this.asRecord(item).f62) ?? 0)
+      .filter((value) => value > 0);
+    const maximumAmount = Math.max(...amounts, 1);
+
+    for (const item of rows) {
+      const row = this.asRecord(item);
+      const industry = this.asString(row.f14);
+      if (!industry) continue;
+      const mainNetInflow = this.asNumber(row.f62) ?? 0;
+      const mainNetRatio = this.asNumber(row.f184) ?? 0;
+      const averageChange = this.asNumber(row.f3) ?? 0;
+      const upCount = this.asNumber(row.f104) ?? 0;
+      const downCount = this.asNumber(row.f105) ?? 0;
+      const sampleCount = upCount + downCount;
+      const positiveRatio =
+        sampleCount > 0 ? (upCount / sampleCount) * 100 : 50;
+      const amountScore =
+        mainNetInflow > 0
+          ? 45 + 50 * Math.sqrt(mainNetInflow / maximumAmount)
+          : 25;
+      const ratioScore = this.clamp(50 + mainNetRatio * 5, 20, 95);
+      const momentumScore =
+        averageChange >= 0.3 && averageChange <= 3.5
+          ? 88
+          : averageChange > 5
+            ? 52
+            : averageChange >= -0.5
+              ? 68
+              : 38;
+      const score = Math.round(
+        amountScore * 0.42 +
+          ratioScore * 0.25 +
+          positiveRatio * 0.18 +
+          momentumScore * 0.15,
+      );
+      result.set(this.normalizeIndustryName(industry), {
+        industry,
+        score,
+        label:
+          score >= 78
+            ? '资金热点'
+            : score >= 66
+              ? '升温中'
+              : score >= 52
+                ? '活跃'
+                : '热度一般',
+        averageChange: Number(averageChange.toFixed(2)),
+        positiveRatio: Number(positiveRatio.toFixed(1)),
+        sampleCount,
+        totalAmount: 0,
+        totalAmountFormatted: '--',
+        mainNetInflow,
+        mainNetInflowFormatted: this.formatAmount(mainNetInflow, true),
+        mainNetRatio: Number(mainNetRatio.toFixed(2)),
+        source: 'market-board',
+      });
+    }
+    return result;
+  }
+
+  private findIndustryHeat(
+    heat: Map<string, IndustryHeatSignal>,
+    industry: string,
+  ): IndustryHeatSignal | undefined {
+    const normalized = this.normalizeIndustryName(industry);
+    const exact = heat.get(normalized);
+    if (exact) return exact;
+    return Array.from(heat.entries())
+      .filter(
+        ([name]) =>
+          name.length >= 2 &&
+          (name.includes(normalized) || normalized.includes(name)),
+      )
+      .sort((a, b) => b[1].score - a[1].score)[0]?.[1];
+  }
+
+  private normalizeIndustryName(value: string): string {
+    return value
+      .replace(/[ⅠⅡⅢIV\s（）()]/g, '')
+      .replace(/行业|板块/g, '')
+      .trim();
+  }
+
+  private buildSetupSignal(klines: KlinePoint[]): SetupSignal {
+    const recent = klines.slice(-80);
+    const closes = recent.map((item) => item.close);
+    const volumes = recent.map((item) => item.volume).filter(Number.isFinite);
+    const latest = closes.at(-1) ?? 0;
+    const ma20 = this.average(closes.slice(-20));
+    const high60 = Math.max(...closes.slice(-60), latest);
+    const return5 = this.periodReturn(closes, 5);
+    const return20 = this.periodReturn(closes, 20);
+    const distanceToHigh60 = high60 > 0 ? (latest / high60 - 1) * 100 : 0;
+    const distanceToMa20 = ma20 > 0 ? (latest / ma20 - 1) * 100 : 0;
+    const recentVolume = this.average(volumes.slice(-5));
+    const previousVolume = this.average(volumes.slice(-25, -5));
+    const volumeRatio = previousVolume > 0 ? recentVolume / previousVolume : 1;
+    const returns = closes.slice(1).map((close, index) => {
+      const previous = closes[index];
+      return previous > 0 ? (close / previous - 1) * 100 : 0;
+    });
+    const recentVolatility = this.standardDeviation(returns.slice(-8));
+    const previousVolatility = this.standardDeviation(returns.slice(-28, -8));
+    const volatilityRatio =
+      previousVolatility > 0 ? recentVolatility / previousVolatility : 1;
+
+    const maScore =
+      distanceToMa20 >= -2 && distanceToMa20 <= 5
+        ? 90
+        : distanceToMa20 > 5 && distanceToMa20 <= 10
+          ? 65
+          : distanceToMa20 >= -5
+            ? 68
+            : 35;
+    const trendScore =
+      return20 >= -2 && return20 <= 10
+        ? 88
+        : return20 > 10 && return20 <= 18
+          ? 65
+          : return20 >= -7
+            ? 62
+            : 32;
+    const breakoutScore =
+      distanceToHigh60 >= -8 && distanceToHigh60 <= 0
+        ? 88
+        : distanceToHigh60 >= -15
+          ? 68
+          : 42;
+    const compressionScore =
+      volatilityRatio <= 0.72
+        ? 92
+        : volatilityRatio <= 0.95
+          ? 78
+          : volatilityRatio <= 1.15
+            ? 58
+            : 35;
+    const volumeScore =
+      volumeRatio >= 0.55 && volumeRatio <= 1.05
+        ? 86
+        : volumeRatio <= 1.3
+          ? 65
+          : 42;
+    const chasePenalty =
+      (return5 > 8 ? Math.min(18, (return5 - 8) * 2) : 0) +
+      (return20 > 15 ? Math.min(15, (return20 - 15) * 1.5) : 0);
+    const score = this.clamp(
+      Math.round(
+        maScore * 0.24 +
+          trendScore * 0.22 +
+          breakoutScore * 0.2 +
+          compressionScore * 0.2 +
+          volumeScore * 0.14 -
+          chasePenalty,
+      ),
+      0,
+      100,
+    );
+    return {
+      score,
+      label:
+        score >= 80
+          ? '蓄势待发'
+          : score >= 68
+            ? '临近启动'
+            : score >= 55
+              ? '整理观察'
+              : '形态偏弱',
+      return5: Number(return5.toFixed(2)),
+      return20: Number(return20.toFixed(2)),
+      distanceToHigh60: Number(distanceToHigh60.toFixed(2)),
+      distanceToMa20: Number(distanceToMa20.toFixed(2)),
+      volumeRatio: Number(volumeRatio.toFixed(2)),
+      volatilityRatio: Number(volatilityRatio.toFixed(2)),
+    };
+  }
+
+  private standardDeviation(values: number[]): number {
+    if (values.length < 2) return 0;
+    const mean = this.average(values);
+    return Math.sqrt(
+      this.average(values.map((value) => Math.pow(value - mean, 2))),
+    );
+  }
+
+  private buildMarketRegime(
+    indexKlines: KlinePoint[],
+    universe: MarketCandidate[],
+  ): MarketRegimeSignal {
+    if (indexKlines.length < 60) {
+      return {
+        score: 42,
+        label: '防守',
+        tone: 'warning',
+        targetPickCount: 4,
+        indexReturn20: 0,
+        indexDistanceMa20: 0,
+        indexDistanceMa60: 0,
+        breadth: 50,
+        volatility20: 0,
+        dataAsOf: '',
+        reason: '沪深300历史行情不足，模型按防守状态降低候选数量',
+      };
+    }
+
+    const closes = indexKlines.map((item) => item.close);
+    const latest = closes.at(-1) ?? 0;
+    const ma20 = this.average(closes.slice(-20));
+    const ma60 = this.average(closes.slice(-60));
+    const indexReturn20 = this.periodReturn(closes, 20);
+    const indexDistanceMa20 = ma20 > 0 ? (latest / ma20 - 1) * 100 : 0;
+    const indexDistanceMa60 = ma60 > 0 ? (latest / ma60 - 1) * 100 : 0;
+    const dailyReturns = closes
+      .slice(-21)
+      .slice(1)
+      .map((close, index) => {
+        const previous = closes.slice(-21)[index];
+        return previous > 0 ? (close / previous - 1) * 100 : 0;
+      });
+    const volatility20 = this.standardDeviation(dailyReturns);
+    const changedStocks = universe.filter(
+      (candidate) => candidate.changePercent !== 0,
+    );
+    const breadth = changedStocks.length
+      ? (changedStocks.filter((candidate) => candidate.changePercent > 0)
+          .length /
+          changedStocks.length) *
+        100
+      : 50;
+
+    let trendScore = 30;
+    if (latest > ma20) trendScore += 20;
+    if (latest > ma60) trendScore += 20;
+    if (ma20 > ma60) trendScore += 15;
+    if (indexReturn20 > 0) trendScore += 15;
+    const volatilityScore =
+      volatility20 <= 1.2
+        ? 88
+        : volatility20 <= 1.8
+          ? 72
+          : volatility20 <= 2.5
+            ? 50
+            : 28;
+    const score = this.clamp(
+      trendScore * 0.55 + breadth * 0.25 + volatilityScore * 0.2,
+      0,
+      100,
+    );
+    const label = score >= 68 ? '进攻' : score >= 48 ? '均衡' : '防守';
+    const targetPickCount = label === '进攻' ? 10 : label === '均衡' ? 7 : 4;
+
+    return {
+      score,
+      label,
+      tone:
+        label === '进攻'
+          ? 'positive'
+          : label === '均衡'
+            ? 'neutral'
+            : 'warning',
+      targetPickCount,
+      indexReturn20: Number(indexReturn20.toFixed(2)),
+      indexDistanceMa20: Number(indexDistanceMa20.toFixed(2)),
+      indexDistanceMa60: Number(indexDistanceMa60.toFixed(2)),
+      breadth: Number(breadth.toFixed(1)),
+      volatility20: Number(volatility20.toFixed(2)),
+      dataAsOf: indexKlines.at(-1)?.date || '',
+      reason: `沪深300近20日 ${this.formatPercent(indexReturn20)}，位于20日均线 ${this.formatPercent(indexDistanceMa20)}，上涨家数占比 ${breadth.toFixed(1)}%`,
+    };
+  }
+
+  private buildIndustryRelativeScores(
+    entries: Array<{
+      candidate: MarketCandidate;
+      industry: string;
+      scores: ScoreBreakdown;
+    }>,
+  ): Map<string, IndustryRelativeSignal> {
+    const groups = new Map<string, typeof entries>();
+    for (const entry of entries) {
+      const industry = this.industryGroup(entry.industry);
+      groups.set(industry, [...(groups.get(industry) ?? []), entry]);
+    }
+    const result = new Map<string, IndustryRelativeSignal>();
+    for (const entry of entries) {
+      const industry = this.industryGroup(entry.industry);
+      const industryPeers = groups.get(industry) ?? [];
+      const peerScope = industryPeers.length >= 3 ? 'industry' : 'market';
+      const peers = peerScope === 'industry' ? industryPeers : entries;
+      const peerScore =
+        this.percentileOf(
+          entry.scores.quality,
+          peers.map((item) => item.scores.quality),
+        ) *
+          0.3 +
+        this.percentileOf(
+          entry.scores.growth,
+          peers.map((item) => item.scores.growth),
+        ) *
+          0.25 +
+        this.percentileOf(
+          entry.scores.valuation,
+          peers.map((item) => item.scores.valuation),
+        ) *
+          0.25 +
+        this.percentileOf(
+          entry.scores.safety,
+          peers.map((item) => item.scores.safety),
+        ) *
+          0.2;
+      const globalPercentile = this.percentileOf(
+        entry.scores.total,
+        entries.map((item) => item.scores.total),
+      );
+      const score = this.clamp(
+        peerScore * 0.75 + globalPercentile * 0.25,
+        0,
+        100,
+      );
+      result.set(entry.candidate.code, {
+        score,
+        label:
+          score >= 80
+            ? peerScope === 'industry'
+              ? '行业领先'
+              : '样本领先'
+            : score >= 65
+              ? peerScope === 'industry'
+                ? '行业前列'
+                : '样本前列'
+              : score >= 45
+                ? peerScope === 'industry'
+                  ? '行业中游'
+                  : '样本中游'
+                : peerScope === 'industry'
+                  ? '行业偏弱'
+                  : '样本偏弱',
+        percentile: Number(score.toFixed(1)),
+        sampleCount: peers.length,
+        industry,
+        peerScope,
+      });
+    }
+    return result;
+  }
+
+  private neutralIndustryRelative(industry: string): IndustryRelativeSignal {
+    return {
+      score: 50,
+      label: '样本不足',
+      percentile: 50,
+      sampleCount: 0,
+      industry: this.industryGroup(industry),
+      peerScope: 'market',
+    };
+  }
+
+  private percentileOf(value: number, values: number[]): number {
+    if (values.length <= 1) return 50;
+    const lower = values.filter((item) => item < value).length;
+    const equal = values.filter((item) => item === value).length;
+    return ((lower + equal * 0.5) / values.length) * 100;
+  }
+
+  private buildWalkForwardBacktest(
+    entries: Array<{
+      candidate: MarketCandidate;
+      industry: string;
+      financeRows: FinancialRow[];
+      klines: KlinePoint[];
+    }>,
+  ): WalkForwardSummary {
+    const horizonDays = 20;
+    const reference = entries.find(
+      (entry) => entry.klines.length >= 260,
+    )?.klines;
+    if (!reference) return this.unavailableBacktest(horizonDays);
+
+    const lastCheckpoint = reference.length - horizonDays - 1;
+    const firstCheckpoint = Math.max(120, lastCheckpoint - 7 * horizonDays);
+    const checkpoints: string[] = [];
+    for (
+      let index = firstCheckpoint;
+      index <= lastCheckpoint;
+      index += horizonDays
+    ) {
+      const date = reference[index]?.date;
+      if (date) checkpoints.push(date);
+    }
+
+    const portfolioReturns: number[] = [];
+    const selectedReturns: number[] = [];
+    const benchmarkReturns: number[] = [];
+    const usedDates: string[] = [];
+    for (const checkpoint of checkpoints) {
+      const snapshots = entries.flatMap((entry) => {
+        const index = entry.klines.findIndex(
+          (item) => item.date === checkpoint,
+        );
+        if (index < 120 || index + horizonDays >= entry.klines.length)
+          return [];
+        const disclosed = entry.financeRows.filter(
+          (row) => row.noticeDate && row.noticeDate <= checkpoint,
+        );
+        if (!disclosed.length) return [];
+        const latest = disclosed[0];
+        const annual = disclosed.find((row) => row.reportType.includes('年报'));
+        const fundamental =
+          this.qualityScore(latest) * 0.4 +
+          this.growthScore(disclosed) * 0.35 +
+          this.safetyScore(latest, annual) * 0.25;
+        const setup = this.buildSetupSignal(entry.klines.slice(0, index + 1));
+        const startPrice = entry.klines[index]?.close ?? 0;
+        const endPrice = entry.klines[index + horizonDays]?.close ?? 0;
+        if (startPrice <= 0 || endPrice <= 0) return [];
+        return [
+          {
+            industry: this.industryGroup(entry.industry),
+            rawScore: fundamental * 0.68 + setup.score * 0.32,
+            forwardReturn: (endPrice / startPrice - 1) * 100,
+          },
+        ];
+      });
+      if (snapshots.length < 10) continue;
+
+      const groups = new Map<string, typeof snapshots>();
+      for (const snapshot of snapshots) {
+        groups.set(snapshot.industry, [
+          ...(groups.get(snapshot.industry) ?? []),
+          snapshot,
+        ]);
+      }
+      const ranked = snapshots
+        .map((snapshot) => {
+          const peers = groups.get(snapshot.industry) ?? snapshots;
+          const relative = this.percentileOf(
+            snapshot.rawScore,
+            peers.length >= 3
+              ? peers.map((item) => item.rawScore)
+              : snapshots.map((item) => item.rawScore),
+          );
+          return {
+            ...snapshot,
+            score: snapshot.rawScore * 0.7 + relative * 0.3,
+          };
+        })
+        .sort((a, b) => b.score - a.score);
+      const selectionCount = Math.min(
+        5,
+        Math.max(3, Math.ceil(ranked.length * 0.25)),
+      );
+      const selected = ranked.slice(0, selectionCount);
+      const portfolioReturn = this.average(
+        selected.map((item) => item.forwardReturn),
+      );
+      portfolioReturns.push(portfolioReturn);
+      selectedReturns.push(...selected.map((item) => item.forwardReturn));
+      benchmarkReturns.push(
+        this.average(ranked.map((item) => item.forwardReturn)),
+      );
+      usedDates.push(checkpoint);
+    }
+
+    if (portfolioReturns.length < 3 || !selectedReturns.length) {
+      return this.unavailableBacktest(horizonDays);
+    }
+    const averageReturn = this.average(portfolioReturns);
+    const benchmarkReturn = this.average(benchmarkReturns);
+    const excessReturn = averageReturn - benchmarkReturn;
+    const positiveRate =
+      (selectedReturns.filter((value) => value > 0).length /
+        selectedReturns.length) *
+      100;
+    let equity = 1;
+    let peak = 1;
+    let maxDrawdown = 0;
+    for (const value of portfolioReturns) {
+      equity *= 1 + value / 100;
+      peak = Math.max(peak, equity);
+      maxDrawdown = Math.min(maxDrawdown, (equity / peak - 1) * 100);
+    }
+    return {
+      available: true,
+      checkpoints: portfolioReturns.length,
+      observations: selectedReturns.length,
+      horizonDays,
+      averageReturn: Number(averageReturn.toFixed(2)),
+      benchmarkReturn: Number(benchmarkReturn.toFixed(2)),
+      excessReturn: Number(excessReturn.toFixed(2)),
+      positiveRate: Number(positiveRate.toFixed(1)),
+      maxDrawdown: Number(maxDrawdown.toFixed(2)),
+      label:
+        excessReturn >= 2 && positiveRate >= 55
+          ? '历史验证偏强'
+          : excessReturn > 0
+            ? '历史验证中性偏正'
+            : '历史验证暂未形成优势',
+      periodStart: usedDates[0] || '',
+      periodEnd: usedDates.at(-1) || '',
+      limitation:
+        '采用当前复评样本进行20交易日滚动验证，财务数据按公告日截断；不使用未来财报，但仍存在当前样本幸存者偏差，且未还原历史主力资金字段。',
+    };
+  }
+
+  private unavailableBacktest(horizonDays: number): WalkForwardSummary {
+    return {
+      available: false,
+      checkpoints: 0,
+      observations: 0,
+      horizonDays,
+      averageReturn: 0,
+      benchmarkReturn: 0,
+      excessReturn: 0,
+      positiveRate: 0,
+      maxDrawdown: 0,
+      label: '历史样本不足',
+      periodStart: '',
+      periodEnd: '',
+      limitation:
+        '当前候选的可用历史价格或当时已披露财报不足，未生成滚动评估。',
+    };
+  }
+
+  private selectDiversifiedPicks<T extends { industry: string }>(
+    ranked: T[],
+    limit: number,
+  ): T[] {
+    const selected: T[] = [];
+    const selectedSet = new Set<T>();
+    const industryCounts = new Map<string, number>();
+    for (const entry of ranked) {
+      const industry = this.industryGroup(entry.industry);
+      if ((industryCounts.get(industry) ?? 0) >= 3) continue;
+      selected.push(entry);
+      selectedSet.add(entry);
+      industryCounts.set(industry, (industryCounts.get(industry) ?? 0) + 1);
+      if (selected.length === limit) return selected;
+    }
+    for (const entry of ranked) {
+      if (selectedSet.has(entry)) continue;
+      selected.push(entry);
+      if (selected.length === limit) break;
+    }
+    return selected;
   }
 
   private capitalActivityScore(candidate: MarketCandidate): number {
@@ -901,6 +1824,87 @@ export class StockService {
         sampleCount: candidates.length,
         totalAmount,
         totalAmountFormatted: this.formatAmount(totalAmount),
+        source: 'candidate-sample',
+      });
+    }
+    return result;
+  }
+
+  private buildCapitalIndustryHeat(
+    entries: IndustryEntry[],
+    capitalFlows: Map<string, CapitalFlowSignal>,
+  ): Map<string, IndustryHeatSignal> {
+    const groups = new Map<
+      string,
+      Array<{ candidate: MarketCandidate; flow: CapitalFlowSignal }>
+    >();
+    for (const entry of entries) {
+      const flow = capitalFlows.get(entry.candidate.code);
+      if (!flow?.available) continue;
+      const industry = this.industryGroup(entry.industry);
+      groups.set(industry, [
+        ...(groups.get(industry) ?? []),
+        { candidate: entry.candidate, flow },
+      ]);
+    }
+    const positiveTotals = Array.from(groups.values())
+      .map((items) =>
+        items.reduce((sum, item) => sum + item.flow.mainNetInflow, 0),
+      )
+      .filter((value) => value > 0);
+    const maximumAmount = Math.max(...positiveTotals, 1);
+    const result = new Map<string, IndustryHeatSignal>();
+
+    for (const [industry, items] of groups) {
+      const mainNetInflow = items.reduce(
+        (sum, item) => sum + item.flow.mainNetInflow,
+        0,
+      );
+      const mainNetRatio = this.average(
+        items.map((item) => item.flow.mainNetRatio),
+      );
+      const positiveCount = items.filter(
+        (item) => item.flow.mainNetInflow > 0,
+      ).length;
+      const positiveRatio = (positiveCount / items.length) * 100;
+      const averageChange = this.average(
+        items.map((item) => item.candidate.changePercent),
+      );
+      const amountScore =
+        mainNetInflow > 0
+          ? 45 + 50 * Math.sqrt(mainNetInflow / maximumAmount)
+          : 25;
+      const rawScore =
+        amountScore * 0.35 +
+        this.average(items.map((item) => item.flow.score)) * 0.4 +
+        positiveRatio * 0.25;
+      const confidence = Math.min(items.length / 3, 1);
+      const score = Math.round(50 + (rawScore - 50) * confidence);
+      result.set(industry, {
+        industry,
+        score,
+        label:
+          score >= 75
+            ? '资金热点'
+            : score >= 63
+              ? '资金升温'
+              : score >= 50
+                ? '资金分化'
+                : '热度偏弱',
+        averageChange: Number(averageChange.toFixed(2)),
+        positiveRatio: Number(positiveRatio.toFixed(1)),
+        sampleCount: items.length,
+        totalAmount: items.reduce(
+          (sum, item) => sum + item.candidate.amount,
+          0,
+        ),
+        totalAmountFormatted: this.formatAmount(
+          items.reduce((sum, item) => sum + item.candidate.amount, 0),
+        ),
+        mainNetInflow,
+        mainNetInflowFormatted: this.formatAmount(mainNetInflow, true),
+        mainNetRatio: Number(mainNetRatio.toFixed(2)),
+        source: 'candidate-sample',
       });
     }
     return result;
@@ -916,6 +1920,7 @@ export class StockService {
       sampleCount: 0,
       totalAmount: 0,
       totalAmountFormatted: '--',
+      source: 'candidate-sample',
     };
   }
 
@@ -933,11 +1938,14 @@ export class StockService {
           : '偏弱';
   }
 
-  private formatAmount(value: number): string {
+  private formatAmount(value: number, includeSign = false): string {
     if (!Number.isFinite(value)) return '--';
-    if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}亿`;
-    if (value >= 10_000) return `${(value / 10_000).toFixed(0)}万`;
-    return value.toFixed(0);
+    const sign = value > 0 && includeSign ? '+' : value < 0 ? '-' : '';
+    const absolute = Math.abs(value);
+    if (absolute >= 100_000_000)
+      return `${sign}${(absolute / 100_000_000).toFixed(1)}亿`;
+    if (absolute >= 10_000) return `${sign}${(absolute / 10_000).toFixed(0)}万`;
+    return `${sign}${absolute.toFixed(0)}`;
   }
 
   private marketCandidateQuote(candidate: MarketCandidate): JsonRecord {
@@ -1141,14 +2149,37 @@ export class StockService {
       sortTypes: '-1',
       sortColumns: 'REPORT_DATE',
     });
-    const payload = await this.fetchJson(
-      `https://datacenter.eastmoney.com/securities/api/data/v1/get?${params.toString()}`,
-    );
+    const balanceParams = new URLSearchParams({
+      reportName: 'RPT_F10_FINANCE_GBALANCE',
+      columns: 'ALL',
+      filter: `(SECUCODE="${secucode}")`,
+      pageNumber: '1',
+      pageSize: '24',
+      sortTypes: '-1',
+      sortColumns: 'REPORT_DATE',
+    });
+    const [payload, balancePayload] = await Promise.all([
+      this.fetchJson(
+        `https://datacenter.eastmoney.com/securities/api/data/v1/get?${params.toString()}`,
+      ),
+      this.fetchOptionalJson(
+        `https://datacenter.eastmoney.com/securities/api/data/v1/get?${balanceParams.toString()}`,
+      ),
+    ]);
     const result = this.asRecord(payload.result);
     const rows = Array.isArray(result.data) ? result.data : [];
+    const balanceResult = this.asRecord(balancePayload?.result);
+    const balanceRows = Array.isArray(balanceResult.data)
+      ? balanceResult.data.map((item) => this.asRecord(item))
+      : [];
+    const balancesByDate = new Map(
+      balanceRows.map((row) => [this.shortDate(row.REPORT_DATE), row]),
+    );
 
     return rows.map((item) => {
       const row = this.asRecord(item);
+      const reportDate = this.shortDate(row.REPORT_DATE);
+      const balance = balancesByDate.get(reportDate) ?? {};
       return {
         period:
           this.asString(row.REPORT_DATE_NAME) ||
@@ -1165,6 +2196,20 @@ export class StockService {
         operatingCash: this.nullableNumber(row.NETCASH_OPERATE_PK),
         netProfit: this.nullableNumber(row.PARENTNETPROFIT),
         cashProfitRatio: this.nullableNumber(row.NCO_NETPROFIT),
+        totalAssets: this.nullableNumber(
+          balance.TOTAL_ASSETS ?? row.TOTAL_ASSETS_PK,
+        ),
+        totalEquity: this.nullableNumber(
+          balance.TOTAL_EQUITY ?? row.TOTAL_EQUITY_PK,
+        ),
+        accountsReceivable: this.nullableNumber(
+          balance.NOTE_ACCOUNTS_RECE ?? balance.ACCOUNTS_RECE,
+        ),
+        accountsReceivableGrowth: this.nullableNumber(
+          balance.ACCOUNTS_RECE_YOY,
+        ),
+        goodwill: this.nullableNumber(balance.GOODWILL),
+        inventory: this.nullableNumber(balance.INVENTORY),
       };
     });
   }
@@ -1659,6 +2704,33 @@ export class StockService {
     const seriousEvents = events.filter((item) =>
       this.isSeriousRiskEvent(item.title),
     );
+    const reductionEvents = events.filter((item) =>
+      item.title.includes('减持'),
+    );
+    const goodwillRatio =
+      latest?.goodwill !== null &&
+      latest?.goodwill !== undefined &&
+      (latest?.totalEquity ?? 0) > 0
+        ? (latest.goodwill / (latest.totalEquity ?? 1)) * 100
+        : null;
+    const receivableRatio =
+      latest?.accountsReceivable !== null &&
+      latest?.accountsReceivable !== undefined &&
+      (latest?.totalAssets ?? 0) > 0
+        ? (latest.accountsReceivable / (latest.totalAssets ?? 1)) * 100
+        : null;
+    const receivableGrowthGap =
+      latest?.accountsReceivableGrowth !== null &&
+      latest?.accountsReceivableGrowth !== undefined &&
+      latest?.revenueGrowth !== null &&
+      latest?.revenueGrowth !== undefined
+        ? latest.accountsReceivableGrowth - latest.revenueGrowth
+        : null;
+    const receivableRisk =
+      (receivableRatio ?? 0) > 35 ||
+      ((receivableRatio ?? 0) > 15 &&
+        (latest?.accountsReceivableGrowth ?? 0) > 30 &&
+        (receivableGrowthGap ?? 0) > 30);
 
     return [
       {
@@ -1702,6 +2774,21 @@ export class StockService {
               : '最近年报经营现金流为负',
       },
       {
+        label: '净资产红线',
+        status:
+          latest?.totalEquity === null || latest?.totalEquity === undefined
+            ? 'unavailable'
+            : latest.totalEquity > 0
+              ? 'passed'
+              : 'failed',
+        detail:
+          latest?.totalEquity === null || latest?.totalEquity === undefined
+            ? '净资产数据不足'
+            : latest.totalEquity > 0
+              ? '最新披露净资产为正'
+              : '最新披露净资产不为正',
+      },
+      {
         label: '高杠杆风险',
         status:
           latest?.debtRatio === null || latest?.debtRatio === undefined
@@ -1713,6 +2800,40 @@ export class StockService {
           latest?.debtRatio === null || latest?.debtRatio === undefined
             ? '负债率数据不足'
             : `最新资产负债率 ${latest.debtRatio.toFixed(2)}%`,
+      },
+      {
+        label: '商誉风险',
+        status:
+          goodwillRatio === null
+            ? 'unavailable'
+            : goodwillRatio <= 40
+              ? 'passed'
+              : 'failed',
+        detail:
+          goodwillRatio === null
+            ? '商誉或净资产数据不足'
+            : `商誉占净资产 ${goodwillRatio.toFixed(2)}%`,
+      },
+      {
+        label: '应收账款异常',
+        status:
+          receivableRatio === null
+            ? 'unavailable'
+            : receivableRisk
+              ? 'failed'
+              : 'passed',
+        detail:
+          receivableRatio === null
+            ? '应收账款或总资产数据不足'
+            : `应收占总资产 ${receivableRatio.toFixed(2)}%，应收增速较营收差 ${receivableGrowthGap?.toFixed(2) ?? '--'} 个百分点`,
+      },
+      {
+        label: '密集减持',
+        status: reductionEvents.length >= 2 ? 'failed' : 'passed',
+        detail:
+          reductionEvents.length >= 2
+            ? `近期公开信息出现 ${reductionEvents.length} 条减持事项`
+            : '近期未发现密集减持信号',
       },
       {
         label: '重大风险事件',
@@ -1732,8 +2853,16 @@ export class StockService {
       '欺诈发行',
       '重大违法',
       '非标审计',
+      '保留意见',
       '无法表示意见',
       '否定意见',
+      '内部控制否定意见',
+      '内部控制无法表示意见',
+      '非标准内部控制审计',
+      '重大诉讼',
+      '资金占用',
+      '违规担保',
+      '质押风险',
     ].some((word) => title.includes(word));
   }
 
@@ -1784,6 +2913,35 @@ export class StockService {
     if ((latest?.operatingCash ?? 0) < 0) items.push('最新披露经营现金流为负');
     if ((latest?.debtRatio ?? 0) > 70)
       items.push(`资产负债率达到 ${latest?.debtRatio?.toFixed(2)}%`);
+    if ((latest?.totalEquity ?? 1) <= 0) items.push('最新披露净资产不为正');
+    if (
+      (latest?.goodwill ?? 0) > 0 &&
+      (latest?.totalEquity ?? 0) > 0 &&
+      ((latest?.goodwill ?? 0) / (latest?.totalEquity ?? 1)) * 100 > 30
+    )
+      items.push(
+        `商誉占净资产 ${(((latest?.goodwill ?? 0) / (latest?.totalEquity ?? 1)) * 100).toFixed(2)}%，需关注减值风险`,
+      );
+    const receivableRatio =
+      (latest?.accountsReceivable ?? 0) > 0 && (latest?.totalAssets ?? 0) > 0
+        ? ((latest?.accountsReceivable ?? 0) / (latest?.totalAssets ?? 1)) * 100
+        : null;
+    const receivableGrowthGap =
+      latest?.accountsReceivableGrowth !== null &&
+      latest?.accountsReceivableGrowth !== undefined &&
+      latest?.revenueGrowth !== null &&
+      latest?.revenueGrowth !== undefined
+        ? latest.accountsReceivableGrowth - latest.revenueGrowth
+        : null;
+    if (
+      (receivableRatio ?? 0) > 35 ||
+      ((receivableRatio ?? 0) > 15 &&
+        (latest?.accountsReceivableGrowth ?? 0) > 30 &&
+        (receivableGrowthGap ?? 0) > 30)
+    )
+      items.push(
+        `应收账款占总资产 ${receivableRatio?.toFixed(2)}%，回款质量需重点核实`,
+      );
     const pe = this.scaledNumber(quote.f162);
     if ((pe ?? 0) > 60)
       items.push(`当前 PE-TTM 约为 ${pe?.toFixed(2)} 倍，估值风险较高`);
@@ -1792,6 +2950,11 @@ export class StockService {
       items.push(
         `近期发现 ${negativeEvents.length} 条风险类公告或新闻，需要核实影响`,
       );
+    const reductionEvents = events.filter((item) =>
+      item.title.includes('减持'),
+    );
+    if (reductionEvents.length >= 2)
+      items.push(`近期出现 ${reductionEvents.length} 条减持事项`);
     const return20 = this.periodReturn(
       klines.map((item) => item.close),
       20,
@@ -1930,6 +3093,25 @@ export class StockService {
     throw new BadGatewayException(
       `公开数据源 ${new URL(url).hostname} 请求失败：${message}`,
     );
+  }
+
+  private async fetchOptionalJson(url: string): Promise<JsonRecord | null> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8_000);
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: this.sourceHeaders(url),
+      });
+      if (!response.ok) return null;
+      const text = (await response.text()).trim();
+      if (!text) return null;
+      return this.asRecord(JSON.parse(text));
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private async fetchJson(url: string): Promise<JsonRecord> {

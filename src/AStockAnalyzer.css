@@ -1428,6 +1428,92 @@
   font-style: normal;
 }
 
+.stock-ai-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.stock-ai-context-card {
+  padding: 15px;
+  border: 1px solid #dbe6e1;
+  border-top: 3px solid #8ea99d;
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.stock-ai-context-card.is-positive {
+  border-top-color: #2c836b;
+}
+
+.stock-ai-context-card.is-warning {
+  border-top-color: #c48258;
+}
+
+.stock-ai-context-card.is-backtest {
+  border-top-color: #607d98;
+}
+
+.stock-ai-context-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stock-ai-context-head span {
+  color: #718079;
+  font-size: 0.67rem;
+  font-weight: 800;
+}
+
+.stock-ai-context-head strong {
+  color: #315c4e;
+  font-size: 0.8rem;
+}
+
+.stock-ai-context-card.is-warning .stock-ai-context-head strong {
+  color: #9b5e3c;
+}
+
+.stock-ai-context-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.stock-ai-context-metrics > div {
+  display: flex;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 4px;
+  background: #f1f5f3;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stock-ai-context-metrics span {
+  overflow: hidden;
+  color: #8a9691;
+  font-size: 0.56rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-ai-context-metrics b {
+  color: #42574f;
+  font-size: 0.7rem;
+}
+
+.stock-ai-context-card > p {
+  margin: 10px 0 0;
+  color: #7b8983;
+  font-size: 0.62rem;
+  line-height: 1.55;
+}
+
 .stock-ai-pick-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2069,6 +2155,14 @@
   .stock-ai-summary {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .stock-ai-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stock-ai-context-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .stock-ai-market-row {

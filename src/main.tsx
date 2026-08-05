@@ -270,12 +270,12 @@ const routes = [
     section: '杀码',
     element: <LinearAnchor63FirstKill />,
   },
-  {
-    path: '/kill/short-long-anchor-1-49',
-    label: '1+49期短长双锚点',
-    section: '杀码',
-    element: <ShortLongAnchor149Kill />,
-  },
+  // {
+  //   path: '/kill/short-long-anchor-1-49',
+  //   label: '1+49期短长双锚点',
+  //   section: '杀码',
+  //   element: <ShortLongAnchor149Kill />,
+  // },
   {
     path: '/kill/dual-anchor-49-63',
     label: '49+63期双锚点',

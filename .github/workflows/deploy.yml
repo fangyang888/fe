@@ -44,11 +44,16 @@ jobs:
       - name: Validate Agent deployment config
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
-          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || vars.OPENAI_BASE_URL }}
         run: |
           test -n "$OPENAI_API_KEY"
           test -n "$OPENAI_MODEL"
+          if [ -n "$OPENAI_BASE_URL" ]; then
+            echo "LangChain Agent will use a custom OpenAI-compatible endpoint."
+          else
+            echo "LangChain Agent will use the official OpenAI endpoint."
+          fi
           echo "LangChain Agent deployment config is ready."
 
       - name: Deploy to ECS
@@ -68,8 +73,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
-          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || vars.OPENAI_BASE_URL }}
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}

@@ -16,12 +16,12 @@
 > | `ADMIN_USER` / `ADMIN_PASSWORD` | 后台管理员账号密码,部署时自动创建/更新 |
 > | `OPENAI_API_KEY` | **必填**，LangChain Agent 使用的模型 API Key |
 >
-> **需要在 GitHub 仓库 Settings → Secrets and variables → Actions → Variables 配置：**
+> `OPENAI_MODEL` 和 `OPENAI_BASE_URL` 可以像下表放在 Variables，也可以放在 Secrets。部署工作流会优先读取 Secrets，再回退到 Variables：
 >
 > | Variable | 说明 |
 > |---|---|
 > | `OPENAI_MODEL` | 可选，默认 `gpt-5.6-sol` |
-> | `OPENAI_BASE_URL` | OpenAI 兼容接口地址；使用 OpenAI 官方接口时可留空 |
+> | `OPENAI_BASE_URL` | OpenAI 兼容接口地址；使用 OpenAI 官方接口时可留空。自建/代理接口建议放在 Secrets |
 >
 > GitHub Actions 会通过 SSH 环境变量传递 Agent 配置，在 ECS 上生成权限为 `600` 的 `/home/deploy/fe/server/.env`。真实 Key 不会写入仓库文件。
 >

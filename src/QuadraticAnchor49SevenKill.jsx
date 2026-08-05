@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 
-const pct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
+const pct = (value, count) => count > 0 && typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
 
 function Metric({ label, data, accent = false }) {
-  return <article className={`q49-metric${accent ? ' q49-accent' : ''}`}><span>{label}</span><strong>{pct(data?.successRate)}</strong><small>{data?.successCount || 0}/{data?.count || 0} 成功</small></article>;
+  const count = data?.count || 0;
+  return <article className={`q49-metric${accent ? ' q49-accent' : ''}`}><span>{label}</span><strong>{pct(data?.successRate, count)}</strong><small>{count > 0 ? `${data?.successCount || 0}/${count} 成功` : '暂无已开奖样本'}</small></article>;
 }
 
 export default function QuadraticAnchor49SevenKill({

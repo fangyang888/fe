@@ -87,6 +87,8 @@ import QuadraticAnchor17FirstKill from './QuadraticAnchor17FirstKill.jsx';
 // @ts-ignore
 import DualTimeAnchorKill from './DualTimeAnchorKill.jsx';
 // @ts-ignore
+import LinearAnchor63FirstKill from './LinearAnchor63FirstKill.jsx';
+// @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
 import RiskControlledFive from './RiskControlledFive.jsx';
@@ -257,6 +259,12 @@ const routes = [
     label: '双时间尺度锚点',
     section: '杀码',
     element: <DualTimeAnchorKill />,
+  },
+  {
+    path: '/kill/linear-anchor-63-first',
+    label: '63期首位线性锚点',
+    section: '杀码',
+    element: <LinearAnchor63FirstKill />,
   },
   // {
   //   path: '/kill/tiered-combo',

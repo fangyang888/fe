@@ -55,6 +55,10 @@ import { DualTimeAnchorKillController } from './dual-time-anchor-kill.controller
 import { DualTimeAnchorKillService } from './dual-time-anchor-kill.service';
 import { LinearAnchor63FirstKillController } from './linear-anchor-63-first-kill.controller';
 import { LinearAnchor63FirstKillService } from './linear-anchor-63-first-kill.service';
+import { ShortLongAnchor149KillController } from './short-long-anchor-1-49-kill.controller';
+import { ShortLongAnchor149KillService } from './short-long-anchor-1-49-kill.service';
+import { DualAnchor4963KillController } from './dual-anchor-49-63-kill.controller';
+import { DualAnchor4963KillService } from './dual-anchor-49-63-kill.service';
 import { TieredKillComboController } from './tiered-kill-combo.controller';
 import { TieredKillComboService } from './tiered-kill-combo.service';
 import { RiskControlledFiveController } from './risk-controlled-five.controller';
@@ -90,6 +94,8 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     QuadraticAnchor17FirstKillController,
     DualTimeAnchorKillController,
     LinearAnchor63FirstKillController,
+    ShortLongAnchor149KillController,
+    DualAnchor4963KillController,
     TieredKillComboController,
     RiskControlledFiveController,
   ],
@@ -121,6 +127,8 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     QuadraticAnchor17FirstKillService,
     DualTimeAnchorKillService,
     LinearAnchor63FirstKillService,
+    ShortLongAnchor149KillService,
+    DualAnchor4963KillService,
     TieredKillComboService,
     RiskControlledFiveService,
   ],

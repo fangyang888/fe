@@ -1,0 +1,71 @@
+import { tool } from 'langchain';
+import { z } from 'zod';
+
+const calculatorTool = tool(
+  ({ operation, left, right }) => {
+    let result: number;
+
+    switch (operation) {
+      case 'add':
+        result = left + right;
+        break;
+      case 'subtract':
+        result = left - right;
+        break;
+      case 'multiply':
+        result = left * right;
+        break;
+      case 'divide':
+        if (right === 0) {
+          return '计算失败：除数不能为 0。';
+        }
+        result = left / right;
+        break;
+    }
+
+    if (!Number.isFinite(result)) {
+      return '计算失败：结果不是有限数字。';
+    }
+
+    return String(result);
+  },
+  {
+    name: 'calculator',
+    description: '对两个数字执行加、减、乘、除运算。涉及算术时必须使用此工具。',
+    schema: z.object({
+      operation: z
+        .enum(['add', 'subtract', 'multiply', 'divide'])
+        .describe('要执行的运算'),
+      left: z.number().describe('左操作数'),
+      right: z.number().describe('右操作数'),
+    }),
+  },
+);
+
+const currentTimeTool = tool(
+  ({ timeZone }) => {
+    try {
+      return new Intl.DateTimeFormat('zh-CN', {
+        dateStyle: 'full',
+        timeStyle: 'long',
+        timeZone,
+      }).format(new Date());
+    } catch {
+      return `无法识别时区 ${timeZone}，请使用 Asia/Shanghai 这类 IANA 时区名称。`;
+    }
+  },
+  {
+    name: 'get_current_time',
+    description: '获取指定 IANA 时区的当前日期和时间。',
+    schema: z.object({
+      timeZone: z
+        .string()
+        .default('Asia/Shanghai')
+        .describe('IANA 时区名称，例如 Asia/Shanghai'),
+    }),
+  },
+);
+
+export function createAgentTools() {
+  return [calculatorTool, currentTimeTool];
+}

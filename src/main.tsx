@@ -106,8 +106,15 @@ import StableFiveKill from './StableFiveKill.jsx';
 import SpecialCodeTracker from './SpecialCodeTracker.jsx';
 // @ts-ignore
 import AStockAnalyzer from './AStockAnalyzer.jsx';
+import AgentChat from './AgentChat';
 
 const routes = [
+  {
+    path: '/agent',
+    label: 'AI 智能助手',
+    section: 'AI 工具',
+    element: <AgentChat />,
+  },
   {
     path: '/stock-analyzer',
     label: 'A股研究助手',

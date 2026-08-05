@@ -14,6 +14,16 @@
 > | `JWT_SECRET` | **必填**,后台/小程序登录签名密钥,换成随机长字符串 |
 > | `WX_APPID` / `WX_SECRET` | 小程序真实登录(没有可留空,走 dev 兜底) |
 > | `ADMIN_USER` / `ADMIN_PASSWORD` | 后台管理员账号密码,部署时自动创建/更新 |
+> | `OPENAI_API_KEY` | **必填**，LangChain Agent 使用的模型 API Key |
+>
+> **需要在 GitHub 仓库 Settings → Secrets and variables → Actions → Variables 配置：**
+>
+> | Variable | 说明 |
+> |---|---|
+> | `OPENAI_MODEL` | 可选，默认 `gpt-5.6-sol` |
+> | `OPENAI_BASE_URL` | OpenAI 兼容接口地址；使用 OpenAI 官方接口时可留空 |
+>
+> GitHub Actions 会通过 SSH 环境变量传递 Agent 配置，在 ECS 上生成权限为 `600` 的 `/home/deploy/fe/server/.env`。真实 Key 不会写入仓库文件。
 >
 > 部署后访问:小程序后端 `http://你的IP/api`、**管理后台 `http://你的IP/admin`**、预测前端 `http://你的IP/fe`。
 >

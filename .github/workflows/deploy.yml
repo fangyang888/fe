@@ -3,6 +3,7 @@ name: Deploy to Alibaba Cloud ECS
 on:
   push:
     branches: [main, feat/v4]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -40,6 +41,16 @@ jobs:
           npm install
           npm run build
 
+      - name: Validate Agent deployment config
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+        run: |
+          test -n "$OPENAI_API_KEY"
+          test -n "$OPENAI_MODEL"
+          echo "LangChain Agent deployment config is ready."
+
       - name: Deploy to ECS
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -55,10 +66,15 @@ jobs:
 
       - name: Post-deployment
         uses: appleboy/ssh-action@v1
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
+          envs: OPENAI_API_KEY,OPENAI_MODEL,OPENAI_BASE_URL
           script: |
             set -eu
 
@@ -69,6 +85,7 @@ jobs:
             cd /home/deploy/fe/server
 
             # 动态生成 .env 文件
+            umask 077
             echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
             echo "DB_PORT=3306" >> .env
             echo "DB_USER=${{ secrets.DB_USER }}" >> .env
@@ -88,6 +105,12 @@ jobs:
             echo "WX_APPID=${{ secrets.WX_APPID }}" >> .env
             echo "WX_SECRET=${{ secrets.WX_SECRET }}" >> .env
             echo "DEV_OPENID=dev_openid_0001" >> .env
+
+            # LangChain Agent（敏感值由 GitHub Actions 环境变量传入）
+            printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >> .env
+            printf 'OPENAI_MODEL=%s\n' "${OPENAI_MODEL:-gpt-5.6-sol}" >> .env
+            printf 'OPENAI_BASE_URL=%s\n' "${OPENAI_BASE_URL:-}" >> .env
+            chmod 600 .env
 
             echo ".env file generated successfully."
 

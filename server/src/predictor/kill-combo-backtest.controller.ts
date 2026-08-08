@@ -61,6 +61,16 @@ export class KillComboBacktestController {
     return this.service.getLikely22PositionStats(true);
   }
 
+  @Get('bayesian-position-selector')
+  bayesianPositionSelector() {
+    return this.service.getBayesianPositionSelector();
+  }
+
+  @Post('bayesian-position-selector/cache/refresh')
+  refreshBayesianPositionSelector() {
+    return this.service.getBayesianPositionSelector(true);
+  }
+
   private parseCount(value?: string) {
     const parsed = Number(value || 20);
     if (!Number.isFinite(parsed)) return 20;

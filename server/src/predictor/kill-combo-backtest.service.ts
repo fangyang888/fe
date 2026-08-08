@@ -7,6 +7,10 @@ import { FivePeriodKillService } from './five-period-kill.service';
 import { FixedHybridKillService } from './fixed-hybrid-kill.service';
 import { KillOneService } from './kill-one.service';
 import { POneKillService } from './p-one-kill.service';
+import {
+  rankBayesianPositions,
+  rankRecentChampionPositions,
+} from './bayesian-position-selector';
 
 interface SearchOptions {
   count: number;
@@ -226,6 +230,50 @@ export class KillComboBacktestService {
     return calculation;
   }
 
+  async getBayesianPositionSelector(forceRefresh = false) {
+    const history = this.normalizeRows(await this.historyService.findAll());
+    const latest = history[history.length - 1];
+    const cacheKey = `bayesian-position-selector:v3-perfect-markers:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const memoryCached = this.memoryCache.get(cacheKey);
+    if (memoryCached && !forceRefresh) {
+      return {
+        ...memoryCached,
+        cacheMeta: { ...memoryCached.cacheMeta, hit: true, store: 'memory' },
+      };
+    }
+
+    const diskCachePath = this.getPositionStatsDiskCachePath(
+      'bayesian-selector',
+      cacheKey,
+    );
+    if (!forceRefresh) {
+      const diskCached = await this.readSmart7StatsDiskCache(diskCachePath);
+      if (diskCached) {
+        const response = {
+          ...diskCached,
+          cacheMeta: {
+            ...diskCached.cacheMeta,
+            hit: true,
+            store: 'disk',
+            key: cacheKey,
+          },
+        };
+        this.memoryCache.set(cacheKey, response);
+        return response;
+      }
+    }
+
+    const pending = this.pendingSmart7Stats.get(cacheKey);
+    if (pending && !forceRefresh) return pending;
+    const calculation = this.calculateBayesianPositionSelector(
+      history,
+      cacheKey,
+      diskCachePath,
+    ).finally(() => this.pendingSmart7Stats.delete(cacheKey));
+    this.pendingSmart7Stats.set(cacheKey, calculation);
+    return calculation;
+  }
+
   private async calculateLikely22PositionStats(
     history: DrawRow[],
     cacheKey: string,
@@ -309,6 +357,160 @@ export class KillComboBacktestService {
     this.memoryCache.set(cacheKey, response);
     await this.writeSmart7StatsDiskCache(diskCachePath, response);
     return response;
+  }
+
+  private async calculateBayesianPositionSelector(
+    history: DrawRow[],
+    cacheKey: string,
+    diskCachePath: string,
+  ) {
+    const latest = history[history.length - 1];
+    const start = Math.max(10, history.length - 510);
+    const outcomes: Array<{
+      year?: number;
+      No?: number;
+      predictions: number[];
+      actual: number[];
+      success: boolean[];
+    }> = [];
+
+    for (let target = start; target < history.length; target++) {
+      const predictions = this.likely22(history.slice(0, target));
+      const actual = history[target].numbers;
+      outcomes.push({
+        year: history[target].year,
+        No: history[target].No,
+        predictions,
+        actual,
+        success: predictions.map((number) => !actual.includes(number)),
+      });
+    }
+
+    const currentPredictions = this.likely22(history);
+    const positionCount = Math.min(22, currentPredictions.length);
+    const warmupSamples = Math.min(10, outcomes.length);
+    const decisions = outcomes.slice(warmupSamples).map((row, index) => {
+      const priorRows = outcomes.slice(0, index + warmupSamples);
+      const ranking = rankRecentChampionPositions(priorRows, {
+        positionCount,
+        window: 10,
+      });
+      const selected = ranking[0];
+      const number = row.predictions[selected.position - 1] ?? null;
+      return {
+        year: row.year,
+        No: row.No,
+        position: selected.position,
+        number,
+        success: number !== null && row.success[selected.position - 1] === true,
+        recentSuccesses: selected.successes,
+        recentSamples: selected.samples,
+        recentRate: this.roundRate(selected.recentRate),
+        adjustedRate: this.roundRate(selected.adjustedRate),
+        confidenceLowerBound: this.roundRate(selected.confidenceLowerBound),
+        actual: row.actual,
+      };
+    });
+
+    const currentRanking = rankRecentChampionPositions(outcomes, {
+      positionCount,
+      window: 10,
+    });
+    const selected = currentRanking[0];
+    const summarizeDecisions = (rows: Array<{ success: boolean }>) =>
+      [10, 20, 50, 100, 300, 500].map((periods) => {
+        const sample = rows.slice(-periods);
+        const successCount = sample.filter((row) => row.success).length;
+        return {
+          periods,
+          samples: sample.length,
+          successCount,
+          failureCount: sample.length - successCount,
+          rate: sample.length
+            ? Math.round((successCount / sample.length) * 1000) / 10
+            : 0,
+        };
+      });
+    const windows = summarizeDecisions(decisions);
+
+    const previousDecisions = outcomes.slice(30).map((row, index) => {
+      const priorRows = outcomes.slice(0, index + 30);
+      const previous = rankBayesianPositions(priorRows, { positionCount })[0];
+      const number = row.predictions[previous.position - 1] ?? null;
+      return {
+        success:
+          number !== null && row.success[previous.position - 1] === true,
+      };
+    });
+    const previousWindows = summarizeDecisions(previousDecisions).filter(
+      (window) => window.periods <= 100,
+    );
+
+    const response = {
+      model: 'recent-window-champion-position-selector',
+      modelLabel: '近10期冠军动态择位',
+      method: 'recent-10-full-information-follow-the-leader',
+      leakageSafe: true,
+      baselineRate: Math.round((42 / 49) * 1000) / 10,
+      current: {
+        position: selected.position,
+        number: currentPredictions[selected.position - 1] ?? null,
+        recentSuccesses: selected.successes,
+        recentSamples: selected.samples,
+        recentRate: this.roundRate(selected.recentRate),
+        adjustedRate: this.roundRate(selected.adjustedRate),
+        confidenceLowerBound: this.roundRate(selected.confidenceLowerBound),
+      },
+      currentPredictions,
+      topPositions: currentRanking.slice(0, 5).map((item) => ({
+        position: item.position,
+        number: currentPredictions[item.position - 1] ?? null,
+        recentSuccesses: item.successes,
+        recentSamples: item.samples,
+        recentRate: this.roundRate(item.recentRate),
+        adjustedRate: this.roundRate(item.adjustedRate),
+        confidenceLowerBound: this.roundRate(item.confidenceLowerBound),
+      })),
+      perfectPositions: currentRanking
+        .filter(
+          (item) =>
+            item.samples === 10 && item.successes === item.samples,
+        )
+        .map((item) => ({
+          position: item.position,
+          number: currentPredictions[item.position - 1] ?? null,
+          successes: item.successes,
+          samples: item.samples,
+          adjustedRate: this.roundRate(item.adjustedRate),
+          confidenceLowerBound: this.roundRate(item.confidenceLowerBound),
+        })),
+      windows,
+      comparison: {
+        previousMethodLabel: '原贝叶斯动态择位',
+        previousWindows,
+      },
+      recentDecisions: decisions.slice(-20).reverse(),
+      warmupSamples,
+      historyMeta: {
+        count: history.length,
+        latest: latest
+          ? { id: latest.id, year: latest.year, No: latest.No, numbers: latest.numbers }
+          : null,
+      },
+      cacheMeta: {
+        hit: false,
+        store: 'disk',
+        key: cacheKey,
+        generatedAt: new Date().toISOString(),
+      },
+    };
+    this.memoryCache.set(cacheKey, response);
+    await this.writeSmart7StatsDiskCache(diskCachePath, response);
+    return response;
+  }
+
+  private roundRate(value: number) {
+    return Math.round(value * 1000) / 10;
   }
 
   private async calculateKill10PositionStats(
@@ -525,7 +727,7 @@ export class KillComboBacktestService {
   }
 
   private getPositionStatsDiskCachePath(
-    type: 'smart7' | 'kill10' | 'likely22',
+    type: 'smart7' | 'kill10' | 'likely22' | 'bayesian-selector',
     cacheKey: string,
   ) {
     const hash = createHash('sha256').update(cacheKey).digest('hex').slice(0, 24);

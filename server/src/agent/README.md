@@ -1,5 +1,17 @@
 # LangChain 单 Agent
 
+> 初学者学习路线和每周练习计划请查看：[LEARNING_PLAN.md](./LEARNING_PLAN.md)。
+>
+> 第 1 课详细讲解请查看：[ChatOpenAI、model.invoke() 与 Tool](./LESSON_01_CHATOPENAI_AND_TOOLS.md)。
+>
+> 第 2 课详细讲解请查看：[从模拟商品查询 Tool 到 ProductService](./LESSON_02_PRODUCT_SEARCH_TOOL.md)。
+>
+> 第 3 课详细讲解请查看：[Structured Output 客服意图识别与关键数据提取](./LESSON_03_STRUCTURED_OUTPUT_INTENT_EXTRACTION.md)。
+>
+> 第 4 课详细讲解请查看：[从 Structured Output 到可运行的商品客服](./LESSON_04_INTENT_TO_PRODUCT_CUSTOMER_SERVICE.md)。
+>
+> 第 5 课详细讲解请查看：[多轮客服会话、缺失字段补全与短期状态](./LESSON_05_MULTI_TURN_STATE_AND_SLOT_FILLING.md)。
+
 当前模块提供一个无状态的 LangChain.js Agent，入口为：
 
 ```http

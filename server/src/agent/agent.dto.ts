@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { CustomerEntities, CustomerIntentName } from './agent.intent';
 
 export class AgentChatDto {
   @IsString({ message: 'message 必须是字符串' })
@@ -10,4 +11,7 @@ export class AgentChatDto {
 export interface AgentChatResponseDto {
   reply: string;
   model: string;
+  source?: 'intent_router' | 'agent';
+  intent?: CustomerIntentName;
+  entities?: CustomerEntities;
 }

@@ -17,6 +17,8 @@ import KillTenPositionStats from './KillTenPositionStats.jsx';
 // @ts-ignore
 import Likely22PositionStats from './Likely22PositionStats.jsx';
 // @ts-ignore
+import BayesianPositionSelector from './BayesianPositionSelector.jsx';
+// @ts-ignore
 import NewKillPredictor from './NewKillPredictor.jsx';
 // @ts-ignore
 import Markov2PositionSixStats from './Markov2PositionSixStats.jsx';
@@ -134,6 +136,12 @@ const routes = [
     label: '22码反向未出现概率',
     section: '杀码',
     element: <Likely22PositionStats />,
+  },
+  {
+    path: '/kill/bayesian-position-selector',
+    label: '近10期冠军择位',
+    section: '杀码',
+    element: <BayesianPositionSelector />,
   },
   // { path: '/kill/new', label: 'NewKill 多模型', section: '杀码', element: <NewKillPredictor /> },
   {

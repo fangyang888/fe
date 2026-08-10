@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import "./AgentChat.css";
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import './AgentChat.css';
 
-type MessageRole = "user" | "assistant";
+type MessageRole = 'user' | 'assistant';
 
 type ChatMessage = {
   id: string;
@@ -19,33 +19,29 @@ type AgentResponse = {
 
 const suggestions = [
   {
-    label: "计算 125 × 8",
-    prompt: "请使用计算器工具计算 125 乘以 8。",
-    icon: "calculator",
+    label: '计算 125 × 8',
+    prompt: '请使用计算器工具计算 125 乘以 8。',
+    icon: 'calculator',
   },
-  { label: "上海现在几点？", prompt: "请告诉我上海现在几点。", icon: "clock" },
+  { label: '上海现在几点？', prompt: '请告诉我上海现在几点。', icon: 'clock' },
   {
-    label: "介绍你的能力",
-    prompt: "请简要介绍你现在能做什么。",
-    icon: "sparkles",
+    label: '介绍你的能力',
+    prompt: '请简要介绍你现在能做什么。',
+    icon: 'sparkles',
   },
 ] as const;
 
 let messageSequence = 0;
 
-function createMessage(
-  role: MessageRole,
-  content: string,
-  model?: string,
-): ChatMessage {
+function createMessage(role: MessageRole, content: string, model?: string): ChatMessage {
   messageSequence += 1;
   return {
     id: `${Date.now()}-${messageSequence}`,
     role,
     content,
-    time: new Intl.DateTimeFormat("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
+    time: new Intl.DateTimeFormat('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false,
     }).format(new Date()),
     model,
@@ -53,7 +49,7 @@ function createMessage(
 }
 
 function createInitialMessages(): ChatMessage[] {
-  return [createMessage("assistant", "你好，我是你的 AI 助手。想先了解什么？")];
+  return [createMessage('assistant', '你好，我是你的 AI 助手。想先了解什么？')];
 }
 
 function RobotIcon() {
@@ -88,12 +84,8 @@ function TrashIcon() {
   );
 }
 
-function SuggestionIcon({
-  name,
-}: {
-  name: (typeof suggestions)[number]["icon"];
-}) {
-  if (name === "calculator") {
+function SuggestionIcon({ name }: { name: (typeof suggestions)[number]['icon'] }) {
+  if (name === 'calculator') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <rect x="5" y="3" width="14" height="18" rx="2" />
@@ -102,7 +94,7 @@ function SuggestionIcon({
     );
   }
 
-  if (name === "clock") {
+  if (name === 'clock') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="9" />
@@ -120,13 +112,11 @@ function SuggestionIcon({
 }
 
 function MessageRow({ message }: { message: ChatMessage }) {
-  const isAssistant = message.role === "assistant";
+  const isAssistant = message.role === 'assistant';
   const contentParts = message.content.split(/(\*\*[^*\n]+\*\*)/g);
 
   return (
-    <div
-      className={`agent-message-row ${isAssistant ? "is-assistant" : "is-user"}`}
-    >
+    <div className={`agent-message-row ${isAssistant ? 'is-assistant' : 'is-user'}`}>
       {isAssistant ? (
         <div className="agent-avatar">
           <RobotIcon />
@@ -135,7 +125,7 @@ function MessageRow({ message }: { message: ChatMessage }) {
       <div className="agent-message-stack">
         <div className="agent-message-bubble">
           {contentParts.map((part, index) =>
-            part.startsWith("**") && part.endsWith("**") ? (
+            part.startsWith('**') && part.endsWith('**') ? (
               <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>
             ) : (
               part
@@ -152,26 +142,26 @@ function MessageRow({ message }: { message: ChatMessage }) {
 }
 
 export default function AgentChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    createInitialMessages,
-  );
-  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>(createInitialMessages);
+  const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [connected, setConnected] = useState(true);
   const requestRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-
+  const conversationIdRef = useRef(
+    'v-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000000),
+  );
   useEffect(() => {
-    document.body.classList.add("agent-chat-active");
-    return () => document.body.classList.remove("agent-chat-active");
+    document.body.classList.add('agent-chat-active');
+    return () => document.body.classList.remove('agent-chat-active');
   }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({
-      behavior: messages.length > 1 ? "smooth" : "auto",
-      block: "end",
+      behavior: messages.length > 1 ? 'smooth' : 'auto',
+      block: 'end',
     });
   }, [messages, loading]);
 
@@ -187,52 +177,41 @@ export default function AgentChat() {
 
     const controller = new AbortController();
     requestRef.current = controller;
-    setMessages((current) => [...current, createMessage("user", message)]);
-    setDraft("");
-    setError("");
+    setMessages((current) => [...current, createMessage('user', message)]);
+    setDraft('');
+    setError('');
     setLoading(true);
 
     try {
-      const response = await fetch("/api/agent/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+      const response = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, conversationId: conversationIdRef.current }),
         signal: controller.signal,
       });
-      const data = (await response
-        .json()
-        .catch(() => null)) as AgentResponse | null;
+      const data = (await response.json().catch(() => null)) as AgentResponse | null;
 
       if (!response.ok) {
-        const detail = Array.isArray(data?.message)
-          ? data.message.join("；")
-          : data?.message;
+        const detail = Array.isArray(data?.message) ? data.message.join('；') : data?.message;
         throw new Error(detail || `请求失败（HTTP ${response.status}）`);
       }
 
       if (!data?.reply) {
-        throw new Error("Agent 没有返回可显示的回答");
+        throw new Error('Agent 没有返回可显示的回答');
       }
 
       setMessages((current) => [
         ...current,
-        createMessage("assistant", data.reply as string, data.model),
+        createMessage('assistant', data.reply as string, data.model),
       ]);
       setConnected(true);
     } catch (requestError) {
-      if (
-        requestError instanceof DOMException &&
-        requestError.name === "AbortError"
-      ) {
+      if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         return;
       }
 
       setConnected(false);
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Agent 请求失败，请稍后重试",
-      );
+      setError(requestError instanceof Error ? requestError.message : 'Agent 请求失败，请稍后重试');
     } finally {
       if (requestRef.current === controller) {
         requestRef.current = null;
@@ -244,15 +223,17 @@ export default function AgentChat() {
   const clearConversation = () => {
     requestRef.current?.abort();
     requestRef.current = null;
+    conversationIdRef.current =
+      'v-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000000);
     setMessages(createInitialMessages());
-    setDraft("");
-    setError("");
+    setDraft('');
+    setError('');
     setLoading(false);
     inputRef.current?.focus();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void sendMessage(draft);
     }
@@ -261,9 +242,9 @@ export default function AgentChat() {
   return (
     <main className="agent-chat-page">
       <div className="agent-chat-topbar">
-        <div className={`agent-service-status ${connected ? "" : "has-error"}`}>
+        <div className={`agent-service-status ${connected ? '' : 'has-error'}`}>
           <span aria-hidden="true" />
-          {connected ? "服务已连接" : "连接异常"}
+          {connected ? '服务已连接' : '连接异常'}
         </div>
       </div>
 
@@ -296,10 +277,7 @@ export default function AgentChat() {
             ))}
 
             {loading ? (
-              <div
-                className="agent-message-row is-assistant"
-                aria-label="Agent 正在回答"
-              >
+              <div className="agent-message-row is-assistant" aria-label="Agent 正在回答">
                 <div className="agent-avatar">
                   <RobotIcon />
                 </div>
@@ -326,10 +304,7 @@ export default function AgentChat() {
               </div>
             ) : null}
 
-            <label
-              className="agent-visually-hidden"
-              htmlFor="agent-message-input"
-            >
+            <label className="agent-visually-hidden" htmlFor="agent-message-input">
               输入你的问题
             </label>
             <textarea
@@ -345,11 +320,7 @@ export default function AgentChat() {
             />
 
             <div className="agent-composer-actions">
-              <button
-                className="agent-clear-button"
-                type="button"
-                onClick={clearConversation}
-              >
+              <button className="agent-clear-button" type="button" onClick={clearConversation}>
                 <TrashIcon />
                 <span>清空对话</span>
               </button>
@@ -360,7 +331,7 @@ export default function AgentChat() {
                 disabled={loading || !draft.trim()}
               >
                 <SendIcon />
-                <span>{loading ? "回答中" : "发送"}</span>
+                <span>{loading ? '回答中' : '发送'}</span>
               </button>
             </div>
           </form>

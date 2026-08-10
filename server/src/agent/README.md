@@ -16,6 +16,8 @@
 >
 > 第 5 课详细讲解请查看：[多轮客服会话、缺失字段补全与短期状态](./LESSON_05_MULTI_TURN_STATE_AND_SLOT_FILLING.md)。
 >
+> 第 5 课动手版请查看：[五天代码实验与每日自测](./LESSON_05_FIVE_DAY_CODE_AND_SELF_TEST.md)。
+>
 > 第 6 课详细讲解请查看：[生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)。
 >
 > 第 7 课详细讲解请查看：[生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)。

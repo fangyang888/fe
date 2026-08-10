@@ -10,7 +10,16 @@ import { AgentIntentService } from './agent.intent.service';
 import { AgentModelFactory } from './agent-model.factory';
 import { createAgentTools } from './agent.tools';
 import { ProductCustomerService } from './product-customer.service';
-
+import { MemorySaver } from '@langchain/langgraph';
+import { AgentConversationService } from './agent.conversation.service';
+import {
+  AgentConversationState,
+  MissingField,
+  calculateMissingFields,
+  isCancelMessage,
+  mergeEntities,
+} from './agent.conversation';
+import { CustomerEntities, CustomerIntentName } from './agent.intent';
 type SingleAgent = ReturnType<typeof createAgent>;
 
 /**
@@ -23,45 +32,152 @@ type SingleAgent = ReturnType<typeof createAgent>;
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private agent?: SingleAgent;
-
+  private readonly checkpointer = new MemorySaver();
   constructor(
     private readonly modelFactory: AgentModelFactory,
     private readonly agentIntentService: AgentIntentService,
     private readonly productCustomerService: ProductCustomerService,
+    private readonly conversationService: AgentConversationService,
   ) {}
+  private resolveIntent(
+    state: AgentConversationState,
+    currentIntent: CustomerIntentName,
+    mergedEntities: CustomerEntities,
+  ): CustomerIntentName {
+    if (
+      state.status !== 'collecting_fields' ||
+      !state.pendingIntent ||
+      currentIntent === 'human_handoff'
+    ) {
+      return currentIntent;
+    }
 
-  async chat(message: string): Promise<AgentChatResponseDto> {
+    const remaining = calculateMissingFields(
+      state.pendingIntent,
+      mergedEntities,
+    );
+
+    // 缺失数量减少，说明当前消息正在补充上一轮资料。
+    if (remaining.length < state.missingFields.length) {
+      return state.pendingIntent;
+    }
+
+    return currentIntent;
+  }
+  async chat(message: string, conversationId: string) {
     const modelName = this.modelFactory.getModelName();
 
     try {
-      // 第一步永远先把自然语言整理成可供 TypeScript 判断的固定对象。
-      const analysis = await this.agentIntentService.analyze(message);
+      let state = this.conversationService.getOrCreate(conversationId);
 
-      if (this.productCustomerService.canHandle(analysis.intent)) {
-        const reply = await this.productCustomerService.reply(analysis);
+      // completed/cancelled 表示上一件事已经结束，新消息从空状态开始。
+      if (state.status === 'completed' || state.status === 'cancelled') {
+        this.conversationService.clear(conversationId);
+        state = this.conversationService.getOrCreate(conversationId);
+      }
+
+      if (isCancelMessage(message)) {
+        const cancelledIntent = state.pendingIntent ?? 'unknown';
+        const cancelledEntities = state.entities;
+        this.conversationService.clear(conversationId);
 
         return {
-          reply,
+          conversationId,
+          reply: '已取消当前任务。',
           model: modelName,
           source: 'intent_router',
-          intent: analysis.intent,
-          entities: analysis.entities,
+          intent: cancelledIntent,
+          entities: cancelledEntities,
+          status: 'cancelled',
+          missingFields: [],
         };
       }
 
-      // 非商品问题才进入自由 Agent，例如计算、时间和文本转换。
-      const result = await this.getAgent().invoke({
-        messages: [{ role: 'user', content: message }],
-      });
-      const lastMessage = result.messages.at(-1);
+      const analysis = await this.agentIntentService.analyze(message);
+      const mergedEntities = mergeEntities(state.entities, analysis.entities);
+      if (analysis.intent === 'human_handoff') {
+        this.conversationService.clear(conversationId);
 
-      return {
-        reply: this.extractText(lastMessage?.content),
-        model: modelName,
-        source: 'agent',
-        intent: analysis.intent,
-        entities: analysis.entities,
-      };
+        return {
+          conversationId,
+          reply: '已记录人工客服请求，当前自动客服任务已停止。',
+          model: modelName,
+          source: 'intent_router',
+          intent: 'human_handoff',
+          entities: mergedEntities,
+          status: 'completed',
+          missingFields: [],
+        };
+      }
+      const activeIntent = this.resolveIntent(
+        state,
+        analysis.intent,
+        mergedEntities,
+      );
+      const missingFields = calculateMissingFields(
+        activeIntent,
+        mergedEntities,
+      );
+
+      if (
+        this.productCustomerService.canHandle(activeIntent) &&
+        missingFields.length > 0
+      ) {
+        this.conversationService.save({
+          ...state,
+          status: 'collecting_fields',
+          pendingIntent: activeIntent,
+          entities: mergedEntities,
+          missingFields,
+        });
+
+        return {
+          conversationId,
+          reply: this.buildMissingFieldReply(missingFields),
+          model: modelName,
+          source: 'intent_router',
+          intent: activeIntent,
+          entities: mergedEntities,
+          status: 'collecting_fields',
+          missingFields,
+        };
+      }
+
+      if (this.productCustomerService.canHandle(activeIntent)) {
+        this.conversationService.save({
+          ...state,
+          status: 'processing',
+          pendingIntent: activeIntent,
+          entities: mergedEntities,
+          missingFields: [],
+        });
+
+        const reply = await this.productCustomerService.reply({
+          ...analysis,
+          intent: activeIntent,
+          entities: mergedEntities,
+          missingFields: [],
+        });
+
+        this.conversationService.save({
+          ...state,
+          status: 'completed',
+          pendingIntent: null,
+          entities: mergedEntities,
+          missingFields: [],
+        });
+
+        return {
+          conversationId,
+          reply,
+          model: modelName,
+          source: 'intent_router',
+          intent: activeIntent,
+          entities: mergedEntities,
+          status: 'completed',
+          missingFields: [],
+        };
+      }
     } catch (error) {
       // 保留下层已经分类好的 HTTP 错误，例如缺少 API Key 或意图识别失败。
       if (error instanceof HttpException) {
@@ -84,6 +200,7 @@ export class AgentService {
     this.agent = createAgent({
       name: 'fe_assistant',
       model: this.modelFactory.getModel(),
+      checkpointer: this.checkpointer,
       // 商品查询由确定性路由负责，这里只注册通用 Tool，避免两个入口抢同一件事。
       tools: createAgentTools(),
       systemPrompt: [
@@ -128,5 +245,18 @@ export class AgentService {
     }
 
     return 'Agent 已完成处理，但没有返回可显示的文本。';
+  }
+
+  private buildMissingFieldReply(missingFields: MissingField[]): string {
+    switch (missingFields[0]) {
+      case 'productName':
+        return '请告诉我你要查询的商品名称。';
+      case 'orderNo':
+        return '请告诉我订单号。';
+      case 'reason':
+        return '请告诉我具体原因。';
+      default:
+        return '请补充完成当前请求所需的信息。';
+    }
   }
 }

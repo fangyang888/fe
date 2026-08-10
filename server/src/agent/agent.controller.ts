@@ -24,8 +24,8 @@ export class AgentController {
 
   /** POST /api/agent/chat — 调用无状态的 LangChain 单 Agent */
   @Post('chat')
-  chat(@Body() dto: AgentChatDto): Promise<AgentChatResponseDto> {
-    return this.agentService.chat(dto.message);
+  chat(@Body() dto: AgentChatDto) {
+    return this.agentService.chat(dto.message, dto.conversationId);
   }
 
   /** POST /api/agent/intent — 学习阶段：识别意图和关键字段 */

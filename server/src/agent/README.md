@@ -10,7 +10,17 @@
 >
 > 第 4 课详细讲解请查看：[从 Structured Output 到可运行的商品客服](./LESSON_04_INTENT_TO_PRODUCT_CUSTOMER_SERVICE.md)。
 >
+> 第 1～4 章现代版复习请查看：[LangChain.js v1 Agent 核心基础](./LESSON_01_04_LANGCHAIN_V1_MODERN_REVIEW.md)。
+>
+> 如果详细版看起来太多，请先阅读：[第 1～4 章小白主线版](./LESSON_01_04_BEGINNER_MAINLINE.md)。
+>
 > 第 5 课详细讲解请查看：[多轮客服会话、缺失字段补全与短期状态](./LESSON_05_MULTI_TURN_STATE_AND_SLOT_FILLING.md)。
+>
+> 第 6 课详细讲解请查看：[生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)。
+>
+> 第 7 课详细讲解请查看：[生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)。
+>
+> 第 8 课详细讲解请查看：[生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)。
 
 当前模块提供一个无状态的 LangChain.js Agent，入口为：
 
@@ -28,7 +38,17 @@ Content-Type: application/json
 ```json
 {
   "reply": "125 × 8 = 1000。上海当前时间是……",
-  "model": "gpt-4.1-mini"
+  "model": "gpt-4.1-mini",
+  "source": "agent",
+  "intent": "general_chat",
+  "entities": {
+    "productName": null,
+    "categoryName": null,
+    "orderNo": null,
+    "budgetMax": null,
+    "quantity": null,
+    "reason": null
+  }
 }
 ```
 
@@ -48,9 +68,25 @@ OPENAI_BASE_URL=
 ## 当前边界
 
 - 每次请求独立执行，不保存对话记忆。
-- 工具只有基础计算和时区时间查询，均不写入数据库。
+- 商品搜索、价格和库存走 `ProductCustomerService → ProductService` 确定性路径。
+- `createAgent` 当前只注册计算、文本转换和时区时间三个通用 Tool。
+- 当前不提供数据库写操作。
 - API Key 只存在 NestJS 服务端，不发送给前端。
 - `createAgent` 内部使用 LangGraph 的预构建 Agent 运行时，但本模块没有定义自定义图。
+
+## 当前代码结构
+
+```text
+AgentController
+  └─ AgentService                 # 总调度：决定交给谁
+      ├─ AgentIntentService       # 理解语言：提取 intent/entities
+      │   └─ AgentModelFactory    # 统一创建 ChatOpenAI
+      ├─ ProductCustomerService   # 商品业务：分类、查询、回答
+      │   ├─ ProductService
+      │   └─ CategoryService
+      └─ createAgent              # 非商品问题：计算、时间、文本 Tool
+          └─ AgentModelFactory
+```
 
 ## 何时改为自定义 LangGraph
 

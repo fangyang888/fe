@@ -25,7 +25,11 @@
 - [第 2 课：从模拟商品查询 Tool 到 ProductService](./LESSON_02_PRODUCT_SEARCH_TOOL.md)
 - [第 3 课：Structured Output 客服意图识别与关键数据提取](./LESSON_03_STRUCTURED_OUTPUT_INTENT_EXTRACTION.md)
 - [第 4 课：从 Structured Output 到可运行的商品客服](./LESSON_04_INTENT_TO_PRODUCT_CUSTOMER_SERVICE.md)
+- [第 1～4 章现代版复习：LangChain.js v1 Agent 核心基础](./LESSON_01_04_LANGCHAIN_V1_MODERN_REVIEW.md)
 - [第 5 课：多轮客服会话、缺失字段补全与短期状态](./LESSON_05_MULTI_TURN_STATE_AND_SLOT_FILLING.md)
+- [第 6 课：生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)
+- [第 7 课：生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)
+- [第 8 课：生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)
 
 开始前先认识当前目录：
 
@@ -229,12 +233,29 @@ curl -X POST http://127.0.0.1:3000/api/agent/chat \
 
 ---
 
-## 第 4 周：多轮会话和数据库
+## 第 4 周：多轮状态、Checkpointer 和数据库
 
 ### 学习目标
 
 - 将当前“每次独立”的单轮 Agent 改成有 `conversationId` 的多轮客服。
 - 理解会话记忆不是模型自动拥有的。
+- 理解 `conversationId` 如何映射为 LangGraph Checkpointer 的 `thread_id`。
+- 区分 Agent 线程 State、Redis 业务状态和 MySQL 长期消息。
+
+### 当前主流分层
+
+```text
+createAgent + Checkpointer
+→ 保存同一个 thread_id 的 Agent 消息与线程 State
+
+Redis + TTL
+→ 保存 pendingIntent、entities、missingFields
+
+MySQL
+→ 保存长期会话和消息，供刷新恢复、客服后台和审计
+```
+
+本地可以使用 `MemorySaver` 和 Map 学习接口；它们都会在进程重启后丢失，不能作为生产持久化方案。
 
 ### 建议数据表
 
@@ -257,11 +278,18 @@ customer_message
 
 ### 实践任务
 
+- [ ] 把 `@langchain/langgraph` 声明为直接依赖。
+- [ ] 给 `createAgent` 配置一个长期复用的 `MemorySaver`。
+- [ ] 调用 Agent 时传入稳定的 `configurable.thread_id`。
+- [ ] 验证同一 thread 能记住消息、不同 thread 不串线。
+- [ ] 实现 `pendingIntent`、`entities`、`missingFields` 业务状态。
+- [ ] 本地用 Map 学习 Repository 接口，再设计 Redis + TTL 实现。
 - [ ] 创建会话和消息 Entity。
 - [ ] 新建会话接口。
 - [ ] 发送消息时保存用户消息。
 - [ ] Agent 返回后保存 assistant 消息。
-- [ ] 调用 Agent 前读取最近若干条消息。
+- [ ] 明确哪些消息由 Checkpointer 提供给 Agent，哪些从 MySQL 恢复给页面。
+- [ ] 对长消息线程使用裁剪或 `summarizationMiddleware`，不要无限增长。
 - [ ] 校验会话属于当前登录用户。
 - [ ] 增加查询会话列表和消息历史接口。
 - [ ] 给会话增加 `open`、`human_pending`、`closed` 状态。
@@ -269,6 +297,8 @@ customer_message
 ### 需要理解的问题
 
 - 为什么不能把所有历史消息无限传给模型？
+- Checkpointer 与业务 Redis 状态有什么区别？
+- `thread_id` 为什么不能代替登录鉴权？
 - 如何按消息数量或 Token 预算裁剪历史？
 - 用户刷新页面后，如何继续原会话？
 - 两个请求同时写入同一个会话会发生什么？
@@ -276,6 +306,8 @@ customer_message
 ### 验收标准
 
 - 用户刷新页面后还能看到历史消息。
+- 同一个 `conversationId/thread_id` 可以继续 Agent 线程。
+- 库存补参由确定性业务状态控制，不只依赖模型猜历史。
 - 用户追问“刚才那个订单”时，Agent 能理解上下文。
 - 用户不能读取其他用户的会话。
 

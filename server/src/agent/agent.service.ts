@@ -1,48 +1,44 @@
 import {
   BadGatewayException,
+  HttpException,
   Injectable,
   Logger,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { ChatOpenAI } from '@langchain/openai';
 import { createAgent } from 'langchain';
 import { AgentChatResponseDto } from './agent.dto';
-import { createAgentTools } from './agent.tools';
-import { ProductService } from 'src/product/product.service';
-import { CategoryService } from 'src/category/category.service';
 import { AgentIntentService } from './agent.intent.service';
-import { CustomerIntent, CustomerIntentName } from './agent.intent';
-
-const DEFAULT_MODEL = 'gpt-4.1-mini';
+import { AgentModelFactory } from './agent-model.factory';
+import { createAgentTools } from './agent.tools';
+import { ProductCustomerService } from './product-customer.service';
 
 type SingleAgent = ReturnType<typeof createAgent>;
-const PRODUCT_INTENTS: ReadonlySet<CustomerIntentName> =
-  new Set<CustomerIntentName>([
-    'product_search',
-    'inventory_query',
-    'price_query',
-  ]);
+
+/**
+ * 客服总调度器。
+ *
+ * 这个类只回答一个问题：“当前请求应该交给哪个处理器？”
+ * 商品细节交给 ProductCustomerService，语言理解交给 AgentIntentService。
+ */
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private agent?: SingleAgent;
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly productService: ProductService,
-    private readonly categoryService: CategoryService,
+    private readonly modelFactory: AgentModelFactory,
     private readonly agentIntentService: AgentIntentService,
+    private readonly productCustomerService: ProductCustomerService,
   ) {}
 
   async chat(message: string): Promise<AgentChatResponseDto> {
-    const modelName = this.getModelName();
+    const modelName = this.modelFactory.getModelName();
 
     try {
+      // 第一步永远先把自然语言整理成可供 TypeScript 判断的固定对象。
       const analysis = await this.agentIntentService.analyze(message);
-      console.log('chat analyze', analysis);
-      if (PRODUCT_INTENTS.has(analysis.intent)) {
-        const reply = await this.handleProductIntent(analysis);
+
+      if (this.productCustomerService.canHandle(analysis.intent)) {
+        const reply = await this.productCustomerService.reply(analysis);
 
         return {
           reply,
@@ -52,6 +48,8 @@ export class AgentService {
           entities: analysis.entities,
         };
       }
+
+      // 非商品问题才进入自由 Agent，例如计算、时间和文本转换。
       const result = await this.getAgent().invoke({
         messages: [{ role: 'user', content: message }],
       });
@@ -60,9 +58,13 @@ export class AgentService {
       return {
         reply: this.extractText(lastMessage?.content),
         model: modelName,
+        source: 'agent',
+        intent: analysis.intent,
+        entities: analysis.entities,
       };
     } catch (error) {
-      if (error instanceof ServiceUnavailableException) {
+      // 保留下层已经分类好的 HTTP 错误，例如缺少 API Key 或意图识别失败。
+      if (error instanceof HttpException) {
         throw error;
       }
 
@@ -79,44 +81,21 @@ export class AgentService {
       return this.agent;
     }
 
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY')?.trim();
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        '尚未配置 OPENAI_API_KEY，无法调用单 Agent',
-      );
-    }
-
-    const baseURL = this.configService.get<string>('OPENAI_BASE_URL')?.trim();
-    const model = new ChatOpenAI({
-      apiKey,
-      model: this.getModelName(),
-      temperature: 0,
-      ...(baseURL
-        ? {
-            configuration: { baseURL },
-          }
-        : {}),
-    });
-
     this.agent = createAgent({
       name: 'fe_assistant',
-      model,
-      tools: createAgentTools(this.productService, this.categoryService),
+      model: this.modelFactory.getModel(),
+      // 商品查询由确定性路由负责，这里只注册通用 Tool，避免两个入口抢同一件事。
+      tools: createAgentTools(),
       systemPrompt: [
-        '你是 FE 项目的中文 AI 助手。',
+        '你是 FE 商城项目的中文 AI 助手。',
         '回答要准确、简洁；不知道时明确说明，不得编造事实。',
-        '需要计算或获取当前时间时，应调用提供的工具。',
-        '当前 Agent 没有用户数据库写权限，也没有长期记忆。',
+        '需要计算、获取当前时间或转换文本时，应调用提供的工具。',
+        '商品、订单、退款等业务数据必须来自后端服务；没有对应能力时明确说明。',
+        '当前 Agent 没有数据库写权限，也没有长期记忆。',
       ].join('\n'),
     });
 
     return this.agent;
-  }
-
-  private getModelName(): string {
-    return (
-      this.configService.get<string>('OPENAI_MODEL')?.trim() || DEFAULT_MODEL
-    );
   }
 
   private extractText(content: unknown): string {
@@ -149,127 +128,5 @@ export class AgentService {
     }
 
     return 'Agent 已完成处理，但没有返回可显示的文本。';
-  }
-  private async findCategoryId(categoryName: string): Promise<number | null> {
-    const normalizedName = categoryName.trim().toLowerCase();
-    const categories = await this.categoryService.findAll();
-    console.log(
-      'categories',
-      categories.map((c) => c.name),
-    );
-    const category = categories.find((item) => {
-      const name = item.name.trim().toLowerCase();
-
-      return (
-        name === normalizedName ||
-        name.includes(normalizedName) ||
-        normalizedName.includes(name)
-      );
-    });
-    console.log('findCategoryId', categoryName, category?.id);
-    return category?.id ?? null;
-  }
-
-  private formatInventoryReply(
-    products: Array<{
-      name: string;
-      stock: number;
-    }>,
-  ): string {
-    return products
-      .map((product) => {
-        if (product.stock <= 0) {
-          return `${product.name} 当前库存为 0，暂时缺货。`;
-        }
-
-        return `${product.name} 当前库存 ${product.stock} 件，可以购买。`;
-      })
-      .join('\n');
-  }
-
-  private formatPriceReply(
-    products: Array<{
-      name: string;
-      price: number;
-      originalPrice?: number;
-    }>,
-  ): string {
-    return products
-      .map((product) => {
-        const originalPrice = product.originalPrice
-          ? `，原价 ¥${product.originalPrice}`
-          : '';
-
-        return `${product.name} 当前价格 ¥${product.price}${originalPrice}。`;
-      })
-      .join('\n');
-  }
-
-  private formatProductSearchReply(
-    products: Array<{
-      name: string;
-      price: number;
-      stock: number;
-    }>,
-  ): string {
-    const lines = products.map(
-      (product) =>
-        `- ${product.name}：¥${product.price}，${
-          product.stock > 0 ? '有货' : '暂时缺货'
-        }`,
-    );
-
-    return ['找到以下商品：', ...lines].join('\n');
-  }
-
-  private async handleProductIntent(analysis: CustomerIntent): Promise<string> {
-    const productName = analysis.entities.productName?.trim();
-    const categoryName = analysis.entities.categoryName?.trim();
-    console.log(
-      'handleProductIntent',
-      analysis.intent,
-      productName,
-      categoryName,
-    );
-    if (!productName && !categoryName) {
-      return '请告诉我你想查询的商品名称或分类，例如“手机数码”或“电脑办公”。';
-    }
-
-    let categoryId: number | undefined;
-
-    if (categoryName) {
-      const matchedCategoryId = await this.findCategoryId(categoryName);
-
-      if (!matchedCategoryId) {
-        return `没有找到“${categoryName}”这个商品分类。`;
-      }
-
-      categoryId = matchedCategoryId;
-    }
-
-    const result = await this.productService.findAll({
-      keyword: productName || undefined,
-      categoryId,
-      page: 1,
-      pageSize: 5,
-      sort: 'sales',
-    });
-
-    if (result.total === 0) {
-      const target = productName || categoryName;
-      return `没有找到与“${target}”相关的已上架商品。`;
-    }
-    console.log('handleProductIntent', analysis.intent, result.list);
-    switch (analysis.intent) {
-      case 'inventory_query':
-        return this.formatInventoryReply(result.list);
-
-      case 'price_query':
-        return this.formatPriceReply(result.list);
-
-      case 'product_search':
-      default:
-        return this.formatProductSearchReply(result.list);
-    }
   }
 }

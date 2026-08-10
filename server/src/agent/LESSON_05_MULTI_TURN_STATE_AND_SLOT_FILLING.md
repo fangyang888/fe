@@ -22,7 +22,423 @@
 
 这就是本章要学习的“多轮业务状态”和“缺失字段补全”。缺失字段也经常被叫作“槽位”，补全缺失字段也叫作“槽位填充（slot filling）”。名称听起来复杂，实际就是客服登记表有一格没填，下一句话把这一格补上。
 
-> 本章先使用 NestJS + 内存 `Map` 完成学习版。理解完整流程后再把状态换成 Redis。这个阶段还不需要自己编写 LangGraph。
+> 现代版路线采用“两种状态分工”：`createAgent + checkpointer + thread_id` 保存 Agent 的线程级短期记忆；NestJS 状态仓库保存 `pendingIntent`、`entities` 和 `missingFields` 等确定性业务状态。内存 `Map` 只用于看懂状态仓库原理，生产环境换成 Redis。这个阶段仍不需要自己定义 `StateGraph`。
+
+---
+
+## 零、2026 现代版学习路线：不是只做一个 Map
+
+这一节是第五章的技术更新。先读完这一节，再继续后面的基础实现。
+
+当前 LangChain.js v1 的多轮能力分成三层：
+
+```text
+第一层：Agent 线程短期记忆
+createAgent + checkpointer + thread_id
+
+第二层：确定性客服业务状态
+pendingIntent + entities + missingFields + status
+
+第三层：长期聊天记录
+MySQL conversation + message 表（下一章）
+```
+
+三层不是互相替代，而是解决不同问题。
+
+### 第一层解决什么
+
+```text
+用户：我叫小明
+用户：我刚才说我叫什么？
+```
+
+Checkpointer 可以让同一个 `thread_id` 下的 Agent 重新读到线程状态和消息。
+
+### 第二层解决什么
+
+```text
+用户：帮我查库存
+客服：请提供商品名
+用户：无线蓝牙耳机
+```
+
+代码必须可靠地知道：
+
+```ts
+pendingIntent = 'inventory_query';
+missingFields = ['productName'];
+```
+
+不能只依赖模型看历史消息后重新猜。
+
+### 第三层解决什么
+
+```text
+用户刷新页面
+→ 仍然看到一周前的消息
+→ 客服后台可以查看完整服务记录
+```
+
+这是应用数据库持久化，不应该只依赖 Agent Checkpoint。
+
+### 现代版总关系
+
+| 数据 | 本地学习 | 生产建议 |
+| --- | --- | --- |
+| Agent 消息与线程状态 | `MemorySaver` | 数据库支持的 Checkpointer |
+| `pendingIntent` 等业务状态 | NestJS `Map` | Redis + TTL |
+| 长期聊天记录 | 暂不实现 | MySQL 会话表和消息表 |
+| 用户长期偏好 | 暂不实现 | LangGraph Store 或业务数据库 |
+
+官方参考：
+
+- [LangChain.js Short-term memory](https://docs.langchain.com/oss/javascript/langchain/short-term-memory)
+- [LangGraph Persistence](https://docs.langchain.com/oss/javascript/langgraph/persistence)
+- [LangChain.js Context Engineering](https://docs.langchain.com/oss/javascript/langchain/context-engineering)
+
+---
+
+## 零点一、为什么还要学习 Map
+
+看到官方已经有 Checkpointer 后，你可能会问：
+
+```text
+为什么还要写 Map？是不是重复学习？
+```
+
+不是。两者负责的对象不同。
+
+### Checkpointer 保存 Agent State
+
+`createAgent()` 的内置 State 主要包含消息，还可以通过 State Schema 扩展字段。Checkpointer 在 Agent 或 Graph 每一步后保存 State，使相同线程可以恢复。
+
+### Map/Redis 保存应用业务状态
+
+本章的编排流程在 NestJS Service 中：
+
+```text
+AgentIntentService
+→ 代码计算 missingFields
+→ ProductService
+```
+
+其中一些步骤发生在自由 Agent 循环外部。Checkpointer 不会自动保存所有 NestJS 局部变量，也不会自动知道你的 `REQUIRED_FIELDS` 业务规则。
+
+因此第一版使用：
+
+```text
+MemorySaver
+→ 学习 Agent 消息线程
+
+Map
+→ 学习确定性业务状态仓库接口
+```
+
+生产时替换实现：
+
+```text
+MemorySaver
+→ 数据库 Checkpointer
+
+Map
+→ Redis Repository
+```
+
+Controller 和编排 Service 不应该因为底层存储变化而全部重写。
+
+### 什么时候可以把业务状态也放进 Agent State
+
+当后面开始使用：
+
+- 自定义 Agent State Schema；
+- Middleware 写入 State；
+- 自定义 LangGraph；
+- Checkpoint 暂停与恢复；
+
+可以把 `pendingIntent` 等字段纳入统一 Graph State。
+
+但是如果现在为了省一个 Map 直接引入复杂 StateGraph，你会同时学习太多概念。现代技术不等于一步使用最复杂的框架。
+
+---
+
+## 零点二、安装直接依赖
+
+当前 `langchain` 内部依赖 `@langchain/langgraph`，但你的 `server/package.json` 还没有把它声明成直接依赖。
+
+如果自己的代码要直接导入 `MemorySaver`，应该显式安装：
+
+```bash
+cd server
+pnpm add @langchain/langgraph
+```
+
+然后：
+
+```ts
+import { MemorySaver } from '@langchain/langgraph';
+```
+
+不要依赖 pnpm 当前目录结构“刚好能找到”一个间接依赖。间接依赖版本和可见性都可能随上游包变化。
+
+安装后确认：
+
+```bash
+pnpm list langchain @langchain/core @langchain/openai @langchain/langgraph
+pnpm run build
+```
+
+版本原则：
+
+- 使用兼容的同一代 v1 包；
+- 不在没有看迁移说明时一次升级多个大版本；
+- 提交 lockfile；
+- 升级后运行 Tool、Structured Output 和多轮测试集。
+
+---
+
+## 零点三、给现有 createAgent 增加 MemorySaver
+
+当前 `AgentService` 每次只传一条当前消息：
+
+```ts
+await this.getAgent().invoke({
+  messages: [{ role: 'user', content: message }],
+});
+```
+
+现代本地学习版可以增加 Checkpointer。
+
+### 第一步：创建一个长期复用的 MemorySaver
+
+```ts
+import { MemorySaver } from '@langchain/langgraph';
+
+@Injectable()
+export class AgentService {
+  private readonly checkpointer = new MemorySaver();
+  private agent?: SingleAgent;
+
+  // ...
+}
+```
+
+不能在每次 `chat()` 中重新创建：
+
+```ts
+async chat() {
+  const checkpointer = new MemorySaver(); // 错误位置
+}
+```
+
+因为每次请求都新建，上一轮状态就找不到了。
+
+### 第二步：传给 createAgent
+
+```ts
+this.agent = createAgent({
+  name: 'fe_assistant',
+  model,
+  tools: createAgentTools(
+    this.productService,
+    this.categoryService,
+  ),
+  systemPrompt: [
+    '你是 FE 项目的中文商城客服。',
+    '商品价格和库存必须来自工具结果，不得编造。',
+  ].join('\n'),
+  checkpointer: this.checkpointer,
+});
+```
+
+### 第三步：chat 接受 conversationId
+
+```ts
+async chat(
+  conversationId: string,
+  message: string,
+): Promise<AgentChatResponseDto> {
+  const result = await this.getAgent().invoke(
+    {
+      messages: [{ role: 'user', content: message }],
+    },
+    {
+      configurable: {
+        thread_id: conversationId,
+      },
+    },
+  );
+
+  // 提取最终消息……
+}
+```
+
+### 为什么参数叫 thread_id
+
+LangGraph Checkpointer 使用线程 ID 对状态进行分组：
+
+```text
+thread_id = A
+→ A 的消息和状态
+
+thread_id = B
+→ B 的消息和状态
+```
+
+你的 HTTP 字段可以叫 `conversationId`，后端调用 LangChain 时映射为：
+
+```ts
+configurable: {
+  thread_id: conversationId,
+}
+```
+
+不要要求前端理解 LangGraph 内部命名。
+
+---
+
+## 零点四、thread_id 和 Runtime Context 不要混淆
+
+现代 v1 调用可能同时有：
+
+```ts
+await agent.invoke(
+  input,
+  {
+    configurable: {
+      thread_id: conversationId,
+    },
+    context: {
+      userId,
+      role,
+      conversationId,
+    },
+  },
+);
+```
+
+二者用途不同：
+
+| 位置 | 作用 |
+| --- | --- |
+| `configurable.thread_id` | 告诉 Checkpointer 读写哪个线程 |
+| `context.userId` | 给 Tool/Middleware 使用的可信当前用户 |
+| `context.role` | 当前用户权限角色 |
+| `context.conversationId` | 业务日志和权限校验使用 |
+
+`thread_id` 不是登录鉴权。
+
+即使用户提交了别人的 `conversationId`，后端也必须检查该会话是否属于当前登录用户，然后才能映射到 `thread_id`。
+
+---
+
+## 零点五、用最小测试验证 Checkpointer
+
+准备固定线程：
+
+```ts
+const config = {
+  configurable: {
+    thread_id: 'test-thread-1',
+  },
+};
+```
+
+第一轮：
+
+```ts
+await agent.invoke(
+  {
+    messages: [
+      { role: 'user', content: '请记住测试代号是蓝鲸。' },
+    ],
+  },
+  config,
+);
+```
+
+第二轮使用相同配置：
+
+```ts
+const result = await agent.invoke(
+  {
+    messages: [
+      { role: 'user', content: '刚才的测试代号是什么？' },
+    ],
+  },
+  config,
+);
+```
+
+再换一个线程：
+
+```ts
+const otherConfig = {
+  configurable: {
+    thread_id: 'test-thread-2',
+  },
+};
+```
+
+第二个线程不应该继承第一个线程的代号。
+
+### 这个测试能证明什么
+
+- 同一 `thread_id` 可以恢复 Agent 消息 State；
+- 不同线程隔离；
+- MemorySaver 实例确实被复用。
+
+### 不能证明什么
+
+- NestJS 重启后还能恢复；
+- 多进程之间能共享；
+- 会话属于正确用户；
+- `pendingIntent` 业务规则正确；
+- 完整聊天记录已写入 MySQL。
+
+MemorySaver 只适合本地学习和测试。
+
+---
+
+## 零点六、第五章最终采用的混合调用流程
+
+现代版第五章推荐把流程理解成：
+
+```text
+React
+发送 conversationId + message
+        ↓
+NestJS Controller
+校验 DTO + 校验会话归属
+        ↓
+AgentCustomerChatService
+读取 Redis/Map 业务状态
+        ↓
+AgentIntentService.withStructuredOutput
+提取当前 intent/entities
+        ↓
+确定性代码
+合并实体 + 复算 missingFields
+        ├── 缺字段
+        │   → 保存业务状态
+        │   → 模板追问
+        │
+        ├── 明确商品业务且字段齐全
+        │   → ProductService
+        │   → 保存完成状态
+        │
+        └── 普通开放式问题
+            → createAgent.invoke
+            → configurable.thread_id = conversationId
+            → Checkpointer 恢复 Agent 线程消息
+```
+
+这样学习不会反复推翻：
+
+- DTO 的 `conversationId` 以后继续使用；
+- Map Repository 接口以后换 Redis，调用方不变；
+- MemorySaver 以后换生产 Checkpointer，Agent 调用方式基本不变；
+- MySQL 消息表以后增加，不破坏当前业务状态；
+- 真正进入复杂审批时，再把部分编排迁入 LangGraph。
 
 ---
 
@@ -591,7 +1007,17 @@ export function buildMissingFieldQuestion(
 
 ---
 
-## 十、用 Map 写第一个 ConversationStateService
+## 十、用 Map 写第一个业务 ConversationStateService
+
+这里的 `Map` 只保存确定性业务状态，不代替前面讲过的 Agent Checkpointer。请把两者分开：
+
+```text
+MemorySaver / Checkpointer
+→ createAgent 的线程消息和 Agent State
+
+下面的 Map
+→ pendingIntent、entities、missingFields 等 NestJS 业务状态
+```
 
 建议新建：
 
@@ -676,7 +1102,7 @@ return {
 4. 大量过期会话如果不访问，可能继续占内存。
 5. 并发写入同一个会话可能相互覆盖。
 
-所以 Map 是为了先看懂流程，不是最终线上方案。
+所以 Map 是为了先看懂业务状态仓库，不是最终线上方案。它也不是 LangChain `MemorySaver` 的替代品。
 
 ---
 
@@ -1669,9 +2095,18 @@ finally → 从 inFlight 删除
 
 ---
 
-## 二十七、从 Map 换成 Redis
+## 二十七、把业务状态从 Map 换成 Redis
 
-你的项目已经安装了 `redis` 包，并在其他模块使用 `REDIS_URL`。因此理解 Map 版后，可以把状态放入 Redis。
+你的项目已经安装了 `redis` 包，并在其他模块使用 `REDIS_URL`。因此理解 Map 版后，可以把 `pendingIntent` 等业务状态放入 Redis。
+
+这一节迁移的是：
+
+```text
+AgentConversationService 内部的 Map
+→ Redis
+```
+
+不是把 Agent Checkpointer 删除。生产版 Agent 线程仍应使用数据库支持的 Checkpointer；两者可以共用同一个 `conversationId/thread_id` 作为关联标识，但 Redis Key 必须加业务前缀。
 
 ### Redis Key 设计
 
@@ -1757,6 +2192,7 @@ const AgentConversationStateSchema = z.object({
 
 | 数据 | 推荐位置 | 原因 |
 | --- | --- | --- |
+| Agent 当前线程消息 State | 数据库 Checkpointer | createAgent 按 thread_id 恢复 |
 | 当前待处理意图 | Redis | 短期、访问频繁、需要 TTL |
 | 当前已收集字段 | Redis | 下一轮立即使用 |
 | 当前缺失字段 | Redis | 决定下一句追问 |
@@ -1939,9 +2375,9 @@ state.status = 'collecting_fields';
 → 完成
 ```
 
-分支少、步骤短、没有审批，用普通 NestJS Service + Map/Redis 更容易学习、调试和测试。
+分支少、步骤短、没有审批，用 `createAgent + Checkpointer` 处理 Agent 线程记忆，再用普通 NestJS Service + Map/Redis 处理确定性业务状态，更容易学习、调试和测试。
 
-虽然 `createAgent()` 内部使用了 LangGraph 的预构建运行机制，但这不等于你现在必须自己画 Graph。
+虽然 `createAgent()` 和 Checkpointer 已经使用 LangGraph 的预构建运行机制，但这不等于你现在必须自己定义 `StateGraph`、节点和边。
 
 ### 出现这些需求时，我会明确告诉你开始学 LangGraph
 
@@ -2039,8 +2475,12 @@ state.status = 'collecting_fields';
 为什么模型返回 missingFields 后，代码还要重新计算？
 ```
 
-### 第二天：完成 Map 状态仓库
+### 第二天：完成 Checkpointer 和 Map 业务状态仓库
 
+- [ ] 把 `@langchain/langgraph` 声明为直接依赖。
+- [ ] 给 `createAgent` 增加一个长期复用的 `MemorySaver`。
+- [ ] 使用相同 `thread_id` 验证 Agent 线程记忆。
+- [ ] 使用不同 `thread_id` 验证线程隔离。
 - [ ] 创建 `AgentConversationService`。
 - [ ] 实现 `getOrCreate()`、`save()`、`clear()`。
 - [ ] 测试两个会话互不影响。
@@ -2050,7 +2490,7 @@ state.status = 'collecting_fields';
 验收问题：
 
 ```text
-NestJS 重启以后，Map 中的状态为什么消失？
+MemorySaver 和业务 Map 分别保存什么？为什么 NestJS 重启后两者都会消失？
 ```
 
 ### 第三天：打通 conversationId
@@ -2116,6 +2556,10 @@ server/src/agent/
 ├── agent.controller.ts             # 调用编排 Service
 └── agent.module.ts                 # 注册新 Service
 
+server/package.json                 # 直接声明 @langchain/langgraph
+
+server/src/agent/agent.service.ts   # checkpointer + thread_id
+
 src/
 └── AgentChat.tsx                   # 创建并发送 conversationId
 ```
@@ -2163,6 +2607,10 @@ src/
 - [ ] 纯规则测试不调用真实模型。
 - [ ] 编排测试 Mock 模型和 ProductService。
 - [ ] 知道 Map 重启会丢失且不支持多实例。
+- [ ] 知道 MemorySaver 也只适合本地学习和测试。
+- [ ] createAgent 已配置 Checkpointer。
+- [ ] 同一会话映射到稳定的 `thread_id`。
+- [ ] 能解释 Checkpointer 与业务 Redis 状态的区别。
 - [ ] 知道 Redis 状态必须设置 TTL。
 - [ ] 知道 conversationId 不能作为授权凭证。
 - [ ] 知道何时才需要 LangGraph。
@@ -2204,4 +2652,4 @@ src/
 
 > 不要只让模型“记得聊天”，要让后端明确知道当前客服业务处理到了哪一步。
 
-本章完成以后，你已经拥有智能客服的第一种真正多轮能力。下一阶段可以学习“长期聊天记录与模型上下文裁剪”：把消息安全地保存到数据库，刷新页面后恢复历史，并只选择必要的最近消息交给模型。
+本章完成以后，你已经拥有智能客服的第一种真正多轮能力。下一阶段请继续阅读：[第 6 课：生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)。你会把消息安全地保存到数据库，刷新页面后恢复历史，并通过 Checkpointer、裁剪和摘要只把必要上下文交给模型。

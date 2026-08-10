@@ -4,35 +4,26 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { ChatOpenAI } from '@langchain/openai';
+import { AgentModelFactory } from './agent-model.factory';
 import { CustomerIntent, CustomerIntentSchema } from './agent.intent';
-import { ProductService } from 'src/product/product.service';
-import { CategoryService } from 'src/category/category.service';
 
-const DEFAULT_MODEL = 'gpt-4.1-mini';
-
+/** 只负责“理解用户说了什么”，不查询商品，也不直接回答用户。 */
 @Injectable()
 export class AgentIntentService {
   private readonly logger = new Logger(AgentIntentService.name);
-  private model?: ChatOpenAI;
 
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly productService: ProductService,
-    private readonly categoryService: CategoryService,
-  ) {}
+  constructor(private readonly modelFactory: AgentModelFactory) {}
 
   async analyze(message: string): Promise<CustomerIntent> {
     const startedAt = Date.now();
 
     try {
-      const structuredModel = this.getModel().withStructuredOutput(
-        CustomerIntentSchema,
-        {
+      // withStructuredOutput 把模型的自由文本输出约束成 CustomerIntent 对象。
+      const structuredModel = this.modelFactory
+        .getModel()
+        .withStructuredOutput(CustomerIntentSchema, {
           name: 'customer_intent',
-        },
-      );
+        });
 
       const result = await structuredModel.invoke([
         {
@@ -48,12 +39,10 @@ export class AgentIntentService {
             '缺失的数据返回 null，并写入 missingFields。',
           ].join('\n'),
         },
-        {
-          role: 'user',
-          content: message,
-        },
+        { role: 'user', content: message },
       ]);
 
+      // 即使模型声称返回了结构化对象，也再用 Zod 做一次运行时校验。
       const parsed = CustomerIntentSchema.parse(result);
 
       this.logger.debug(
@@ -68,42 +57,9 @@ export class AgentIntentService {
 
       const detail = error instanceof Error ? error.stack : String(error);
       this.logger.error('客服意图识别失败', detail);
-
       throw new BadGatewayException(
         '客服意图识别失败，请检查模型是否支持 Structured Output',
       );
     }
-  }
-
-  private getModel(): ChatOpenAI {
-    if (this.model) {
-      return this.model;
-    }
-
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY')?.trim();
-
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        '尚未配置 OPENAI_API_KEY，无法识别客服意图',
-      );
-    }
-
-    const baseURL = this.configService.get<string>('OPENAI_BASE_URL')?.trim();
-
-    const model =
-      this.configService.get<string>('OPENAI_MODEL')?.trim() || DEFAULT_MODEL;
-
-    this.model = new ChatOpenAI({
-      apiKey,
-      model,
-      temperature: 0,
-      ...(baseURL
-        ? {
-            configuration: { baseURL },
-          }
-        : {}),
-    });
-
-    return this.model;
   }
 }

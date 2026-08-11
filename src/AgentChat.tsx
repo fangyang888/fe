@@ -150,9 +150,8 @@ export default function AgentChat() {
   const requestRef = useRef<AbortController | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const conversationIdRef = useRef(
-    'v-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000000),
-  );
+  // conversationId 同时用作后端多轮状态的 thread_id，统一使用标准 UUID v4。
+  const conversationIdRef = useRef(crypto.randomUUID());
   useEffect(() => {
     document.body.classList.add('agent-chat-active');
     return () => document.body.classList.remove('agent-chat-active');
@@ -223,8 +222,7 @@ export default function AgentChat() {
   const clearConversation = () => {
     requestRef.current?.abort();
     requestRef.current = null;
-    conversationIdRef.current =
-      'v-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000000);
+    conversationIdRef.current = crypto.randomUUID();
     setMessages(createInitialMessages());
     setDraft('');
     setError('');

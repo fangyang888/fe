@@ -1,4 +1,4 @@
-import type { CustomerEntities, CustomerIntentName } from './agent.intent';
+import type { CustomerEntities, CustomerIntentName } from '../agent.intent';
 
 export type ConversationStatus =
   | 'idle'

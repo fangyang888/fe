@@ -1,7 +1,10 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { CustomerEntities, CustomerIntentName } from './agent.intent';
-import { ConversationStatus, MissingField } from './agent.conversation';
+import {
+  ConversationStatus,
+  MissingField,
+} from './conversation/agent.conversation';
 
 export class AgentChatDto {
   // 先 trim，避免只包含空格的消息通过 IsNotEmpty 校验。
@@ -10,8 +13,8 @@ export class AgentChatDto {
   @IsNotEmpty({ message: 'message 不能为空' })
   @MaxLength(8000, { message: 'message 不能超过 8000 个字符' })
   message: string;
-  @IsString({ message: 'conversationId 必须是字符串' })
-  @IsNotEmpty({ message: 'conversationId 不能为空' })
+  // 后续会直接作为数据库主键和 Checkpointer thread_id，统一使用 UUID v4。
+  @IsUUID('4', { message: 'conversationId 必须是 UUID v4' })
   conversationId: string;
 }
 

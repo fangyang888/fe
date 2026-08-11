@@ -107,6 +107,8 @@ import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
 import RiskControlledFive from './RiskControlledFive.jsx';
 // @ts-ignore
+import RoughCopulaRqaKill from './RoughCopulaRqaKill.jsx';
+// @ts-ignore
 import DynamicSevenKill from './DynamicSevenKill.jsx';
 // @ts-ignore
 import SpecialTailPredictor from './SpecialTailPredictor.jsx';
@@ -292,6 +294,12 @@ const routes = [
     label: '63期首位线性锚点',
     section: '杀码',
     element: <LinearAnchor63FirstKill />,
+  },
+  {
+    path: '/kill/rough-copula-rqa',
+    label: '粗糙集·Copula·RQA',
+    section: '杀码',
+    element: <RoughCopulaRqaKill />,
   },
   // {
   //   path: '/kill/spectral-cancellation',

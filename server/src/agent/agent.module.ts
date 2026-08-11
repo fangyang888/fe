@@ -6,7 +6,7 @@ import { CategoryModule } from 'src/category/category.module';
 import { AgentIntentService } from './agent.intent.service';
 import { AgentModelFactory } from './agent-model.factory';
 import { ProductCustomerService } from './product-customer.service';
-import { AgentConversationService } from './agent.conversation.service';
+import { AgentConversationService } from './conversation/agent.conversation.service';
 
 @Module({
   imports: [ProductModule, CategoryModule],

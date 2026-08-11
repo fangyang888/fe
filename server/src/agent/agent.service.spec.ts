@@ -5,8 +5,8 @@ import { AgentModelFactory } from './agent-model.factory';
 import { AgentService } from './agent.service';
 import { CustomerIntent } from './agent.intent';
 import { ProductCustomerService } from './product-customer.service';
-import { AgentConversationService } from './agent.conversation.service';
-import { createEmptyEntities } from './agent.conversation';
+import { AgentConversationService } from './conversation/agent.conversation.service';
+import { createEmptyEntities } from './conversation/agent.conversation';
 import { CustomerIntentName } from './agent.intent';
 
 const generalChatIntent: CustomerIntent = {
@@ -25,6 +25,8 @@ const generalChatIntent: CustomerIntent = {
 };
 
 describe('AgentService', () => {
+  const conversationId = '11111111-1111-4111-8111-111111111111';
+
   it('非商品请求在没有 API Key 时返回服务不可用错误', async () => {
     const modelFactory = {
       getModelName: jest.fn().mockReturnValue('test-model'),
@@ -43,9 +45,10 @@ describe('AgentService', () => {
       modelFactory,
       intentService,
       productCustomerService,
+      new AgentConversationService(),
     );
 
-    await expect(service.chat('你好')).rejects.toBeInstanceOf(
+    await expect(service.chat('你好', conversationId)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
   });
@@ -76,8 +79,9 @@ describe('AgentService', () => {
       modelFactory,
       intentService,
       productCustomerService,
+      new AgentConversationService(),
     );
-    const result = await service.chat('无线耳机还有多少库存？');
+    const result = await service.chat('无线耳机还有多少库存？', conversationId);
 
     expect(result.source).toBe('intent_router');
     expect(result.intent).toBe('inventory_query');

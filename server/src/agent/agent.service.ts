@@ -11,14 +11,14 @@ import { AgentModelFactory } from './agent-model.factory';
 import { createAgentTools } from './agent.tools';
 import { ProductCustomerService } from './product-customer.service';
 import { MemorySaver } from '@langchain/langgraph';
-import { AgentConversationService } from './agent.conversation.service';
+import { AgentConversationService } from './conversation/agent.conversation.service';
 import {
   AgentConversationState,
   MissingField,
   calculateMissingFields,
   isCancelMessage,
   mergeEntities,
-} from './agent.conversation';
+} from './conversation/agent.conversation';
 import { CustomerEntities, CustomerIntentName } from './agent.intent';
 type SingleAgent = ReturnType<typeof createAgent>;
 
@@ -64,7 +64,10 @@ export class AgentService {
 
     return currentIntent;
   }
-  async chat(message: string, conversationId: string) {
+  async chat(
+    message: string,
+    conversationId: string,
+  ): Promise<AgentChatResponseDto> {
     const modelName = this.modelFactory.getModelName();
 
     try {
@@ -178,6 +181,32 @@ export class AgentService {
           missingFields: [],
         };
       }
+
+      // 商品类请求由上面的确定性业务路由处理；其余请求交给通用 Agent。
+      // 清除旧的商品补字段状态，避免用户已经切换话题后仍被旧任务影响。
+      this.conversationService.clear(conversationId);
+
+      const result = await this.getAgent().invoke(
+        {
+          messages: [{ role: 'user', content: message }],
+        },
+        {
+          // MemorySaver 用 thread_id 隔离不同浏览器会话的短期消息状态。
+          configurable: { thread_id: conversationId },
+        },
+      );
+      const lastMessage = result.messages.at(-1);
+
+      return {
+        conversationId,
+        reply: this.extractText(lastMessage?.content),
+        model: modelName,
+        source: 'agent' as const,
+        intent: activeIntent,
+        entities: mergedEntities,
+        status: 'completed' as const,
+        missingFields: [],
+      };
     } catch (error) {
       // 保留下层已经分类好的 HTTP 错误，例如缺少 API Key 或意图识别失败。
       if (error instanceof HttpException) {

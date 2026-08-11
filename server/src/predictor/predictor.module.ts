@@ -71,6 +71,8 @@ import { TieredKillComboController } from './tiered-kill-combo.controller';
 import { TieredKillComboService } from './tiered-kill-combo.service';
 import { RiskControlledFiveController } from './risk-controlled-five.controller';
 import { RiskControlledFiveService } from './risk-controlled-five.service';
+import { RoughCopulaRqaKillController } from './rough-copula-rqa-kill.controller';
+import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -110,6 +112,7 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     DualAnchor4963KillController,
     TieredKillComboController,
     RiskControlledFiveController,
+    RoughCopulaRqaKillController,
   ],
   providers: [
     PredictorService,
@@ -147,6 +150,7 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     DualAnchor4963KillService,
     TieredKillComboService,
     RiskControlledFiveService,
+    RoughCopulaRqaKillService,
   ],
 })
 export class PredictorModule {}

@@ -91,6 +91,14 @@ import DualTimeAnchorKill from './DualTimeAnchorKill.jsx';
 // @ts-ignore
 import LinearAnchor63FirstKill from './LinearAnchor63FirstKill.jsx';
 // @ts-ignore
+import SpectralCancellationKill from './SpectralCancellationKill.jsx';
+// @ts-ignore
+import LatentFactorKill from './LatentFactorKill.jsx';
+// @ts-ignore
+import LogisticDiffusionKill from './LogisticDiffusionKill.jsx';
+// @ts-ignore
+import RobustBlockKill from './RobustBlockKill.jsx';
+// @ts-ignore
 import ShortLongAnchor149Kill from './ShortLongAnchor149Kill.jsx';
 // @ts-ignore
 import DualAnchor4963Kill from './DualAnchor4963Kill.jsx';
@@ -284,6 +292,30 @@ const routes = [
     label: '63期首位线性锚点',
     section: '杀码',
     element: <LinearAnchor63FirstKill />,
+  },
+  {
+    path: '/kill/spectral-cancellation',
+    label: '多分辨率频谱相消',
+    section: '杀码',
+    element: <SpectralCancellationKill />,
+  },
+  {
+    path: '/kill/latent-factor',
+    label: '低秩动态因子',
+    section: '杀码',
+    element: <LatentFactorKill />,
+  },
+  {
+    path: '/kill/logistic-diffusion',
+    label: '逻辑扩散粒子滤波',
+    section: '杀码',
+    element: <LogisticDiffusionKill />,
+  },
+  {
+    path: '/kill/robust-block',
+    label: '分布鲁棒块一致性',
+    section: '杀码',
+    element: <RobustBlockKill />,
   },
   // {
   //   path: '/kill/short-long-anchor-1-49',

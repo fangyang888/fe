@@ -55,6 +55,14 @@ import { DualTimeAnchorKillController } from './dual-time-anchor-kill.controller
 import { DualTimeAnchorKillService } from './dual-time-anchor-kill.service';
 import { LinearAnchor63FirstKillController } from './linear-anchor-63-first-kill.controller';
 import { LinearAnchor63FirstKillService } from './linear-anchor-63-first-kill.service';
+import { SpectralCancellationKillController } from './spectral-cancellation-kill.controller';
+import { SpectralCancellationKillService } from './spectral-cancellation-kill.service';
+import { LatentFactorKillController } from './latent-factor-kill.controller';
+import { LatentFactorKillService } from './latent-factor-kill.service';
+import { LogisticDiffusionKillController } from './logistic-diffusion-kill.controller';
+import { LogisticDiffusionKillService } from './logistic-diffusion-kill.service';
+import { RobustBlockKillController } from './robust-block-kill.controller';
+import { RobustBlockKillService } from './robust-block-kill.service';
 import { ShortLongAnchor149KillController } from './short-long-anchor-1-49-kill.controller';
 import { ShortLongAnchor149KillService } from './short-long-anchor-1-49-kill.service';
 import { DualAnchor4963KillController } from './dual-anchor-49-63-kill.controller';
@@ -94,6 +102,10 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     QuadraticAnchor17FirstKillController,
     DualTimeAnchorKillController,
     LinearAnchor63FirstKillController,
+    SpectralCancellationKillController,
+    LatentFactorKillController,
+    LogisticDiffusionKillController,
+    RobustBlockKillController,
     ShortLongAnchor149KillController,
     DualAnchor4963KillController,
     TieredKillComboController,
@@ -127,6 +139,10 @@ import { RiskControlledFiveService } from './risk-controlled-five.service';
     QuadraticAnchor17FirstKillService,
     DualTimeAnchorKillService,
     LinearAnchor63FirstKillService,
+    SpectralCancellationKillService,
+    LatentFactorKillService,
+    LogisticDiffusionKillService,
+    RobustBlockKillService,
     ShortLongAnchor149KillService,
     DualAnchor4963KillService,
     TieredKillComboService,

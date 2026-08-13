@@ -69,6 +69,8 @@ import { DualAnchor4963KillController } from './dual-anchor-49-63-kill.controlle
 import { DualAnchor4963KillService } from './dual-anchor-49-63-kill.service';
 import { TripleAnchorLinearKillController } from './triple-anchor-linear-kill.controller';
 import { TripleAnchorLinearKillService } from './triple-anchor-linear-kill.service';
+import { AnchorInteractionSuiteController } from './anchor-interaction-suite.controller';
+import { AnchorInteractionSuiteService } from './anchor-interaction-suite.service';
 import { TieredKillComboController } from './tiered-kill-combo.controller';
 import { TieredKillComboService } from './tiered-kill-combo.service';
 import { RiskControlledFiveController } from './risk-controlled-five.controller';
@@ -113,6 +115,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     ShortLongAnchor149KillController,
     DualAnchor4963KillController,
     TripleAnchorLinearKillController,
+    AnchorInteractionSuiteController,
     TieredKillComboController,
     RiskControlledFiveController,
     RoughCopulaRqaKillController,
@@ -152,6 +155,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     ShortLongAnchor149KillService,
     DualAnchor4963KillService,
     TripleAnchorLinearKillService,
+    AnchorInteractionSuiteService,
     TieredKillComboService,
     RiskControlledFiveService,
     RoughCopulaRqaKillService,

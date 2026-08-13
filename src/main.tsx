@@ -105,6 +105,8 @@ import DualAnchor4963Kill from './DualAnchor4963Kill.jsx';
 // @ts-ignore
 import TripleAnchorLinearKill from './TripleAnchorLinearKill.jsx';
 // @ts-ignore
+import AnchorInteractionSuite from './AnchorInteractionSuite.jsx';
+// @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
 import RiskControlledFive from './RiskControlledFive.jsx';
@@ -344,6 +346,12 @@ const routes = [
     label: '三锚点线性回绕',
     section: '杀码',
     element: <TripleAnchorLinearKill />,
+  },
+  {
+    path: '/kill/anchor-interaction-suite',
+    label: '锚点交互四公式',
+    section: '杀码',
+    element: <AnchorInteractionSuite />,
   },
   // {
   //   path: '/kill/tiered-combo',

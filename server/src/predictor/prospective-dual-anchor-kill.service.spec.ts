@@ -1,5 +1,6 @@
 import { DualAnchor4963KillService } from './dual-anchor-49-63-kill.service';
 import { ShortLongAnchor149KillService } from './short-long-anchor-1-49-kill.service';
+import { TripleAnchorLinearKillService } from './triple-anchor-linear-kill.service';
 
 const buildHistory = (count: number) =>
   Array.from({ length: count }, (_, index) => {
@@ -86,6 +87,34 @@ describe('prospective dual-anchor kill services', () => {
     ).resolves.toMatchObject({
       status: 'insufficient-history',
       historyCount: 562,
+    });
+  });
+
+  it('calculates three anchors and restarts validation at period 199', async () => {
+    const historyService = {
+      findAll: jest.fn().mockResolvedValue(buildHistory(600)),
+    };
+    const service = new TripleAnchorLinearKillService(historyService as any);
+    const result = (await service.getPrediction()) as any;
+
+    expect(result.prediction).toMatchObject({
+      number: 5,
+      rawValue: -44,
+      firstNumber: 5,
+      secondNumber: 3,
+      thirdNumber: 7,
+      firstSource: { year: 2026, No: 183 },
+      secondSource: { year: 2026, No: 184 },
+      thirdSource: { year: 2026, No: 141 },
+    });
+    expect(result.backtests.backtest500).toMatchObject({
+      count: 500,
+      successCount: 0,
+    });
+    expect(result.validation).toMatchObject({
+      kind: 'prospective',
+      count: 37,
+      start: { year: 2026, No: 199 },
     });
   });
 });

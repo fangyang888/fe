@@ -103,6 +103,8 @@ import ShortLongAnchor149Kill from './ShortLongAnchor149Kill.jsx';
 // @ts-ignore
 import DualAnchor4963Kill from './DualAnchor4963Kill.jsx';
 // @ts-ignore
+import TripleAnchorLinearKill from './TripleAnchorLinearKill.jsx';
+// @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
 import RiskControlledFive from './RiskControlledFive.jsx';
@@ -336,6 +338,12 @@ const routes = [
     label: '49+63期双锚点',
     section: '杀码',
     element: <DualAnchor4963Kill />,
+  },
+  {
+    path: '/kill/triple-anchor-linear',
+    label: '三锚点线性回绕',
+    section: '杀码',
+    element: <TripleAnchorLinearKill />,
   },
   // {
   //   path: '/kill/tiered-combo',

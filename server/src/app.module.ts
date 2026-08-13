@@ -40,6 +40,8 @@ import { Event } from './track/event.entity';
 import { TrackModule } from './track/track.module';
 import { StockModule } from './stock/stock.module';
 import { AgentModule } from './agent/agent.module';
+import { AgentConversationRecord } from './agent/persistence/agent-conversation.entity';
+import { AgentMessageRecord } from './agent/persistence/agent-message.entity';
 
 @Module({
   imports: [
@@ -77,6 +79,8 @@ import { AgentModule } from './agent/agent.module';
           UserCoupon,
           Favorite,
           Event,
+          AgentConversationRecord,
+          AgentMessageRecord,
         ],
         synchronize: process.env.NODE_ENV !== 'production', // 生产环境关闭自动同步
       }),

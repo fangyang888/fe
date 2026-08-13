@@ -16,6 +16,8 @@ export class AgentChatDto {
   // 后续会直接作为数据库主键和 Checkpointer thread_id，统一使用 UUID v4。
   @IsUUID('4', { message: 'conversationId 必须是 UUID v4' })
   conversationId: string;
+  @IsUUID('4', { message: 'clientMessageId 必须是 UUID v4' })
+  clientMessageId: string;
 }
 
 export interface AgentChatResponseDto {

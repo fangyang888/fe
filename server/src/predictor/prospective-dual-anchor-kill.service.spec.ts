@@ -90,7 +90,7 @@ describe('prospective dual-anchor kill services', () => {
     });
   });
 
-  it('calculates three anchors and restarts validation at period 199', async () => {
+  it('separates the three-anchor replay from true prospective period 225', async () => {
     const historyService = {
       findAll: jest.fn().mockResolvedValue(buildHistory(600)),
     };
@@ -111,10 +111,16 @@ describe('prospective dual-anchor kill services', () => {
       count: 500,
       successCount: 0,
     });
-    expect(result.validation).toMatchObject({
-      kind: 'prospective',
-      count: 37,
+    expect(result.historicalValidation).toMatchObject({
+      kind: 'historical-holdout-replay',
+      count: 26,
       start: { year: 2026, No: 199 },
+      end: { year: 2026, No: 224 },
+    });
+    expect(result.validation).toMatchObject({
+      kind: 'prospective-frozen',
+      count: 11,
+      start: { year: 2026, No: 225 },
     });
   });
 });

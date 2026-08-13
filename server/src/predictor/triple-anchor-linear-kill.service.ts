@@ -16,8 +16,10 @@ export class TripleAnchorLinearKillService {
   private readonly secondPosition = 2;
   private readonly thirdLag = 95;
   private readonly thirdPosition = 6;
-  private readonly validationYear = 2026;
-  private readonly validationStartNo = 199;
+  private readonly observationYear = 2026;
+  private readonly historicalStartNo = 199;
+  private readonly historicalEndNo = 224;
+  private readonly prospectiveStartNo = 225;
 
   constructor(private readonly historyService: HistoryService) {}
 
@@ -42,11 +44,17 @@ export class TripleAnchorLinearKillService {
     const backtest100 = summarizeRecent(100);
     const backtest200 = summarizeRecent(200);
     const backtest500 = summarizeRecent(500);
-    const validationRows = rows.filter(
+    const historicalValidationRows = rows.filter(
       (row) =>
-        Number(row.year) > this.validationYear ||
-        (Number(row.year) === this.validationYear &&
-          Number(row.No) >= this.validationStartNo),
+        Number(row.year) === this.observationYear &&
+        Number(row.No) >= this.historicalStartNo &&
+        Number(row.No) <= this.historicalEndNo,
+    );
+    const prospectiveRows = rows.filter(
+      (row) =>
+        Number(row.year) > this.observationYear ||
+        (Number(row.year) === this.observationYear &&
+          Number(row.No) >= this.prospectiveStartNo),
     );
 
     return {
@@ -74,9 +82,13 @@ export class TripleAnchorLinearKillService {
           position: this.thirdPosition,
           label: '95期前第6位',
         },
-        frozenAt: { year: 2026, No: 198 },
+        frozenAt: { year: this.observationYear, No: this.historicalEndNo },
+        prospectiveStart: {
+          year: this.observationYear,
+          No: this.prospectiveStartNo,
+        },
         description:
-          '固定读取53期前第4位x、52期前第2位y和95期前第6位z，计算−3x−6y−4z+17，再在1～49范围循环回绕。2026年第199期起重新统计前瞻验证。',
+          '固定读取53期前第4位x、52期前第2位y和95期前第6位z，计算−3x−6y−4z+17，再在1～49范围循环回绕。199～224期作为历史留出回放，225期起记录真实前瞻结果。',
       },
       prediction: this.pick(history, history.length),
       backtests: {
@@ -86,10 +98,19 @@ export class TripleAnchorLinearKillService {
         backtest200,
         backtest500,
       },
+      historicalValidation: {
+        ...this.summarize(historicalValidationRows),
+        kind: 'historical-holdout-replay',
+        start: { year: this.observationYear, No: this.historicalStartNo },
+        end: { year: this.observationYear, No: this.historicalEndNo },
+      },
       validation: {
-        ...this.summarize(validationRows),
-        kind: 'prospective',
-        start: { year: this.validationYear, No: this.validationStartNo },
+        ...this.summarize(prospectiveRows),
+        kind: 'prospective-frozen',
+        start: { year: this.observationYear, No: this.prospectiveStartNo },
+        message: prospectiveRows.length
+          ? `已累计${prospectiveRows.length}期真实前瞻结果。`
+          : '等待2026年第225期及以后开奖结果。',
       },
       historyMeta: {
         count: history.length,

@@ -6,8 +6,9 @@ export default function TripleAnchorLinearKill() {
   return <QuadraticAnchor49SevenKill
     endpoint="/api/kill/triple-anchor-linear"
     title="三锚点线性回绕"
-    subtitle="固定读取53期前第4位 x、52期前第2位 y 与95期前第6位 z，计算 −3x − 6y − 4z + 17，再循环回绕至1～49。以2026年第198期为观察截止点，第199期起重新统计前瞻验证。"
+    subtitle="固定读取53期前第4位 x、52期前第2位 y 与95期前第6位 z，计算 −3x − 6y − 4z + 17，再循环回绕至1～49。199～224期为历史留出回放；公式于224期冻结，225期起只记录真实前瞻结果。"
     formulaLabel="−3x − 6y − 4z + 17"
+    validationLabel="真实前瞻观察"
     renderEquation={(p) => <>
       <span className="q49-op">−3 ×</span><div className="q49-ball">{p.firstDisplay}</div>
       <span className="q49-op">− 6 ×</span><div className="q49-ball">{p.secondDisplay}</div>

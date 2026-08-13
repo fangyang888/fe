@@ -14,6 +14,7 @@ export default function QuadraticAnchor49SevenKill({
   formulaLabel = '−4x² + x + 20',
   anchorLabel = '49期前第7位 x',
   calculation = (x) => `−4 × ${x}² + ${x} + 20`,
+  validationLabel = '样本外验证',
   renderEquation,
   renderTags,
   renderCalculation,
@@ -38,6 +39,7 @@ export default function QuadraticAnchor49SevenKill({
 
   const prediction = data?.prediction;
   const bt = data?.backtests || {};
+  const historicalValidation = data?.historicalValidation;
   const validation = data?.validation;
 
   return <main className="q49-page"><style>{`
@@ -52,7 +54,7 @@ export default function QuadraticAnchor49SevenKill({
     {!error && !data && <div className="q49-panel q49-message">正在计算历史回测与样本外验证…</div>}
     {data?.status === 'insufficient-history' && <div className="q49-panel q49-message">{data.message}</div>}
     {prediction && <><div className="q49-hero"><section className="q49-panel q49-current"><p className="q49-kicker">当前推荐单杀</p><div className="q49-equation">{renderEquation ? renderEquation(prediction) : <><div className="q49-ball">{prediction.anchorDisplay}</div><span className="q49-op">{formulaLabel}</span><span className="q49-op">→</span><div className="q49-ball result">{prediction.display}</div></>}</div><p className="q49-copy">{prediction.reason}</p><div className="q49-tags">{renderTags ? renderTags(prediction) : <><span className="q49-tag">原始值 {prediction.rawValue}</span><span className="q49-tag">{prediction.wrapFormula}</span><span className="q49-tag">锚点 {prediction.source.year}-{String(prediction.source.No).padStart(3, '0')}</span></>}</div></section>
-      <div className="q49-metrics"><Metric label="近20期" data={bt.backtest20}/><Metric label="近50期" data={bt.backtest50}/><Metric label="近100期" data={bt.backtest100}/><Metric label="近200期" data={bt.backtest200}/><div className="q49-wide"><Metric label={`样本外验证 · ${validation?.start?.year || 2026}-${validation?.start?.No || 181}期起`} data={validation} accent/></div><div className="q49-wide"><Metric label="近500期长期观察" data={bt.backtest500}/></div></div></div>
+      <div className="q49-metrics"><Metric label="近20期" data={bt.backtest20}/><Metric label="近50期" data={bt.backtest50}/><Metric label="近100期" data={bt.backtest100}/><Metric label="近200期" data={bt.backtest200}/>{historicalValidation && <div className="q49-wide"><Metric label={`历史留出回放 · ${historicalValidation.start?.No || 199}～${historicalValidation.end?.No || 224}期`} data={historicalValidation}/></div>}<div className="q49-wide"><Metric label={`${validationLabel} · ${validation?.start?.year || 2026}-${validation?.start?.No || 181}期起`} data={validation} accent/></div><div className="q49-wide"><Metric label="近500期长期观察" data={bt.backtest500}/></div></div></div>
       <div className="q49-lower"><section className="q49-panel q49-card"><h3>本期计算</h3><div className="q49-calc">{renderCalculation ? renderCalculation(prediction) : <><div><span>{anchorLabel}</span><strong>{prediction.anchorNumber}</strong></div><div><span>二次公式</span><strong>{calculation(prediction.anchorNumber)}</strong></div><div><span>原始结果</span><strong>{prediction.rawValue}</strong></div><div><span>循环回绕</span><strong>{prediction.wrapFormula}</strong></div></>}</div></section>
       <section className="q49-panel q49-card q49-table-wrap"><h3>近20期逐期核验</h3><table className="q49-table"><thead>{renderTableHead ? renderTableHead() : <tr><th>开奖期</th><th>锚点期</th><th>x</th><th>完整公式</th><th>结果</th></tr>}</thead><tbody>{bt.backtest20?.rows?.map(row => renderTableRow ? renderTableRow(row) : <tr key={`${row.year}-${row.No}`}><td>{row.year}-{String(row.No).padStart(3, '0')}</td><td>{row.anchorYear}-{String(row.anchorNo).padStart(3, '0')}</td><td>{row.anchorDisplay}</td><td>{row.formula}</td><td className={row.success ? 'q49-ok' : 'q49-bad'}>{row.success ? '成功' : '失败'}</td></tr>)}</tbody></table></section></div></>}
   </div></main>;

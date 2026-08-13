@@ -27,8 +27,10 @@ type ModelDefinition = {
 
 @Injectable()
 export class AnchorInteractionSuiteService {
-  private readonly validationYear = 2026;
-  private readonly validationStartNo = 199;
+  private readonly observationYear = 2026;
+  private readonly historicalStartNo = 199;
+  private readonly historicalEndNo = 224;
+  private readonly prospectiveStartNo = 225;
 
   constructor(private readonly historyService: HistoryService) {}
 
@@ -62,13 +64,17 @@ export class AnchorInteractionSuiteService {
         key: 'anchorInteractionSuite',
         name: '锚点交互四公式统计',
         modelCount: models.length,
-        frozenAt: { year: 2026, No: 198 },
+        frozenAt: { year: this.observationYear, No: this.historicalEndNo },
+        historicalHoldout: {
+          start: { year: this.observationYear, No: this.historicalStartNo },
+          end: { year: this.observationYear, No: this.historicalEndNo },
+        },
         prospectiveStart: {
-          year: this.validationYear,
-          No: this.validationStartNo,
+          year: this.observationYear,
+          No: this.prospectiveStartNo,
         },
         description:
-          '一个页面独立统计双锚点平方、四锚点差分、四锚点XOR和三锚点乘积四种固定映射；各模块互不择优、不动态切换。',
+          '一个页面独立统计双锚点平方、四锚点差分、四锚点XOR和三锚点乘积四种固定映射；199～224期标记为历史留出回放，225期起记录真实前瞻结果。',
       },
       models,
       historyMeta: {
@@ -91,11 +97,17 @@ export class AnchorInteractionSuiteService {
     const backtest100 = summarizeRecent(100);
     const backtest200 = summarizeRecent(200);
     const backtest500 = summarizeRecent(500);
-    const validationRows = rows.filter(
+    const historicalValidationRows = rows.filter(
       (row) =>
-        Number(row.year) > this.validationYear ||
-        (Number(row.year) === this.validationYear &&
-          Number(row.No) >= this.validationStartNo),
+        Number(row.year) === this.observationYear &&
+        Number(row.No) >= this.historicalStartNo &&
+        Number(row.No) <= this.historicalEndNo,
+    );
+    const prospectiveRows = rows.filter(
+      (row) =>
+        Number(row.year) > this.observationYear ||
+        (Number(row.year) === this.observationYear &&
+          Number(row.No) >= this.prospectiveStartNo),
     );
     const stable = [backtest20, backtest50, backtest100, backtest200].every(
       (item) => item.successRate >= 0.95,
@@ -116,10 +128,19 @@ export class AnchorInteractionSuiteService {
         backtest200,
         backtest500,
       },
+      historicalValidation: {
+        ...this.summarize(historicalValidationRows),
+        kind: 'historical-holdout-replay',
+        start: { year: this.observationYear, No: this.historicalStartNo },
+        end: { year: this.observationYear, No: this.historicalEndNo },
+      },
       validation: {
-        ...this.summarize(validationRows),
-        kind: 'prospective',
-        start: { year: this.validationYear, No: this.validationStartNo },
+        ...this.summarize(prospectiveRows),
+        kind: 'prospective-frozen',
+        start: { year: this.observationYear, No: this.prospectiveStartNo },
+        message: prospectiveRows.length
+          ? `已累计${prospectiveRows.length}期真实前瞻结果。`
+          : '等待2026年第225期及以后开奖结果。',
       },
     };
   }

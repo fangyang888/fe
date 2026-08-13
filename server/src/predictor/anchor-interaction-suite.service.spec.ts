@@ -18,7 +18,7 @@ const buildHistory = (count: number) =>
   });
 
 describe('AnchorInteractionSuiteService', () => {
-  it('returns four independent formula modules with validation from period 199', async () => {
+  it('separates the 199-224 replay from prospective validation at period 225', async () => {
     const historyService = {
       findAll: jest.fn().mockResolvedValue(buildHistory(700)),
     };
@@ -40,10 +40,16 @@ describe('AnchorInteractionSuiteService', () => {
     ]);
     for (const model of result.models) {
       expect(model.backtests.backtest500.count).toBe(500);
-      expect(model.validation).toMatchObject({
-        kind: 'prospective',
-        count: 137,
+      expect(model.historicalValidation).toMatchObject({
+        kind: 'historical-holdout-replay',
+        count: 26,
         start: { year: 2026, No: 199 },
+        end: { year: 2026, No: 224 },
+      });
+      expect(model.validation).toMatchObject({
+        kind: 'prospective-frozen',
+        count: 111,
+        start: { year: 2026, No: 225 },
       });
     }
   });

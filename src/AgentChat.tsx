@@ -17,6 +17,24 @@ type AgentResponse = {
   message?: string | string[];
 };
 
+type AgentHistoryMessage = {
+  role: MessageRole;
+  content: string;
+  status: 'pending' | 'completed' | 'failed';
+  model: string | null;
+};
+
+const ACTIVE_CONVERSATION_KEY = 'agent.activeConversationId';
+
+function getOrCreateConversationId(): string {
+  const existing = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+  if (existing) return existing;
+
+  const created = crypto.randomUUID();
+  localStorage.setItem(ACTIVE_CONVERSATION_KEY, created);
+  return created;
+}
+
 const suggestions = [
   {
     label: '计算 125 × 8',
@@ -151,7 +169,8 @@ export default function AgentChat() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   // conversationId 同时用作后端多轮状态的 thread_id，统一使用标准 UUID v4。
-  const conversationIdRef = useRef(crypto.randomUUID());
+  const conversationIdRef = useRef(getOrCreateConversationId());
+  const clientMessageIdRef = useRef(crypto.randomUUID());
   useEffect(() => {
     document.body.classList.add('agent-chat-active');
     return () => document.body.classList.remove('agent-chat-active');
@@ -166,6 +185,37 @@ export default function AgentChat() {
 
   useEffect(() => {
     return () => requestRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch(`/api/agent/conversations/${conversationIdRef.current}/messages`, {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (response.status === 404) return [];
+        if (!response.ok) throw new Error('加载聊天历史失败');
+        return response.json() as Promise<AgentHistoryMessage[]>;
+      })
+      .then((records) => {
+        if (!Array.isArray(records) || records.length === 0) return;
+
+        setMessages([
+          createInitialMessages()[0],
+          ...records
+            .filter((record) => record.status === 'completed')
+            .map((record) =>
+              createMessage(record.role, record.content, record.model ?? undefined),
+            ),
+        ]);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setError(error instanceof Error ? error.message : '加载历史失败');
+      });
+
+    return () => controller.abort();
   }, []);
 
   const sendMessage = async (value: string) => {
@@ -185,7 +235,11 @@ export default function AgentChat() {
       const response = await fetch('/api/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, conversationId: conversationIdRef.current }),
+        body: JSON.stringify({
+          message,
+          conversationId: conversationIdRef.current,
+          clientMessageId: clientMessageIdRef.current,
+        }),
         signal: controller.signal,
       });
       const data = (await response.json().catch(() => null)) as AgentResponse | null;
@@ -198,7 +252,7 @@ export default function AgentChat() {
       if (!data?.reply) {
         throw new Error('Agent 没有返回可显示的回答');
       }
-
+      clientMessageIdRef.current = crypto.randomUUID();
       setMessages((current) => [
         ...current,
         createMessage('assistant', data.reply as string, data.model),
@@ -222,7 +276,10 @@ export default function AgentChat() {
   const clearConversation = () => {
     requestRef.current?.abort();
     requestRef.current = null;
-    conversationIdRef.current = crypto.randomUUID();
+    const nextId = crypto.randomUUID();
+    conversationIdRef.current = nextId;
+    localStorage.setItem(ACTIVE_CONVERSATION_KEY, nextId);
+    clientMessageIdRef.current = crypto.randomUUID();
     setMessages(createInitialMessages());
     setDraft('');
     setError('');

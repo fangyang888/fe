@@ -80,7 +80,7 @@ export class AgentHistoryService {
       },
       { status: 'completed' },
     );
-
+    console.log('completeAssistantTurn input:');
     const existing = await this.messages.findOne({
       where: {
         conversationId: input.conversationId,

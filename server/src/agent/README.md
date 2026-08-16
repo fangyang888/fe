@@ -21,6 +21,8 @@
 > 第 6 课详细讲解请查看：[生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)。
 >
 > 第 6 课动手版请查看：[六天代码实验与页面自测](./LESSON_06_SIX_DAY_CODE_AND_PAGE_TEST.md)。
+
+> 完成第 1～4 关后，从这里继续：[第 5～8 关生产级会话 Context 落地与验收](./LESSON_06_GATE_05_TO_08_PRODUCTION_CONTEXT.md)。
 >
 > 第 7 课详细讲解请查看：[生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)。
 >

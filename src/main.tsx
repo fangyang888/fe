@@ -106,6 +106,8 @@ import DualAnchor4963Kill from './DualAnchor4963Kill.jsx';
 import TripleAnchorLinearKill from './TripleAnchorLinearKill.jsx';
 // @ts-ignore
 import AnchorInteractionSuite from './AnchorInteractionSuite.jsx';
+// @ts-expect-error JSX module has no declaration file.
+import FourAnchorDifference from './FourAnchorDifference.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
@@ -346,6 +348,12 @@ const routes = [
     label: '三锚点线性回绕',
     section: '杀码',
     element: <TripleAnchorLinearKill />,
+  },
+  {
+    path: '/kill/four-anchor-difference',
+    label: '四锚点差分交互',
+    section: '杀码',
+    element: <FourAnchorDifference />,
   },
   {
     path: '/kill/anchor-interaction-suite',

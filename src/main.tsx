@@ -106,8 +106,8 @@ import DualAnchor4963Kill from './DualAnchor4963Kill.jsx';
 import TripleAnchorLinearKill from './TripleAnchorLinearKill.jsx';
 // @ts-ignore
 import AnchorInteractionSuite from './AnchorInteractionSuite.jsx';
-// @ts-expect-error JSX module has no declaration file.
-import FourAnchorDifference from './FourAnchorDifference.jsx';
+// @ts-ignore
+import DrawFingerprintControl from './DrawFingerprintControl.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
 // @ts-ignore
@@ -350,10 +350,10 @@ const routes = [
     element: <TripleAnchorLinearKill />,
   },
   {
-    path: '/kill/four-anchor-difference',
-    label: '四锚点差分交互',
+    path: '/kill/draw-fingerprint-control',
+    label: '开奖号指纹对照',
     section: '杀码',
-    element: <FourAnchorDifference />,
+    element: <DrawFingerprintControl />,
   },
   {
     path: '/kill/anchor-interaction-suite',

@@ -71,6 +71,8 @@ import { TripleAnchorLinearKillController } from './triple-anchor-linear-kill.co
 import { TripleAnchorLinearKillService } from './triple-anchor-linear-kill.service';
 import { AnchorInteractionSuiteController } from './anchor-interaction-suite.controller';
 import { AnchorInteractionSuiteService } from './anchor-interaction-suite.service';
+import { DrawFingerprintControlController } from './draw-fingerprint-control.controller';
+import { DrawFingerprintControlService } from './draw-fingerprint-control.service';
 import { TieredKillComboController } from './tiered-kill-combo.controller';
 import { TieredKillComboService } from './tiered-kill-combo.service';
 import { RiskControlledFiveController } from './risk-controlled-five.controller';
@@ -116,6 +118,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     DualAnchor4963KillController,
     TripleAnchorLinearKillController,
     AnchorInteractionSuiteController,
+    DrawFingerprintControlController,
     TieredKillComboController,
     RiskControlledFiveController,
     RoughCopulaRqaKillController,
@@ -156,6 +159,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     DualAnchor4963KillService,
     TripleAnchorLinearKillService,
     AnchorInteractionSuiteService,
+    DrawFingerprintControlService,
     TieredKillComboService,
     RiskControlledFiveService,
     RoughCopulaRqaKillService,

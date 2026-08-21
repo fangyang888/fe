@@ -13,6 +13,7 @@ import { AgentMessageRecord } from './persistence/agent-message.entity';
 import { AgentHistoryController } from './persistence/agent-history.controller';
 import { AgentHistoryService } from './persistence/agent-history.service';
 import { AgentChatApplicationService } from './persistence/agent-chat-application.service';
+import { AgentCheckpointerService } from './persistence/agent-checkpointer.service';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AgentChatApplicationService } from './persistence/agent-chat-applicatio
     AgentConversationService,
     AgentHistoryService,
     AgentChatApplicationService,
+    AgentCheckpointerService,
   ],
   // 其他模块目前不需要直接操作内部组件，只暴露统一入口 AgentService。
   exports: [AgentService],

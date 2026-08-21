@@ -4,13 +4,12 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { createAgent } from 'langchain';
+import { createAgent, summarizationMiddleware } from 'langchain';
 import { AgentChatResponseDto } from './agent.dto';
 import { AgentIntentService } from './agent.intent.service';
 import { AgentModelFactory } from './agent-model.factory';
 import { createAgentTools } from './agent.tools';
 import { ProductCustomerService } from './product-customer.service';
-import { MemorySaver } from '@langchain/langgraph';
 import { AgentConversationService } from './conversation/agent.conversation.service';
 import {
   AgentConversationState,
@@ -20,6 +19,7 @@ import {
   mergeEntities,
 } from './conversation/agent.conversation';
 import { CustomerEntities, CustomerIntentName } from './agent.intent';
+import { AgentCheckpointerService } from './persistence/agent-checkpointer.service';
 type SingleAgent = ReturnType<typeof createAgent>;
 
 /**
@@ -32,12 +32,12 @@ type SingleAgent = ReturnType<typeof createAgent>;
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
   private agent?: SingleAgent;
-  private readonly checkpointer = new MemorySaver();
   constructor(
     private readonly modelFactory: AgentModelFactory,
     private readonly agentIntentService: AgentIntentService,
     private readonly productCustomerService: ProductCustomerService,
     private readonly conversationService: AgentConversationService,
+    private readonly checkpointerService: AgentCheckpointerService,
   ) {}
   private resolveIntent(
     state: AgentConversationState,
@@ -225,13 +225,20 @@ export class AgentService {
     if (this.agent) {
       return this.agent;
     }
-
+    const model = this.modelFactory.getModelName();
     this.agent = createAgent({
       name: 'fe_assistant',
-      model: this.modelFactory.getModel(),
-      checkpointer: this.checkpointer,
+      model,
+      checkpointer: this.checkpointerService.get(),
       // 商品查询由确定性路由负责，这里只注册通用 Tool，避免两个入口抢同一件事。
       tools: createAgentTools(),
+      middleware: [
+        summarizationMiddleware({
+          model,
+          trigger: { messages: 20 },
+          keep: { messages: 8 },
+        }),
+      ],
       systemPrompt: [
         '你是 FE 商城项目的中文 AI 助手。',
         '回答要准确、简洁；不知道时明确说明，不得编造事实。',

@@ -103,6 +103,7 @@ jobs:
               REDIS_URL="redis://127.0.0.1:6379"
             fi
             echo "REDIS_URL=$REDIS_URL" >> .env
+            echo "AGENT_CHECKPOINT_REDIS_URL=$REDIS_URL" >> .env
 
             # 商城 / 鉴权相关配置（从 GitHub Secrets 读取）
             echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env

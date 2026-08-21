@@ -107,6 +107,8 @@ import TripleAnchorLinearKill from './TripleAnchorLinearKill.jsx';
 // @ts-ignore
 import AnchorInteractionSuite from './AnchorInteractionSuite.jsx';
 // @ts-ignore
+import GatedAnchorSuite from './GatedAnchorSuite.jsx';
+// @ts-ignore
 import DrawFingerprintControl from './DrawFingerprintControl.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
@@ -360,6 +362,12 @@ const routes = [
     label: '锚点交互四公式',
     section: '杀码',
     element: <AnchorInteractionSuite />,
+  },
+  {
+    path: '/kill/gated-anchor-suite',
+    label: '门控锚点五公式',
+    section: '杀码',
+    element: <GatedAnchorSuite />,
   },
   // {
   //   path: '/kill/tiered-combo',

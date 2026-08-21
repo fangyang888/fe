@@ -9,6 +9,7 @@ type ChatMessage = {
   content: string;
   time: string;
   model?: string;
+  createdAt?: number;
 };
 
 type AgentResponse = {
@@ -22,6 +23,7 @@ type AgentHistoryMessage = {
   content: string;
   status: 'pending' | 'completed' | 'failed';
   model: string | null;
+  createdAt: number;
 };
 
 const ACTIVE_CONVERSATION_KEY = 'agent.activeConversationId';
@@ -51,8 +53,14 @@ const suggestions = [
 
 let messageSequence = 0;
 
-function createMessage(role: MessageRole, content: string, model?: string): ChatMessage {
+function createMessage(
+  role: MessageRole,
+  content: string,
+  model?: string,
+  createdAt?: number,
+): ChatMessage {
   messageSequence += 1;
+  const messageTime = createdAt ? new Date(createdAt) : new Date();
   return {
     id: `${Date.now()}-${messageSequence}`,
     role,
@@ -61,7 +69,7 @@ function createMessage(role: MessageRole, content: string, model?: string): Chat
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    }).format(new Date()),
+    }).format(messageTime),
     model,
   };
 }
@@ -206,7 +214,12 @@ export default function AgentChat() {
           ...records
             .filter((record) => record.status === 'completed')
             .map((record) =>
-              createMessage(record.role, record.content, record.model ?? undefined),
+              createMessage(
+                record.role,
+                record.content,
+                record.model ?? undefined,
+                record.createdAt,
+              ),
             ),
         ]);
       })

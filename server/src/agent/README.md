@@ -20,13 +20,21 @@
 >
 > 第 6 课详细讲解请查看：[生产级会话持久化与上下文工程](./LESSON_06_PERSISTENT_CONVERSATIONS_AND_CONTEXT_ENGINEERING.md)。
 >
+> 如果原理容易混乱，请先跟着当前项目逐步修改：[第 6 课现有项目跟敲版](./LESSON_06_EXISTING_PROJECT_STEP_BY_STEP.md)。
+>
 > 第 6 课动手版请查看：[六天代码实验与页面自测](./LESSON_06_SIX_DAY_CODE_AND_PAGE_TEST.md)。
 
 > 完成第 1～4 关后，从这里继续：[第 5～8 关生产级会话 Context 落地与验收](./LESSON_06_GATE_05_TO_08_PRODUCTION_CONTEXT.md)。
 >
 > 第 7 课详细讲解请查看：[生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)。
 >
+> 第 8 课第一次学习请先阅读：[RAG 核心原理与学习要点](./LESSON_08_RAG_KEY_POINTS_AND_LEARNING_GUIDE.md)。
+>
 > 第 8 课详细讲解请查看：[生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)。
+>
+> 第 9 课详细讲解请查看：[安全业务 Tool、用户归属与真正转人工](./LESSON_09_SECURE_BUSINESS_TOOLS_AND_HUMAN_HANDOFF.md)。
+>
+> 第 10 课详细讲解请查看：[自定义 LangGraph、持久工作流与人工审批](./LESSON_10_LANGGRAPH_WORKFLOW_AND_HUMAN_APPROVAL.md)。
 
 当前模块提供一个无状态的 LangChain.js Agent，入口为：
 

@@ -85,6 +85,8 @@ import { EliteFourKillController } from './elite-four-kill.controller';
 import { EliteFourKillService } from './elite-four-kill.service';
 import { SelectedAnchorSuiteController } from './selected-anchor-suite.controller';
 import { SelectedAnchorSuiteService } from './selected-anchor-suite.service';
+import { AdaptiveAnchorSuiteController } from './adaptive-anchor-suite.controller';
+import { AdaptiveAnchorSuiteService } from './adaptive-anchor-suite.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -131,6 +133,7 @@ import { SelectedAnchorSuiteService } from './selected-anchor-suite.service';
     RoughCopulaRqaKillController,
     EliteFourKillController,
     SelectedAnchorSuiteController,
+    AdaptiveAnchorSuiteController,
   ],
   providers: [
     PredictorService,
@@ -175,6 +178,7 @@ import { SelectedAnchorSuiteService } from './selected-anchor-suite.service';
     RoughCopulaRqaKillService,
     EliteFourKillService,
     SelectedAnchorSuiteService,
+    AdaptiveAnchorSuiteService,
   ],
 })
 export class PredictorModule {}

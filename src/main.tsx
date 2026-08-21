@@ -113,6 +113,8 @@ import EliteFourKill from './EliteFourKill.jsx';
 // @ts-ignore
 import SelectedAnchorSuite from './SelectedAnchorSuite.jsx';
 // @ts-ignore
+import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
+// @ts-ignore
 import DrawFingerprintControl from './DrawFingerprintControl.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
@@ -373,17 +375,23 @@ const routes = [
   //   section: '杀码',
   //   element: <GatedAnchorSuite />,
   // },
-  {
-    path: '/kill/elite-four',
-    label: '四算法实战对照',
-    section: '杀码',
-    element: <EliteFourKill />,
-  },
+  // {
+  //   path: '/kill/elite-four',
+  //   label: '四算法实战对照',
+  //   section: '杀码',
+  //   element: <EliteFourKill />,
+  // },
   {
     path: '/kill/selected-anchor-suite',
     label: '新锚点 G～J',
     section: '杀码',
     element: <SelectedAnchorSuite />,
+  },
+  {
+    path: '/kill/adaptive-anchor-suite',
+    label: 'K/R50/R20/50/M10',
+    section: '杀码',
+    element: <AdaptiveAnchorSuite />,
   },
   // {
   //   path: '/kill/tiered-combo',

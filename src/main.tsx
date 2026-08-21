@@ -389,7 +389,7 @@ const routes = [
   },
   {
     path: '/kill/adaptive-anchor-suite',
-    label: 'K/R50/R20/50/M10',
+    label: 'K/R50/R20/50/M10/A100',
     section: '杀码',
     element: <AdaptiveAnchorSuite />,
   },

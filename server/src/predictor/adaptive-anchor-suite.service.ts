@@ -74,6 +74,7 @@ export class AdaptiveAnchorSuiteService {
     const r50Rows = this.buildR50Rows(history, baseDefinitions, baseSuccess);
     const r2050Rows = this.buildR2050Rows(history, baseDefinitions, baseSuccess);
     const m10Rows = this.buildM10Rows(history, baseDefinitions, baseSuccess);
+    const a100Rows = this.buildA100Rows(history, baseDefinitions, baseSuccess);
     const latest = history[history.length - 1];
 
     const algorithms = [
@@ -125,13 +126,25 @@ export class AdaptiveAnchorSuiteService {
         m10Rows.rows,
         m10Rows.next,
       ),
+      this.buildAlgorithm(
+        history,
+        {
+          key: 'A100',
+          code: 'A100',
+          name: 'A100稳态择优',
+          description: '兼顾近8期基础模型实绩和候选号码近100期出现风险，并用切换缓冲减少频繁换模。',
+          rule: '评分 = 近8期失败 + 0.1 × 近100期失败 + 1.5 × 候选号码近100期出现次数；切换缓冲0.35。',
+        },
+        a100Rows.rows,
+        a100Rows.next,
+      ),
     ];
 
     return {
       status: 'selection-locked',
       strategy: {
         key: 'adaptiveAnchorSuite',
-        name: 'K · R50 · R20/50 · M10双层择优',
+        name: 'K · R50 · R20/50 · M10双层择优 · A100稳态择优',
         algorithmCount: algorithms.length,
         windows: this.windows,
         researchCutoff: { year: this.researchYear, No: this.researchCutoffNo },
@@ -339,6 +352,45 @@ export class AdaptiveAnchorSuiteService {
           metaChoice,
         });
       }
+    }
+    return { rows, next };
+  }
+
+  private buildA100Rows(
+    history: DrawRow[],
+    definitions: BaseDefinition[],
+    baseSuccess: Record<BaseKey, Array<boolean | undefined>>,
+  ) {
+    const start = Math.max(...definitions.map((item) => item.lag)) + 100;
+    const rows: AuditRow[] = [];
+    let next: any = null;
+    let previous: BaseKey = 'Q191';
+
+    for (let t = start; t <= history.length; t++) {
+      const scores = Object.fromEntries(definitions.map((item) => {
+        const predicted = this.pick(history, t, item).number;
+        return [
+          item.key,
+          this.failureCount(baseSuccess[item.key], t, 8) +
+            0.1 * this.failureCount(baseSuccess[item.key], t, 100) +
+            1.5 * this.appearanceCount(history, t, 100, predicted),
+        ];
+      })) as Record<BaseKey, number>;
+      const best = this.selectByScore(scores, ['Q191', 'K', 'C176']);
+      const selected: BaseKey = scores[previous] <= scores[best] + 0.35
+        ? previous
+        : best;
+      const candidate = this.pick(history, t, this.definition(selected));
+      const prediction = this.predictionDetails(
+        candidate,
+        selected,
+        this.basePredictionMap(history, t),
+        scores,
+        `A100最低分为${scores[best].toFixed(2)}；加入0.35切换缓冲后采用${selected}。`,
+      );
+      previous = selected;
+      if (t === history.length) next = prediction;
+      else rows.push(this.auditRow(history, t, candidate, prediction.basePredictions, scores));
     }
     return { rows, next };
   }

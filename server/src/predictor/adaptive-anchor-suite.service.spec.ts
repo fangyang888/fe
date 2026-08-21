@@ -19,7 +19,7 @@ const buildHistory = (count: number) =>
   });
 
 describe('AdaptiveAnchorSuiteService', () => {
-  it('returns the four frozen algorithms with only 10/20/50/100/200 windows', async () => {
+  it('returns the five frozen algorithms with only 10/20/50/100/200 windows', async () => {
     const historyService = {
       findAll: jest.fn().mockResolvedValue(buildHistory(1000)),
     };
@@ -29,7 +29,7 @@ describe('AdaptiveAnchorSuiteService', () => {
     expect(result).toMatchObject({
       status: 'selection-locked',
       strategy: {
-        algorithmCount: 4,
+        algorithmCount: 5,
         windows: [10, 20, 50, 100, 200],
         researchCutoff: { year: 2026, No: 198 },
         selectionLockedAt: { year: 2026, No: 211 },
@@ -42,6 +42,7 @@ describe('AdaptiveAnchorSuiteService', () => {
         ['R50', 48],
         ['R20/50', 48],
         ['M10', 13],
+        ['A100', 13],
       ]);
 
     for (const algorithm of result.algorithms) {

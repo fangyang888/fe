@@ -81,6 +81,8 @@ import { RiskControlledFiveController } from './risk-controlled-five.controller'
 import { RiskControlledFiveService } from './risk-controlled-five.service';
 import { RoughCopulaRqaKillController } from './rough-copula-rqa-kill.controller';
 import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
+import { EliteFourKillController } from './elite-four-kill.controller';
+import { EliteFourKillService } from './elite-four-kill.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -125,6 +127,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     TieredKillComboController,
     RiskControlledFiveController,
     RoughCopulaRqaKillController,
+    EliteFourKillController,
   ],
   providers: [
     PredictorService,
@@ -167,6 +170,7 @@ import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
     TieredKillComboService,
     RiskControlledFiveService,
     RoughCopulaRqaKillService,
+    EliteFourKillService,
   ],
 })
 export class PredictorModule {}

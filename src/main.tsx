@@ -109,6 +109,8 @@ import AnchorInteractionSuite from './AnchorInteractionSuite.jsx';
 // @ts-ignore
 import GatedAnchorSuite from './GatedAnchorSuite.jsx';
 // @ts-ignore
+import EliteFourKill from './EliteFourKill.jsx';
+// @ts-ignore
 import DrawFingerprintControl from './DrawFingerprintControl.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
@@ -368,6 +370,12 @@ const routes = [
     label: '门控锚点五公式',
     section: '杀码',
     element: <GatedAnchorSuite />,
+  },
+  {
+    path: '/kill/elite-four',
+    label: '四算法实战对照',
+    section: '杀码',
+    element: <EliteFourKill />,
   },
   // {
   //   path: '/kill/tiered-combo',

@@ -83,6 +83,8 @@ import { RoughCopulaRqaKillController } from './rough-copula-rqa-kill.controller
 import { RoughCopulaRqaKillService } from './rough-copula-rqa-kill.service';
 import { EliteFourKillController } from './elite-four-kill.controller';
 import { EliteFourKillService } from './elite-four-kill.service';
+import { SelectedAnchorSuiteController } from './selected-anchor-suite.controller';
+import { SelectedAnchorSuiteService } from './selected-anchor-suite.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -128,6 +130,7 @@ import { EliteFourKillService } from './elite-four-kill.service';
     RiskControlledFiveController,
     RoughCopulaRqaKillController,
     EliteFourKillController,
+    SelectedAnchorSuiteController,
   ],
   providers: [
     PredictorService,
@@ -171,6 +174,7 @@ import { EliteFourKillService } from './elite-four-kill.service';
     RiskControlledFiveService,
     RoughCopulaRqaKillService,
     EliteFourKillService,
+    SelectedAnchorSuiteService,
   ],
 })
 export class PredictorModule {}

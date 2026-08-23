@@ -13,12 +13,6 @@ type ChatMessage = {
   createdAt?: number;
 };
 
-type AgentResponse = {
-  reply?: string;
-  model?: string;
-  message?: string | string[];
-};
-
 type AgentHistoryMessage = {
   role: MessageRole;
   content: string;
@@ -320,34 +314,25 @@ export default function AgentChat() {
     setDraft('');
     setError('');
     setLoading(true);
+    setStageText('正在连接服务…');
+
+    const assistantMessage = createMessage('assistant', '');
+    activeRunRef.current = {
+      runId: null,
+      lastSeq: 0,
+      assistantMessageId: assistantMessage.id,
+      terminal: 'none',
+    };
+    setMessages((current) => [...current, assistantMessage]);
 
     try {
-      const response = await fetch('/api/agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          conversationId: conversationIdRef.current,
-          clientMessageId: clientMessageIdRef.current,
-        }),
+      await streamAgentMessage({
+        message,
+        conversationId: conversationIdRef.current,
+        clientMessageId: clientMessageIdRef.current,
         signal: controller.signal,
+        onEvent: handleStreamEvent,
       });
-      const data = (await response.json().catch(() => null)) as AgentResponse | null;
-
-      if (!response.ok) {
-        const detail = Array.isArray(data?.message) ? data.message.join('；') : data?.message;
-        throw new Error(detail || `请求失败（HTTP ${response.status}）`);
-      }
-
-      if (!data?.reply) {
-        throw new Error('Agent 没有返回可显示的回答');
-      }
-      clientMessageIdRef.current = crypto.randomUUID();
-      setMessages((current) => [
-        ...current,
-        createMessage('assistant', data.reply as string, data.model),
-      ]);
-      setConnected(true);
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         return;
@@ -355,9 +340,17 @@ export default function AgentChat() {
 
       setConnected(false);
       setError(requestError instanceof Error ? requestError.message : 'Agent 请求失败，请稍后重试');
+      setMessages((current) =>
+        current.filter(
+          (item) => item.id !== assistantMessage.id || item.content.length > 0,
+        ),
+      );
     } finally {
       if (requestRef.current === controller) {
+        clientMessageIdRef.current = crypto.randomUUID();
         requestRef.current = null;
+        activeRunRef.current = null;
+        setStageText('');
         setLoading(false);
       }
     }
@@ -373,6 +366,8 @@ export default function AgentChat() {
     setMessages(createInitialMessages());
     setDraft('');
     setError('');
+    setStageText('');
+    activeRunRef.current = null;
     setLoading(false);
     inputRef.current?.focus();
   };
@@ -417,9 +412,9 @@ export default function AgentChat() {
               ))}
             </div>
 
-            {messages.slice(1).map((message) => (
-              <MessageRow key={message.id} message={message} />
-            ))}
+            {messages.slice(1).map((message) =>
+              message.content ? <MessageRow key={message.id} message={message} /> : null,
+            )}
 
             {loading ? (
               <div className="agent-message-row is-assistant" aria-label="Agent 正在回答">
@@ -428,7 +423,7 @@ export default function AgentChat() {
                 </div>
                 <div className="agent-loading-bubble">
                   <span className="agent-spinner" aria-hidden="true" />
-                  <span>正在思考并调用工具…</span>
+                  <span>{stageText || '正在思考并调用工具…'}</span>
                 </div>
               </div>
             ) : null}

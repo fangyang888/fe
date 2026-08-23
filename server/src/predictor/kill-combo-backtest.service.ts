@@ -192,7 +192,7 @@ export class KillComboBacktestService {
     const rawRows = await this.historyService.findAll();
     const history = this.normalizeRows(rawRows);
     const latest = history[history.length - 1];
-    const cacheKey = `likely22-position-stats:v1:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const cacheKey = `likely32-position-stats:v4-special-code-miss:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
     const memoryCached = this.memoryCache.get(cacheKey);
     if (memoryCached && !forceRefresh) {
       return {
@@ -279,6 +279,7 @@ export class KillComboBacktestService {
     cacheKey: string,
     diskCachePath: string,
   ) {
+    const positionCount = 32;
     const latest = history[history.length - 1];
     const start = Math.max(10, history.length - 100);
     const results: Array<{
@@ -287,22 +288,27 @@ export class KillComboBacktestService {
       predictions: number[];
       actual: number[];
       absent: boolean[];
+      specialCode: number;
+      specialHits: boolean[];
     }> = [];
     for (let target = start; target < history.length; target++) {
-      const predictions = this.likely22(history.slice(0, target));
+      const predictions = this.likely22(history.slice(0, target), positionCount);
       const actual = history[target].numbers;
+      const specialCode = actual[actual.length - 1];
       results.push({
         year: history[target].year,
         No: history[target].No,
         predictions,
         actual,
         absent: predictions.map((number) => !actual.includes(number)),
+        specialCode,
+        specialHits: predictions.map((number) => number === specialCode),
       });
     }
 
     const windows = [10, 20, 50, 100].map((periods) => {
       const sample = results.slice(-periods);
-      const positions = Array.from({ length: 22 }, (_, index) => {
+      const positions = Array.from({ length: positionCount }, (_, index) => {
         const absentCount = sample.filter((row) => row.absent[index]).length;
         return {
           position: index + 1,
@@ -322,8 +328,8 @@ export class KillComboBacktestService {
       };
     });
 
-    const currentPredictions = this.likely22(history);
-    const overall = Array.from({ length: 22 }, (_, index) => {
+    const currentPredictions = this.likely22(history, positionCount);
+    const overall = Array.from({ length: positionCount }, (_, index) => {
       const rates = windows.map((window) => window.positions[index].rate);
       return {
         position: index + 1,
@@ -333,13 +339,69 @@ export class KillComboBacktestService {
       };
     }).sort((a, b) => b.averageRate - a.averageRate || a.position - b.position);
 
+    const specialCodeWindows = [10, 20, 50, 100].map((periods) => {
+      const sample = results.slice(-periods);
+      const positions = Array.from({ length: positionCount }, (_, index) => {
+        const hitCount = sample.filter((row) => row.specialHits[index]).length;
+        const missCount = sample.length - hitCount;
+        return {
+          position: index + 1,
+          samples: sample.length,
+          hitCount,
+          missCount,
+          rate: sample.length
+            ? Math.round((missCount / sample.length) * 1000) / 10
+            : 0,
+        };
+      });
+      const coveredCount = sample.filter((row) =>
+        row.specialHits.some(Boolean),
+      ).length;
+      const bestRate = Math.max(...positions.map((item) => item.rate));
+      return {
+        periods,
+        samples: sample.length,
+        coveredCount,
+        uncoveredCount: sample.length - coveredCount,
+        coverageRate: sample.length
+          ? Math.round((coveredCount / sample.length) * 1000) / 10
+          : 0,
+        positions,
+        bestPositions: positions.filter((item) => item.rate === bestRate),
+      };
+    });
+    const specialCodeOverall = Array.from({ length: positionCount }, (_, index) => {
+      const rates = specialCodeWindows.map(
+        (window) => window.positions[index].rate,
+      );
+      return {
+        position: index + 1,
+        averageRate:
+          Math.round(
+            (rates.reduce((sum, rate) => sum + rate, 0) / rates.length) * 10,
+          ) / 10,
+      };
+    }).sort(
+      (a, b) => b.averageRate - a.averageRate || a.position - b.position,
+    );
+    const specialCodeBestAverageRate = specialCodeOverall[0]?.averageRate || 0;
+
     const response = {
-      model: 'likely22-absent',
-      modelLabel: '最可能出现的22码反向未出现统计',
+      model: 'likely32-absent',
+      modelLabel: '最可能出现的32码反向未出现统计',
       metricLabel: '未出现率',
       currentPredictions,
       windows,
       overallBest: overall[0],
+      specialCodeStats: {
+        definition: '每期7个开奖号码中的最后一个号码（n7）',
+        metricLabel: '特别码未命中率',
+        windows: specialCodeWindows,
+        overallBest: specialCodeOverall[0],
+        overallBestPositions: specialCodeOverall.filter(
+          (item) => item.averageRate === specialCodeBestAverageRate,
+        ),
+      },
       historyMeta: {
         count: history.length,
         latest: latest
@@ -1271,7 +1333,7 @@ export class KillComboBacktestService {
     return this.killPredictWithOpts(hist, this.getAdaptiveKill5Opts(hist));
   }
 
-  private likely22(history: DrawRow[]) {
+  private likely22(history: DrawRow[], count = 22) {
     const hist = this.toMatrix(history);
     const out: Array<{ n: number; score: number }> = [];
     const lastRow = new Set(hist[hist.length - 1] || []);
@@ -1290,8 +1352,7 @@ export class KillComboBacktestService {
       hist.forEach((row, index) => {
         if (row.includes(n)) appearances.push(index);
       });
-      if (!appearances.length) continue;
-
+      if (count === 22 && !appearances.length) continue;
       const avgGap =
         appearances.length >= 2
           ? appearances.slice(1).reduce((sum, index, i) => sum + index - appearances[i], 0) /
@@ -1327,12 +1388,12 @@ export class KillComboBacktestService {
       }
       if ([...lastRow].some((x) => Math.abs(x - n) === 1) && lastMiss >= 2) score += 0.3;
 
-      if (score > 0) out.push({ n, score });
+      if (count !== 22 || score > 0) out.push({ n, score });
     }
 
     return out
       .sort((a, b) => b.score - a.score)
-      .slice(0, 22)
+      .slice(0, count)
       .map((item) => item.n);
   }
 

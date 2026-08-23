@@ -157,7 +157,7 @@ const routes = [
   },
   {
     path: '/kill/likely22-position-stats',
-    label: '22码反向未出现概率',
+    label: '32码反向未出现概率',
     section: '杀码',
     element: <Likely22PositionStats />,
   },

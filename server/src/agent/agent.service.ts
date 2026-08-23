@@ -21,7 +21,34 @@ import {
 import { CustomerEntities, CustomerIntentName } from './agent.intent';
 import { AgentCheckpointerService } from './persistence/agent-checkpointer.service';
 type SingleAgent = ReturnType<typeof createAgent>;
+type AgentChatStreamCallbacks = {
+  signal: AbortSignal;
+  onStatus(
+    stage: 'understanding' | 'tool' | 'answering',
+    message: string,
+  ): Promise<void>;
+  onDelta(delta: string): Promise<void>;
+  onToolStarted(input: {
+    toolCallId: string;
+    toolName: string;
+    displayName: string;
+  }): Promise<void>;
+  onToolFinished(input: {
+    toolCallId: string;
+    toolName: string;
+    summary: string;
+    durationMs: number;
+  }): Promise<void>;
+};
 
+const TOOL_PRESENTATION: Record<
+  string,
+  { displayName: string; finished: string }
+> = {
+  calculator: { displayName: '计算器', finished: '计算完成' },
+  get_current_time: { displayName: '时间查询', finished: '时间查询完成' },
+  transform_text: { displayName: '文本转换', finished: '文本处理完成' },
+};
 /**
  * 客服总调度器。
  *
@@ -67,6 +94,7 @@ export class AgentService {
   async chat(
     message: string,
     conversationId: string,
+    stream?: AgentChatStreamCallbacks,
   ): Promise<AgentChatResponseDto> {
     const modelName = this.modelFactory.getModelName();
 
@@ -95,7 +123,7 @@ export class AgentService {
           missingFields: [],
         };
       }
-
+      await stream?.onStatus('understanding', '正在理解你的问题');
       const analysis = await this.agentIntentService.analyze(message);
       const mergedEntities = mergeEntities(state.entities, analysis.entities);
       if (analysis.intent === 'human_handoff') {
@@ -161,7 +189,8 @@ export class AgentService {
           entities: mergedEntities,
           missingFields: [],
         });
-
+        await stream?.onStatus('answering', '正在整理商品信息');
+        await stream?.onDelta(reply);
         this.conversationService.save({
           ...state,
           status: 'completed',
@@ -186,17 +215,31 @@ export class AgentService {
       // 清除旧的商品补字段状态，避免用户已经切换话题后仍被旧任务影响。
       this.conversationService.clear(conversationId);
 
-      const result = await this.getAgent().invoke(
-        {
-          messages: [{ role: 'user', content: message }],
-        },
-        {
-          // MemorySaver 用 thread_id 隔离不同浏览器会话的短期消息状态。
-          configurable: { thread_id: conversationId },
-        },
-      );
-      const lastMessage = result.messages.at(-1);
+      // const result = await this.getAgent().invoke(
+      //   {
+      //     messages: [{ role: 'user', content: message }],
+      //   },
+      //   {
+      //     // MemorySaver 用 thread_id 隔离不同浏览器会话的短期消息状态。
+      //     configurable: { thread_id: conversationId },
+      //   },
+      // );
+      // const lastMessage = result.messages.at(-1);
+      let result: Awaited<ReturnType<SingleAgent['invoke']>>;
+      if (!stream) {
+        result = await this.getAgent().invoke(
+          {
+            messages: [{ role: 'user', content: message }],
+          },
+          {
+            configurable: { thread_id: conversationId },
+          },
+        );
+      } else {
+        result = await this.streamGeneralAgent(message, conversationId, stream);
+      }
 
+      const lastMessage = result.messages.at(-1);
       return {
         conversationId,
         reply: this.extractText(lastMessage?.content),
@@ -221,11 +264,66 @@ export class AgentService {
     }
   }
 
+  private async streamGeneralAgent(
+    message: string,
+    conversationId: string,
+    stream: AgentChatStreamCallbacks,
+  ): Promise<Awaited<ReturnType<SingleAgent['invoke']>>> {
+    const run = await this.getAgent().streamEvents(
+      {
+        messages: [{ role: 'user', content: message }],
+      },
+      {
+        version: 'v3',
+        signal: stream.signal,
+        configurable: { thread_id: conversationId },
+      },
+    );
+
+    await stream.onStatus('answering', '正在生成回答');
+
+    const consumeMessages = (async () => {
+      for await (const modelMessage of run.messages) {
+        for await (const delta of modelMessage.text) {
+          if (delta) await stream.onDelta(delta);
+        }
+      }
+    })();
+
+    const consumeTools = (async () => {
+      for await (const toolCall of run.toolCalls) {
+        const startedAt = Date.now();
+        const presentation = TOOL_PRESENTATION[toolCall.name] ?? {
+          displayName: '业务处理',
+          finished: '处理完成',
+        };
+
+        await stream.onToolStarted({
+          toolCallId: toolCall.callId,
+          toolName: toolCall.name,
+          displayName: presentation.displayName,
+        });
+
+        await toolCall.output;
+
+        await stream.onToolFinished({
+          toolCallId: toolCall.callId,
+          toolName: toolCall.name,
+          summary: presentation.finished,
+          durationMs: Date.now() - startedAt,
+        });
+      }
+    })();
+
+    await Promise.all([consumeMessages, consumeTools]);
+    return run.output;
+  }
+
   private getAgent(): SingleAgent {
     if (this.agent) {
       return this.agent;
     }
-    const model = this.modelFactory.getModelName();
+    const model = this.modelFactory.getModel();
     this.agent = createAgent({
       name: 'fe_assistant',
       model,

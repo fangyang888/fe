@@ -28,6 +28,10 @@
 >
 > 第 7 课详细讲解请查看：[生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)。
 >
+> 第 7 课跟敲上篇：[后端事件协议、Agent Streaming 与 SSE 自测](./LESSON_07_UPPER_BACKEND_STREAMING_CODE_AND_SELF_TEST.md)。
+>
+> 第 7 课跟敲下篇：[前端流式页面、取消、可观测性与线上验收](./LESSON_07_LOWER_FRONTEND_OBSERVABILITY_AND_SELF_TEST.md)。
+>
 > 第 8 课第一次学习请先阅读：[RAG 核心原理与学习要点](./LESSON_08_RAG_KEY_POINTS_AND_LEARNING_GUIDE.md)。
 >
 > 第 8 课详细讲解请查看：[生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)。

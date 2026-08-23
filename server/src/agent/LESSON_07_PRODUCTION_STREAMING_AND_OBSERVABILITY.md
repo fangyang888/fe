@@ -3,6 +3,8 @@
 > 本章基于当前项目中的 React、NestJS、LangChain.js v1 Agent 和 Nginx 编写。
 >
 > 本章目标不是简单地把文字一个字一个字显示出来，而是建立一套真正能上线的流式执行协议：用户能及时看到反馈，工具执行过程可理解，请求可以取消，断线可以恢复，服务端可以定位问题，同时不泄露模型内部推理和敏感数据。
+>
+> 看完原理后按仓库代码实作：[跟敲上篇：后端 Streaming 与 SSE](./LESSON_07_UPPER_BACKEND_STREAMING_CODE_AND_SELF_TEST.md) → [跟敲下篇：前端、取消与可观测性](./LESSON_07_LOWER_FRONTEND_OBSERVABILITY_AND_SELF_TEST.md)。
 
 ---
 

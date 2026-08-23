@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import './AgentChat.css';
+import { streamAgentMessage, type CustomerServiceEvent } from './agent-stream';
 
 type MessageRole = 'user' | 'assistant';
 
@@ -179,6 +180,13 @@ export default function AgentChat() {
   // conversationId 同时用作后端多轮状态的 thread_id，统一使用标准 UUID v4。
   const conversationIdRef = useRef(getOrCreateConversationId());
   const clientMessageIdRef = useRef(crypto.randomUUID());
+  const [stageText, setStageText] = useState('');
+  const activeRunRef = useRef<{
+    runId: string | null;
+    lastSeq: number;
+    assistantMessageId: string;
+    terminal: 'none' | 'completed' | 'failed' | 'cancelled';
+  } | null>(null);
   useEffect(() => {
     document.body.classList.add('agent-chat-active');
     return () => document.body.classList.remove('agent-chat-active');
@@ -230,7 +238,76 @@ export default function AgentChat() {
 
     return () => controller.abort();
   }, []);
+  const appendAssistantDelta = (messageId: string, delta: string) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, content: message.content + delta } : message,
+      ),
+    );
+  };
 
+  const replaceAssistantFinal = (messageId: string, content: string, model: string) => {
+    setMessages((current) =>
+      current.map((message) =>
+        message.id === messageId ? { ...message, content, model } : message,
+      ),
+    );
+  };
+  const handleStreamEvent = (event: CustomerServiceEvent) => {
+    const active = activeRunRef.current;
+
+    if (!active) return;
+
+    if (event.type === 'run_started' && active.runId === null) {
+      active.runId = event.runId;
+    }
+
+    if (active.runId !== event.runId) return;
+    if (event.seq <= active.lastSeq) return;
+    active.lastSeq = event.seq;
+
+    switch (event.type) {
+      case 'status':
+        setStageText(event.message);
+        break;
+      case 'tool_started':
+        setStageText(`正在使用${event.displayName}`);
+        break;
+      case 'tool_finished':
+        setStageText(event.summary);
+        break;
+      case 'assistant_delta':
+        appendAssistantDelta(active.assistantMessageId, event.delta);
+        break;
+      case 'assistant_final':
+        replaceAssistantFinal(active.assistantMessageId, event.content, event.model);
+        setStageText('');
+        setConnected(true);
+        active.terminal = 'completed';
+        break;
+      case 'run_failed':
+        setError(event.message);
+        setStageText('');
+        setConnected(false);
+        active.terminal = 'failed';
+        setMessages((current) =>
+          current.filter(
+            (item) => item.id !== active.assistantMessageId || item.content.length > 0,
+          ),
+        );
+        break;
+      case 'run_cancelled':
+        setStageText('已停止');
+        active.terminal = 'cancelled';
+        break;
+      case 'done':
+        setStageText('');
+        break;
+      case 'run_started':
+        setStageText('已收到问题');
+        break;
+    }
+  };
   const sendMessage = async (value: string) => {
     const message = value.trim();
     if (!message || loading) {

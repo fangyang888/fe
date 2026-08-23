@@ -14,6 +14,7 @@ import { AgentHistoryController } from './persistence/agent-history.controller';
 import { AgentHistoryService } from './persistence/agent-history.service';
 import { AgentChatApplicationService } from './persistence/agent-chat-application.service';
 import { AgentCheckpointerService } from './persistence/agent-checkpointer.service';
+import { AgentStreamApplicationService } from './stream/agent.stream-application.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { AgentCheckpointerService } from './persistence/agent-checkpointer.servi
     AgentHistoryService,
     AgentChatApplicationService,
     AgentCheckpointerService,
+    AgentStreamApplicationService,
   ],
   // 其他模块目前不需要直接操作内部组件，只暴露统一入口 AgentService。
   exports: [AgentService],

@@ -2,6 +2,8 @@
 
 > 初学者学习路线和每周练习计划请查看：[LEARNING_PLAN.md](./LEARNING_PLAN.md)。
 >
+> Zod 专项学习请查看：[Server Agent Zod 项目实战学习指南](./ZOD_PROJECT_STUDY_GUIDE.md)。
+>
 > 第 1 课详细讲解请查看：[ChatOpenAI、model.invoke() 与 Tool](./LESSON_01_CHATOPENAI_AND_TOOLS.md)。
 >
 > 第 2 课详细讲解请查看：[从模拟商品查询 Tool 到 ProductService](./LESSON_02_PRODUCT_SEARCH_TOOL.md)。

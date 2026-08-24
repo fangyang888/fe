@@ -1,4 +1,5 @@
 import { DualAnchor4963KillService } from './dual-anchor-49-63-kill.service';
+import { DualTimeAnchorKillService } from './dual-time-anchor-kill.service';
 import { ShortLongAnchor149KillService } from './short-long-anchor-1-49-kill.service';
 import { TripleAnchorLinearKillService } from './triple-anchor-linear-kill.service';
 
@@ -38,6 +39,9 @@ describe('prospective dual-anchor kill services', () => {
     expect(result.backtests.backtest500).toMatchObject({
       count: 500,
       successCount: 500,
+      specialCodeMissCount: 500,
+      specialCodeHitCount: 0,
+      specialCodeMissRate: 1,
     });
     expect(result.validation).toMatchObject({
       kind: 'prospective',
@@ -64,6 +68,9 @@ describe('prospective dual-anchor kill services', () => {
     expect(result.backtests.backtest500).toMatchObject({
       count: 500,
       successCount: 500,
+      specialCodeMissCount: 500,
+      specialCodeHitCount: 0,
+      specialCodeMissRate: 1,
     });
     expect(result.validation).toMatchObject({ kind: 'prospective', count: 0 });
   });
@@ -90,6 +97,26 @@ describe('prospective dual-anchor kill services', () => {
     });
   });
 
+  it('returns special-code miss statistics for the shared dual-time page', async () => {
+    const historyService = {
+      findAll: jest.fn().mockResolvedValue(buildHistory(534)),
+    };
+    const service = new DualTimeAnchorKillService(historyService as any);
+    const result = (await service.getPrediction()) as any;
+
+    expect(result.prediction).toMatchObject({
+      number: 19,
+      nearNumber: 7,
+      farNumber: 7,
+    });
+    expect(result.backtests.backtest500).toMatchObject({
+      count: 500,
+      specialCodeMissCount: 500,
+      specialCodeHitCount: 0,
+      specialCodeMissRate: 1,
+    });
+  });
+
   it('separates the three-anchor replay from true prospective period 225', async () => {
     const historyService = {
       findAll: jest.fn().mockResolvedValue(buildHistory(600)),
@@ -110,6 +137,9 @@ describe('prospective dual-anchor kill services', () => {
     expect(result.backtests.backtest500).toMatchObject({
       count: 500,
       successCount: 0,
+      specialCodeMissCount: 500,
+      specialCodeHitCount: 0,
+      specialCodeMissRate: 1,
     });
     expect(result.historicalValidation).toMatchObject({
       kind: 'historical-holdout-replay',

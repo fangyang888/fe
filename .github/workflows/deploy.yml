@@ -84,7 +84,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,ecosystem.config.cjs,deploy/nginx.conf'
+          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/README.md,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,ecosystem.config.cjs,deploy/nginx.conf'
           target: '/home/deploy/fe'
           strip_components: 0
           timeout: 120s

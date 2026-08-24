@@ -161,12 +161,18 @@ export class ProspectiveDualAnchorKillBase {
 
   private summarize(rows: any[]) {
     const successCount = rows.filter((row) => row.success).length;
+    const specialCodeMissCount = rows.filter(
+      (row) => row.predictedNumber !== row.actualNumbers[row.actualNumbers.length - 1],
+    ).length;
     return {
       kind: 'walk-forward',
       count: rows.length,
       successCount,
       failureCount: rows.length - successCount,
       successRate: rows.length ? successCount / rows.length : 0,
+      specialCodeMissCount,
+      specialCodeHitCount: rows.length - specialCodeMissCount,
+      specialCodeMissRate: rows.length ? specialCodeMissCount / rows.length : 0,
       rows: rows.slice().reverse(),
       failureRows: rows.filter((row) => !row.success).reverse(),
     };

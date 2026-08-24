@@ -2,7 +2,7 @@
 
 > ## 一键发布（GitHub Actions）
 >
-> push 到 `main` / `feat/v4` 会自动:构建前端 + 后端 + **admin 后台** → scp 上传 → 生成 `.env` → **初始化商城数据库表** → 创建管理员账号 → 重启 PM2 + reload Nginx。
+> push 到 `main` / `feat/v4` 会自动：构建前端 + NestJS 后端 + **Python Agent** + **admin 后台** → scp 上传 → 生成 `.env` → **初始化商城数据库表** → 创建管理员账号 → 重启 PM2 + reload Nginx。
 >
 > **需要在 GitHub 仓库 Settings → Secrets 配置:**
 >
@@ -25,7 +25,9 @@
 >
 > GitHub Actions 会通过 SSH 环境变量传递 Agent 配置，在 ECS 上生成权限为 `600` 的 `/home/deploy/fe/server/.env`。真实 Key 不会写入仓库文件。
 >
-> 部署后访问:小程序后端 `http://你的IP/api`、**管理后台 `http://你的IP/admin`**、预测前端 `http://你的IP/fe`。
+> 部署后访问：小程序后端 `http://你的IP/api`、**管理后台 `http://你的IP/admin`**、预测前端 `http://你的IP/fe`、Python Agent 探活 `http://你的IP/api/agent/health`。
+>
+> Python Agent 当前只上线健康检查。`/api/agent/chat`、`/api/agent/intent` 和 `/api/agent/chat/stream` 仍由 NestJS 提供，等 Python 迁移和契约测试完成后再灰度切流。
 >
 > 注:数据库建表用 `server/sql/init-tables.sql`(幂等),首批演示数据可登录服务器手动跑 `seed-test-data.sql`。
 
@@ -146,9 +148,11 @@ curl http://localhost/api/history
 ```bash
 # 查看日志
 pm2 logs fe-server
+pm2 logs python-agent
 
 # 重启服务
 pm2 restart fe-server
+pm2 restart python-agent
 
 # 更新代码后重新部署
 cd /home/deploy/fe

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-
-const pct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
+import KillBacktestMetric from './KillBacktestMetric';
 
 function Metric({ label, data }) {
-  return <article className="qa-metric"><span>{label}</span><strong>{pct(data?.successRate)}</strong><small>{data?.successCount || 0}/{data?.count || 0} 成功</small></article>;
+  return <KillBacktestMetric label={label} data={data} className="qa-metric" />;
 }
 
 export default function QuadraticAnchor53Kill() {

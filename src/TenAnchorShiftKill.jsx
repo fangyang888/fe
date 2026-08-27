@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react';
+import KillBacktestMetric from './KillBacktestMetric';
 
 const fmtNum = (value) => String(value ?? '--').padStart(2, '0');
-const fmtPct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
 
 function Stat({ label, value, benchmark }) {
   const beats = typeof value?.successRate === 'number' && value.successRate > benchmark;
-  return <article className={`tas-stat ${beats ? 'beats' : ''}`}>
-    <span>{label}</span><strong>{fmtPct(value?.successRate)}</strong>
-    <small>{value?.successCount || 0}/{value?.count || 0} 成功</small>
-  </article>;
+  return <KillBacktestMetric label={label} data={value} className={`tas-stat ${beats ? 'beats' : ''}`} />;
 }
 
 export default function TenAnchorShiftKill() {

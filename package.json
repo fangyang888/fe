@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "test": "vitest run",
     "all": "export NVM_DIR=\"$HOME/.nvm\" && . \"$NVM_DIR/nvm.sh\" && nvm use v20.19.5 && (pnpm run dev & pnpm --dir server start:dev)"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "globals": "^16.4.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.45.0",
+    "vitest": "^4.0.18",
     "vite": "^7.1.7"
   }
 }

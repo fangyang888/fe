@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
+import { summarizeKillBacktest } from './kill-backtest-summary';
 
 type DrawRow = { id?: number; year?: number; No?: number; numbers: number[] };
 type State = {
@@ -125,14 +126,7 @@ export class StateRiskKillService {
         state: prediction.state, success: !history[t].includes(prediction.number),
       });
     }
-    const successCount = results.filter((row) => row.success).length;
-    return {
-      kind: 'walk-forward', count: results.length, successCount,
-      failureCount: results.length - successCount,
-      successRate: results.length ? successCount / results.length : 0,
-      rows: results.slice().reverse(),
-      failureRows: results.filter((row) => !row.success).reverse(),
-    };
+    return summarizeKillBacktest(results);
   }
 
   private buildFeatures(history: number[][]) {

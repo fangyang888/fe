@@ -38,6 +38,8 @@
 >
 > 第 8 课详细讲解请查看：[生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)。
 >
+> 如果希望从入门到生产实战逐章学习，请使用：[RAG 从入门到精通：商城客服项目实战](./rag-learning/README.md)。
+>
 > 第 9 课详细讲解请查看：[安全业务 Tool、用户归属与真正转人工](./LESSON_09_SECURE_BUSINESS_TOOLS_AND_HUMAN_HANDOFF.md)。
 >
 > 第 10 课详细讲解请查看：[自定义 LangGraph、持久工作流与人工审批](./LESSON_10_LANGGRAPH_WORKFLOW_AND_HUMAN_APPROVAL.md)。

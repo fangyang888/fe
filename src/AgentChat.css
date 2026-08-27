@@ -323,7 +323,8 @@ body.agent-chat-active .app-menu-button:hover {
 }
 
 .agent-clear-button,
-.agent-send-button {
+.agent-send-button,
+.agent-stop-button {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
@@ -366,6 +367,18 @@ body.agent-chat-active .app-menu-button:hover {
   box-shadow: none;
 }
 
+.agent-stop-button {
+  min-width: 110px;
+  border: 1px solid #d14343;
+  background: #ffffff;
+  color: #b42318;
+}
+
+.agent-stop-button:hover {
+  border-color: #a72d2d;
+  background: #fff3f3;
+}
+
 .agent-clear-button svg,
 .agent-send-button svg {
   width: 19px;
@@ -386,6 +399,21 @@ body.agent-chat-active .app-menu-button:hover {
   color: #a72d2d;
   font-size: 0.82rem;
   line-height: 1.5;
+}
+
+.agent-stream-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0 62px;
+  color: var(--agent-muted);
+  font-size: 0.84rem;
+}
+
+.agent-stream-status .agent-spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
 }
 
 .agent-mode-note {
@@ -502,6 +530,10 @@ body.agent-chat-active .app-menu-button:hover {
     font-size: 0.85rem;
   }
 
+  .agent-stream-status {
+    margin-left: 46px;
+  }
+
   .agent-composer {
     padding: 12px;
   }
@@ -513,7 +545,8 @@ body.agent-chat-active .app-menu-button:hover {
   }
 
   .agent-clear-button,
-  .agent-send-button {
+  .agent-send-button,
+  .agent-stop-button {
     min-height: 42px;
   }
 

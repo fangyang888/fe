@@ -1,0 +1,14 @@
+.kill-backtest-metric {
+  min-width: 0;
+}
+
+.kill-backtest-special {
+  display: block;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, .1);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}

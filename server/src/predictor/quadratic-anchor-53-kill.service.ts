@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
+import { summarizeKillBacktest } from './kill-backtest-summary';
 
 type DrawRow = { id: number; year?: number; No?: number; numbers: number[] };
 
@@ -66,13 +67,7 @@ export class QuadraticAnchor53KillService {
         success: !actual.numbers.includes(prediction.number),
       });
     }
-    const successCount = rows.filter((row) => row.success).length;
-    return {
-      kind: 'walk-forward', count: rows.length, successCount,
-      failureCount: rows.length - successCount,
-      successRate: rows.length ? successCount / rows.length : 0,
-      rows: rows.slice().reverse(), failureRows: rows.filter((row) => !row.success).reverse(),
-    };
+    return summarizeKillBacktest(rows);
   }
 
   private wrap(value: number) { return ((value - 1) % 49 + 49) % 49 + 1; }

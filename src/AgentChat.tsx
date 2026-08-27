@@ -180,7 +180,10 @@ export default function AgentChat() {
     lastSeq: number;
     assistantMessageId: string;
     terminal: 'none' | 'completed' | 'failed' | 'cancelled';
+    done: boolean;
   } | null>(null);
+  const pendingDeltaRef = useRef('');
+  const flushFrameRef = useRef<number | null>(null);
   useEffect(() => {
     document.body.classList.add('agent-chat-active');
     return () => document.body.classList.remove('agent-chat-active');
@@ -194,7 +197,12 @@ export default function AgentChat() {
   }, [messages, loading]);
 
   useEffect(() => {
-    return () => requestRef.current?.abort();
+    return () => {
+      requestRef.current?.abort();
+      if (flushFrameRef.current !== null) {
+        cancelAnimationFrame(flushFrameRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -247,10 +255,20 @@ export default function AgentChat() {
       ),
     );
   };
+
+  const clearPendingDelta = () => {
+    pendingDeltaRef.current = '';
+    if (flushFrameRef.current !== null) {
+      cancelAnimationFrame(flushFrameRef.current);
+      flushFrameRef.current = null;
+    }
+  };
+
   const handleStreamEvent = (event: CustomerServiceEvent) => {
     const active = activeRunRef.current;
 
     if (!active) return;
+    if (active.done) return;
 
     if (event.type === 'run_started' && active.runId === null) {
       active.runId = event.runId;
@@ -271,9 +289,21 @@ export default function AgentChat() {
         setStageText(event.summary);
         break;
       case 'assistant_delta':
-        appendAssistantDelta(active.assistantMessageId, event.delta);
+        if (!event.delta) break;
+
+        pendingDeltaRef.current += event.delta;
+        if (flushFrameRef.current === null) {
+          const assistantMessageId = active.assistantMessageId;
+          flushFrameRef.current = requestAnimationFrame(() => {
+            const delta = pendingDeltaRef.current;
+            pendingDeltaRef.current = '';
+            flushFrameRef.current = null;
+            if (delta) appendAssistantDelta(assistantMessageId, delta);
+          });
+        }
         break;
       case 'assistant_final':
+        clearPendingDelta();
         replaceAssistantFinal(active.assistantMessageId, event.content, event.model);
         setStageText('');
         setConnected(true);
@@ -295,6 +325,7 @@ export default function AgentChat() {
         active.terminal = 'cancelled';
         break;
       case 'done':
+        active.done = true;
         setStageText('');
         break;
       case 'run_started':
@@ -310,7 +341,6 @@ export default function AgentChat() {
 
     const controller = new AbortController();
     requestRef.current = controller;
-    setMessages((current) => [...current, createMessage('user', message)]);
     setDraft('');
     setError('');
     setLoading(true);
@@ -322,8 +352,9 @@ export default function AgentChat() {
       lastSeq: 0,
       assistantMessageId: assistantMessage.id,
       terminal: 'none',
+      done: false,
     };
-    setMessages((current) => [...current, assistantMessage]);
+    setMessages((current) => [...current, createMessage('user', message), assistantMessage]);
 
     try {
       await streamAgentMessage({
@@ -335,6 +366,12 @@ export default function AgentChat() {
       });
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+        setStageText('已停止');
+        setMessages((current) =>
+          current.filter(
+            (item) => item.id !== assistantMessage.id || item.content.length > 0,
+          ),
+        );
         return;
       }
 
@@ -347,6 +384,7 @@ export default function AgentChat() {
       );
     } finally {
       if (requestRef.current === controller) {
+        clearPendingDelta();
         clientMessageIdRef.current = crypto.randomUUID();
         requestRef.current = null;
         activeRunRef.current = null;
@@ -358,6 +396,7 @@ export default function AgentChat() {
 
   const clearConversation = () => {
     requestRef.current?.abort();
+    clearPendingDelta();
     requestRef.current = null;
     const nextId = crypto.randomUUID();
     conversationIdRef.current = nextId;
@@ -370,6 +409,11 @@ export default function AgentChat() {
     activeRunRef.current = null;
     setLoading(false);
     inputRef.current?.focus();
+  };
+
+  const stopCurrentRun = () => {
+    requestRef.current?.abort();
+    setStageText('正在停止…');
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -395,7 +439,7 @@ export default function AgentChat() {
         </header>
 
         <section className="agent-chat-shell" aria-label="AI 助手对话">
-          <div className="agent-message-list" aria-live="polite">
+          <div className="agent-message-list">
             <MessageRow message={messages[0]} />
 
             <div className="agent-suggestions" aria-label="示例问题">
@@ -416,15 +460,10 @@ export default function AgentChat() {
               message.content ? <MessageRow key={message.id} message={message} /> : null,
             )}
 
-            {loading ? (
-              <div className="agent-message-row is-assistant" aria-label="Agent 正在回答">
-                <div className="agent-avatar">
-                  <RobotIcon />
-                </div>
-                <div className="agent-loading-bubble">
-                  <span className="agent-spinner" aria-hidden="true" />
-                  <span>{stageText || '正在思考并调用工具…'}</span>
-                </div>
+            {loading && stageText ? (
+              <div className="agent-stream-status" role="status">
+                <span className="agent-spinner" aria-hidden="true" />
+                <span>{stageText}</span>
               </div>
             ) : null}
 
@@ -465,14 +504,21 @@ export default function AgentChat() {
                 <span>清空对话</span>
               </button>
 
-              <button
-                className="agent-send-button"
-                type="submit"
-                disabled={loading || !draft.trim()}
-              >
-                <SendIcon />
-                <span>{loading ? '回答中' : '发送'}</span>
-              </button>
+              {loading ? (
+                <button
+                  className="agent-stop-button"
+                  type="button"
+                  onClick={stopCurrentRun}
+                  aria-label="停止当前回答"
+                >
+                  停止回答
+                </button>
+              ) : (
+                <button className="agent-send-button" type="submit" disabled={!draft.trim()}>
+                  <SendIcon />
+                  <span>发送</span>
+                </button>
+              )}
             </div>
           </form>
         </section>

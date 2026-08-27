@@ -31,6 +31,7 @@
 - [第 7 课：生产级流式客服与可观测执行](./LESSON_07_PRODUCTION_STREAMING_AND_OBSERVABILITY.md)
 - [第 8 课小白重点版：RAG 核心原理与学习要点](./LESSON_08_RAG_KEY_POINTS_AND_LEARNING_GUIDE.md)
 - [第 8 课：生产级客服知识库与 RAG](./LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md)
+- [RAG 从入门到精通：商城客服项目实战（逐章学习合集）](./rag-learning/README.md)
 - [第 9 课：安全业务 Tool、用户归属与真正转人工](./LESSON_09_SECURE_BUSINESS_TOOLS_AND_HUMAN_HANDOFF.md)
 - [第 10 课：自定义 LangGraph、持久工作流与人工审批](./LESSON_10_LANGGRAPH_WORKFLOW_AND_HUMAN_APPROVAL.md)
 

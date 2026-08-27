@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react';
+import KillBacktestMetric from './KillBacktestMetric';
 
 const num = (value) => String(value ?? '--').padStart(2, '0');
-const pct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
 
 function Stat({ label, value }) {
   const stable = value?.successRate >= 0.9;
   return (
-    <article className={`sr-stat ${stable ? 'is-stable' : ''}`}>
-      <span>{label}</span>
-      <strong>{pct(value?.successRate)}</strong>
-      <small>{value?.successCount || 0}/{value?.count || 0} 成功</small>
-    </article>
+    <KillBacktestMetric label={label} data={value} className={`sr-stat ${stable ? 'is-stable' : ''}`} />
   );
 }
 

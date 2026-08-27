@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
+import KillBacktestMetric from './KillBacktestMetric';
 
-const pct = (value) => typeof value === 'number' ? `${(value * 100).toFixed(1)}%` : '--';
-function Metric({ label, data }) { return <article className="ap-metric"><span>{label}</span><strong>{pct(data?.successRate)}</strong><small>{data?.successCount || 0}/{data?.count || 0} 成功</small></article>; }
+function Metric({ label, data }) { return <KillBacktestMetric label={label} data={data} className="ap-metric" />; }
 
 export default function AnchorPhase14Kill() {
   const [data, setData] = useState(null);

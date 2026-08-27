@@ -18,17 +18,17 @@
 
 ## 章节目录
 
-| 章节 | 主题 | 学完后的项目成果 |
-| --- | --- | --- |
-| [第0章](./00-overview/README.md) | 路线、规则和进度 | 知道学什么、为什么学 |
-| [第1章](./01-python-foundations/README.md) | Python核心语法 | 独立编写三个纯Python工具 |
-| [第2章](./02-python-engineering/README.md) | 工程化和测试 | 获得可维护、可测试的项目 |
-| [第3章](./03-fastapi-pydantic/README.md) | FastAPI和Pydantic | 复刻HTTP DTO与协议 |
-| [第4章](./04-mysql-sqlalchemy/README.md) | MySQL和SQLAlchemy | 保存和查询会话历史 |
-| [第5章](./05-redis-state/README.md) | Redis与短期状态 | 实现TTL、幂等和Checkpoint |
-| [第6章](./06-llm-agent/README.md) | 模型、Tool和Agent | 迁移核心客服Agent |
-| [第7章](./07-streaming-observability/README.md) | SSE和可观测性 | 兼容现有前端流式协议 |
-| [第8章](./08-migration-deployment/README.md) | 双轨迁移和部署 | 灰度切换到Python Agent |
+| 章节                                            | 主题                          | 学完后的项目成果                       |
+| ----------------------------------------------- | ----------------------------- | -------------------------------------- |
+| [第0章](./00-overview/README.md)                | 路线、规则和进度              | 知道学什么、为什么学                   |
+| [第1章](./01-python-foundations/README.md)      | Python核心语法                | 独立编写三个纯Python工具               |
+| [第2章](./02-python-engineering/README.md)      | 工程化和测试                  | 获得可维护、可测试的项目               |
+| [第3章](./03-fastapi-pydantic/README.md)        | FastAPI和Pydantic             | 复刻HTTP DTO与协议                     |
+| [第4章](./04-mysql-sqlalchemy/README.md)        | MySQL、PostgreSQL和SQLAlchemy | 保存和查询会话历史，掌握两种数据库差异 |
+| [第5章](./05-redis-state/README.md)             | Redis与短期状态               | 实现TTL、幂等和Checkpoint              |
+| [第6章](./06-llm-agent/README.md)               | 模型、Tool和Agent             | 迁移核心客服Agent                      |
+| [第7章](./07-streaming-observability/README.md) | SSE和可观测性                 | 兼容现有前端流式协议                   |
+| [第8章](./08-migration-deployment/README.md)    | 双轨迁移和部署                | 灰度切换到Python Agent                 |
 
 ## 贯穿全程的原则
 
@@ -41,5 +41,6 @@
 
 ## 固定技术主线
 
-Python 3.14 → uv → Ruff/Pyright/pytest → FastAPI/Pydantic → MySQL/SQLAlchemy/Alembic
-→ Redis → LangChain → 必要时使用LangGraph → Docker/Nginx/GitHub Actions。
+Python 3.14 → uv → Ruff/Pyright/pytest → FastAPI/Pydantic → MySQL（项目主线）
+→ PostgreSQL（并行进阶）→ SQLAlchemy/Alembic → Redis → LangChain
+→ 必要时使用LangGraph → Docker/Nginx/GitHub Actions。

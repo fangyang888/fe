@@ -255,20 +255,20 @@ const routes = [
     section: '杀码',
     element: <GapScoreKill />,
   },
+  // {
+  //   path: '/kill/state-risk',
+  //   label: '状态条件风险第5位',
+  //   section: '杀码',
+  //   element: <StateRiskKill />,
+  // },
+  // {
+  //   path: '/kill/ten-anchor-shift',
+  //   label: '十期锚点位移',
+  //   section: '杀码',
+  //   element: <TenAnchorShiftKill />,
+  // },
   {
-    path: '/kill/state-risk',
-    label: '状态条件风险第5位-ty',
-    section: '杀码',
-    element: <StateRiskKill />,
-  },
-  {
-    path: '/kill/ten-anchor-shift',
-    label: '十期锚点位移',
-    section: '杀码',
-    element: <TenAnchorShiftKill />,
-  },
-  {
-    path: '/kill/previous-seven-quad',
+    path: '/kill/previous-seven-quad-ty',
     label: '上一期七码四倍映射',
     section: '杀码',
     element: <PreviousSevenQuadKill />,

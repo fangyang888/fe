@@ -4,6 +4,7 @@ export default function Likely22PositionStats() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [showRecentSpecialResults, setShowRecentSpecialResults] = useState(false);
 
   const load = async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -32,6 +33,8 @@ export default function Likely22PositionStats() {
   const specialStats = data?.specialCodeStats;
   const longSpecialWindow = specialStats?.windows?.find((window) => window.periods === 100);
   const specialOverallBestPositions = specialStats?.overallBestPositions || (specialStats?.overallBest ? [specialStats.overallBest] : []);
+  const recentSpecialResults = data?.recentResults || [];
+  const recentSpecialHitCount = recentSpecialResults.filter((row) => row.specialHits?.some(Boolean)).length;
 
   return (
     <main className="l22-page">
@@ -43,7 +46,7 @@ export default function Likely22PositionStats() {
         .l22-muted,.l22-count{color:#94a3b8;font-size:13px}.l22-value{margin:6px 0;color:#f8fafc;font-size:26px;font-weight:900}.l22-meta{color:#67e8f9;font-size:14px}.l22-current{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}.l22-ball{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;color:#fff;font-size:13px;font-weight:800;background:#0e7490}
         .l22-section{margin-top:34px}.l22-section-title{margin:0 0 14px;color:#f8fafc;font-size:22px}.l22-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.l22-card{padding:22px;border:1px solid rgba(148,163,184,.16);border-radius:20px;background:rgba(15,23,42,.62)}.l22-card-position{margin:10px 0 2px;color:#a5f3fc;font-size:23px;font-weight:900}.l22-rate{color:#fb7185;font-size:34px;font-weight:900}
         .l22-table-wrap{overflow:auto;border:1px solid rgba(148,163,184,.16);border-radius:20px;background:rgba(15,23,42,.62)}.l22-table{width:100%;border-collapse:collapse;min-width:720px}.l22-table th,.l22-table td{padding:13px 15px;text-align:center;border-bottom:1px solid rgba(148,163,184,.1)}.l22-table th{color:#94a3b8;font-size:13px}.l22-table td{font-weight:750}.l22-table tr.best td{color:#fb7185;background:rgba(251,113,133,.06)}.l22-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;color:#fff;background:#e11d48;font-size:11px}.l22-back{display:inline-block;margin-top:22px;color:#67e8f9;text-decoration:none}
-        .l22-special{margin-top:42px;padding-top:34px;border-top:1px solid rgba(251,191,36,.24)}.l22-special-intro{margin:-5px 0 18px;color:#94a3b8;line-height:1.7}.l22-special-hero{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:26px;border:1px solid rgba(251,191,36,.3);border-radius:22px;background:linear-gradient(135deg,rgba(120,53,15,.32),rgba(15,23,42,.72))}.l22-special-position{display:grid;place-items:center;width:94px;height:94px;border-radius:50%;color:#422006;font-size:38px;font-weight:950;background:linear-gradient(145deg,#fde68a,#f59e0b);box-shadow:0 14px 35px rgba(245,158,11,.24)}.l22-special-value{margin:6px 0;color:#fef3c7;font-size:25px;font-weight:900}.l22-special-meta{color:#fbbf24;font-size:14px}.l22-special-rate{color:#fbbf24;font-size:34px;font-weight:900}.l22-special-card-position{margin:10px 0 2px;color:#fde68a;font-size:22px;font-weight:900}.l22-table tr.special-best td{color:#fbbf24;background:rgba(251,191,36,.06)}.l22-special-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;color:#422006;background:#fbbf24;font-size:11px}
+        .l22-special{margin-top:42px;padding-top:34px;border-top:1px solid rgba(251,191,36,.24)}.l22-special-intro{margin:-5px 0 18px;color:#94a3b8;line-height:1.7}.l22-special-query{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}.l22-special-query-button{padding:10px 16px;border:1px solid rgba(251,191,36,.45);border-radius:10px;color:#422006;background:linear-gradient(145deg,#fde68a,#f59e0b);font-weight:850;cursor:pointer}.l22-special-query-summary{color:#fde68a;font-size:14px;font-weight:750}.l22-special-query-table{margin-bottom:20px}.l22-special-result{font-weight:900}.l22-special-result.hit{color:#4ade80}.l22-special-result.miss{color:#fb7185}.l22-special-number{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;color:#422006;background:#fbbf24;font-weight:950}.l22-special-hero{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;padding:26px;border:1px solid rgba(251,191,36,.3);border-radius:22px;background:linear-gradient(135deg,rgba(120,53,15,.32),rgba(15,23,42,.72))}.l22-special-position{display:grid;place-items:center;width:94px;height:94px;border-radius:50%;color:#422006;font-size:38px;font-weight:950;background:linear-gradient(145deg,#fde68a,#f59e0b);box-shadow:0 14px 35px rgba(245,158,11,.24)}.l22-special-value{margin:6px 0;color:#fef3c7;font-size:25px;font-weight:900}.l22-special-meta{color:#fbbf24;font-size:14px}.l22-special-rate{color:#fbbf24;font-size:34px;font-weight:900}.l22-special-card-position{margin:10px 0 2px;color:#fde68a;font-size:22px;font-weight:900}.l22-table tr.special-best td{color:#fbbf24;background:rgba(251,191,36,.06)}.l22-special-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;color:#422006;background:#fbbf24;font-size:11px}
         @media(max-width:760px){.l22-grid{grid-template-columns:1fr 1fr}.l22-hero,.l22-special-hero{grid-template-columns:1fr}.l22-position{width:88px;height:88px}}
       `}</style>
       <div className="l22-shell">
@@ -98,6 +101,34 @@ export default function Likely22PositionStats() {
               <section className="l22-special">
                 <h2 className="l22-section-title">特别码未命中位置统计</h2>
                 <p className="l22-special-intro">特别码按每期 7 个开奖号码的最后一个号码（n7）计算。32 码中某个位置的候选数字不等于当期 n7，就记为该位置“特别码未命中”；百分比越高，说明该位置越少成为特别码。</p>
+
+                <div className="l22-special-query">
+                  <button className="l22-special-query-button" type="button" aria-expanded={showRecentSpecialResults} aria-controls="l22-recent-special-results" onClick={() => setShowRecentSpecialResults((visible) => !visible)}>
+                    {showRecentSpecialResults ? '收起近20期查询' : '查询近20期特别码是否有中'}
+                  </button>
+                  {showRecentSpecialResults ? <span className="l22-special-query-summary">32码命中特别码 {recentSpecialHitCount}/{recentSpecialResults.length} 期</span> : null}
+                </div>
+
+                {showRecentSpecialResults ? (
+                  <div className="l22-table-wrap l22-special-query-table" id="l22-recent-special-results">
+                    <table className="l22-table">
+                      <thead><tr><th>开奖期号</th><th>特别码</th><th>32码是否有中</th><th>命中位置</th></tr></thead>
+                      <tbody>{recentSpecialResults.map((row) => {
+                        const hitPositions = row.specialHits.reduce((positions, hit, index) => {
+                          if (hit) positions.push(index + 1);
+                          return positions;
+                        }, []);
+                        const isHit = hitPositions.length > 0;
+                        return <tr key={`${row.year}-${row.No}`}>
+                          <td>{row.year} 年第 {row.No} 期</td>
+                          <td><span className="l22-special-number">{row.specialCode}</span></td>
+                          <td><span className={`l22-special-result ${isHit ? 'hit' : 'miss'}`}>{isHit ? '有中' : '未中'}</span></td>
+                          <td>{isHit ? `第 ${hitPositions.join('、')} 位` : '—'}</td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>
+                ) : null}
 
                 <div className="l22-special-hero">
                   <div className="l22-special-position">{specialOverallBestPositions.length}位</div>

@@ -192,7 +192,7 @@ export class KillComboBacktestService {
     const rawRows = await this.historyService.findAll();
     const history = this.normalizeRows(rawRows);
     const latest = history[history.length - 1];
-    const cacheKey = `likely32-position-stats:v4-special-code-miss:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
+    const cacheKey = `likely32-position-stats:v5-recent-special-code-20:${history.length}:${latest?.year || 0}:${latest?.No || latest?.id || 0}:${latest?.numbers.join(',') || ''}`;
     const memoryCached = this.memoryCache.get(cacheKey);
     if (memoryCached && !forceRefresh) {
       return {
@@ -408,7 +408,7 @@ export class KillComboBacktestService {
           ? { id: latest.id, year: latest.year, No: latest.No, numbers: latest.numbers }
           : null,
       },
-      recentResults: results.slice(-10).reverse(),
+      recentResults: results.slice(-20).reverse(),
       cacheMeta: {
         hit: false,
         store: 'disk',

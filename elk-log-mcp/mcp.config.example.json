@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "elk-log": {
+      "command": "/Users/yang/.nvm/versions/node/v22.15.0/bin/node",
+      "args": ["/Users/yang/fe/fe/elk-log-mcp/server.mjs"]
+    }
+  }
+}

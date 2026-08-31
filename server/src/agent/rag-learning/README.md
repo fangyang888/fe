@@ -9,6 +9,12 @@
 
 本目录负责把内容拆成可以按顺序学习和验收的独立章节。
 
+如果你的目标是结合当前项目完成可上线的真实代码，请直接进入：
+
+- [生产级 RAG 代码实验课：从当前项目到真实上线](./production-code-labs/README.md)
+
+代码实验课以 `LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md` 的 62 节为主线，细分为 20 个实验，并覆盖 NestJS、MySQL、Elasticsearch Hybrid Search、引用、安全、评估、SSE、发布与回滚。
+
 ---
 
 ## 一、学完后能做什么
@@ -171,4 +177,3 @@ pnpm test -- --runInBand
 - 检索与生成指标分开记录。
 - Hybrid/Rerank 的加入有对照实验支持。
 - 延迟、成本、错误率和索引版本可观察。
-

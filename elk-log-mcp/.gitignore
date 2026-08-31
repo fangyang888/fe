@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.auth/
+playwright/.auth/
+browser-profile/
+test-results/
+playwright-report/
+logs/
+*.log
+.DS_Store

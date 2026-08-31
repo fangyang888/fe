@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import './AgentChat.css';
 import { streamAgentMessage, type CustomerServiceEvent } from './agent-stream';
 
@@ -21,6 +21,24 @@ type AgentHistoryMessage = {
   createdAt: number;
 };
 
+type ChatMode = 'general' | 'elk';
+type SuggestionIconName = 'calculator' | 'clock' | 'sparkles';
+type Suggestion = {
+  label: string;
+  prompt: string;
+  icon: SuggestionIconName;
+};
+type ElkChatResponse = {
+  reply?: unknown;
+  model?: unknown;
+  message?: string | string[];
+};
+type AdminLoginResponse = {
+  token?: unknown;
+  userInfo?: { id?: unknown };
+  message?: string | string[];
+};
+
 const ACTIVE_CONVERSATION_KEY = 'agent.activeConversationId';
 
 function getOrCreateConversationId(): string {
@@ -32,7 +50,7 @@ function getOrCreateConversationId(): string {
   return created;
 }
 
-const suggestions = [
+const suggestions: readonly Suggestion[] = [
   {
     label: '计算 125 × 8',
     prompt: '请使用计算器工具计算 125 乘以 8。',
@@ -44,7 +62,30 @@ const suggestions = [
     prompt: '请简要介绍你现在能做什么。',
     icon: 'sparkles',
   },
-] as const;
+];
+
+const elkSuggestions: readonly Suggestion[] = [
+  {
+    label: '打开 Kibana 登录窗口',
+    prompt: '请打开 Kibana 登录窗口。',
+    icon: 'sparkles',
+  },
+  {
+    label: '查询业务域名 5xx',
+    prompt: '请查询我在 ELK 白名单中配置的业务域名最近 15 分钟的 5xx 错误；如果没有默认域名，请先向我确认。',
+    icon: 'calculator',
+  },
+  {
+    label: '统计页面今日访问量',
+    prompt: '请统计 /puzzle/template.html 今天的访问量。',
+    icon: 'clock',
+  },
+  {
+    label: 'ELK 助手能做什么？',
+    prompt: '请介绍当前 ELK 日志助手支持的查询范围和使用条件。',
+    icon: 'clock',
+  },
+];
 
 let messageSequence = 0;
 
@@ -105,7 +146,7 @@ function TrashIcon() {
   );
 }
 
-function SuggestionIcon({ name }: { name: (typeof suggestions)[number]['icon'] }) {
+function SuggestionIcon({ name }: { name: SuggestionIconName }) {
   if (name === 'calculator') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -163,6 +204,12 @@ function MessageRow({ message }: { message: ChatMessage }) {
 }
 
 export default function AgentChat() {
+  const [mode, setMode] = useState<ChatMode>('general');
+  const [elkToken, setElkToken] = useState('');
+  const [elkLoginOpen, setElkLoginOpen] = useState(false);
+  const [elkUsername, setElkUsername] = useState('');
+  const [elkPassword, setElkPassword] = useState('');
+  const [elkLoginLoading, setElkLoginLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(createInitialMessages);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
@@ -338,13 +385,18 @@ export default function AgentChat() {
     if (!message || loading) {
       return;
     }
+    if (mode === 'elk' && !elkToken) {
+      setError('请先登录项目账号，再使用 ELK 日志助手。');
+      setElkLoginOpen(true);
+      return;
+    }
 
     const controller = new AbortController();
     requestRef.current = controller;
     setDraft('');
     setError('');
     setLoading(true);
-    setStageText('正在连接服务…');
+    setStageText(mode === 'elk' ? '正在查询 ELK 日志…' : '正在连接服务…');
 
     const assistantMessage = createMessage('assistant', '');
     activeRunRef.current = {
@@ -357,13 +409,41 @@ export default function AgentChat() {
     setMessages((current) => [...current, createMessage('user', message), assistantMessage]);
 
     try {
-      await streamAgentMessage({
-        message,
-        conversationId: conversationIdRef.current,
-        clientMessageId: clientMessageIdRef.current,
-        signal: controller.signal,
-        onEvent: handleStreamEvent,
-      });
+      if (mode === 'elk') {
+        const response = await fetch('/api/agent/elk/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${elkToken}`,
+          },
+          body: JSON.stringify({ message }),
+          signal: controller.signal,
+        });
+        const data = (await response.json().catch(() => null)) as ElkChatResponse | null;
+
+        if (!response.ok) {
+          const detail = Array.isArray(data?.message) ? data.message.join('；') : data?.message;
+          throw new Error(detail || `ELK 请求失败（HTTP ${response.status}）`);
+        }
+        if (typeof data?.reply !== 'string') {
+          throw new Error('ELK 服务返回了无法识别的结果');
+        }
+
+        replaceAssistantFinal(
+          assistantMessage.id,
+          data.reply,
+          typeof data.model === 'string' ? data.model : 'ELK Agent',
+        );
+        setConnected(true);
+      } else {
+        await streamAgentMessage({
+          message,
+          conversationId: conversationIdRef.current,
+          clientMessageId: clientMessageIdRef.current,
+          signal: controller.signal,
+          onEvent: handleStreamEvent,
+        });
+      }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === 'AbortError') {
         setStageText('已停止');
@@ -411,6 +491,62 @@ export default function AgentChat() {
     inputRef.current?.focus();
   };
 
+  const loginElk = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!elkUsername.trim() || !elkPassword || elkLoginLoading) return;
+
+    setElkLoginLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: elkUsername.trim(), password: elkPassword }),
+      });
+      const data = (await response.json().catch(() => null)) as AdminLoginResponse | null;
+      if (!response.ok) {
+        const detail = Array.isArray(data?.message) ? data.message.join('；') : data?.message;
+        throw new Error(detail || `登录失败（HTTP ${response.status}）`);
+      }
+      if (typeof data?.token !== 'string' || !data.token) {
+        throw new Error('登录接口未返回有效令牌');
+      }
+
+      setElkToken(data.token);
+      setElkPassword('');
+      setElkLoginOpen(false);
+      setConnected(true);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : '项目账号登录失败');
+    } finally {
+      setElkLoginLoading(false);
+    }
+  };
+
+  const changeMode = (nextMode: ChatMode) => {
+    if (nextMode === mode) return;
+    requestRef.current?.abort();
+    clearPendingDelta();
+    requestRef.current = null;
+    activeRunRef.current = null;
+    setMode(nextMode);
+    setElkLoginOpen(false);
+    setMessages([
+      createMessage(
+        'assistant',
+        nextMode === 'elk'
+          ? '你好，我是 ELK 日志助手。请先确认 Kibana 已登录，并提供业务域名；我可以查询 5xx 样本或按 url_path 统计访问量。'
+          : '你好，我是你的 AI 助手。想先了解什么？',
+      ),
+    ]);
+    setDraft('');
+    setError('');
+    setStageText('');
+    setLoading(false);
+    setConnected(true);
+    inputRef.current?.focus();
+  };
+
   const stopCurrentRun = () => {
     requestRef.current?.abort();
     setStageText('正在停止…');
@@ -426,16 +562,49 @@ export default function AgentChat() {
   return (
     <main className="agent-chat-page">
       <div className="agent-chat-topbar">
+        <div className="agent-topbar-actions">
+          <div className="agent-mode-switch" role="group" aria-label="助手模式">
+            <button
+              className={mode === 'general' ? 'is-active' : ''}
+              type="button"
+              onClick={() => changeMode('general')}
+              aria-pressed={mode === 'general'}
+            >
+              普通助手
+            </button>
+            <button
+              className={mode === 'elk' ? 'is-active' : ''}
+              type="button"
+              onClick={() => changeMode('elk')}
+              aria-pressed={mode === 'elk'}
+            >
+              ELK 日志助手
+            </button>
+          </div>
+          {mode === 'elk' ? (
+            <button
+              className={`agent-elk-login-button ${elkToken ? 'is-authenticated' : ''}`}
+              type="button"
+              onClick={() => setElkLoginOpen(true)}
+            >
+              {elkToken ? '项目已登录' : '项目账号登录'}
+            </button>
+          ) : null}
+        </div>
         <div className={`agent-service-status ${connected ? '' : 'has-error'}`}>
           <span aria-hidden="true" />
-          {connected ? '服务已连接' : '连接异常'}
+          {connected ? (mode === 'elk' ? 'ELK 服务已连接' : '服务已连接') : '连接异常'}
         </div>
       </div>
 
       <div className="agent-chat-layout">
         <header className="agent-chat-heading">
-          <h1>AI 智能助手</h1>
-          <p>用自然语言提问，Agent 会在需要时调用工具</p>
+          <h1>{mode === 'elk' ? 'ELK 日志助手' : 'AI 智能助手'}</h1>
+          <p>
+            {mode === 'elk'
+              ? '通过 Kibana 查询 5xx 日志，并按 URL 路径统计访问量，辅助定位问题'
+              : '用自然语言提问，Agent 会在需要时调用工具'}
+          </p>
         </header>
 
         <section className="agent-chat-shell" aria-label="AI 助手对话">
@@ -443,7 +612,7 @@ export default function AgentChat() {
             <MessageRow message={messages[0]} />
 
             <div className="agent-suggestions" aria-label="示例问题">
-              {suggestions.map((suggestion) => (
+              {(mode === 'elk' ? elkSuggestions : suggestions).map((suggestion) => (
                 <button
                   key={suggestion.label}
                   type="button"
@@ -525,9 +694,57 @@ export default function AgentChat() {
 
         <p className="agent-mode-note">
           <span aria-hidden="true">ⓘ</span>
-          当前为单轮模式，每次提问独立处理
+          {mode === 'elk'
+            ? 'ELK 查询需要先在独立 Kibana 窗口完成登录，并使用已配置白名单中的业务域名'
+            : '当前为单轮模式，每次提问独立处理'}
         </p>
       </div>
+
+      {elkLoginOpen ? (
+        <div className="agent-modal-backdrop">
+          <section className="agent-login-modal" role="dialog" aria-modal="true" aria-labelledby="elk-login-title">
+            <div className="agent-login-modal-heading">
+              <div>
+                <p className="agent-login-eyebrow">ELK 日志助手</p>
+                <h2 id="elk-login-title">登录项目后台账号</h2>
+              </div>
+              <button
+                className="agent-login-close"
+                type="button"
+                onClick={() => setElkLoginOpen(false)}
+                aria-label="关闭登录窗口"
+              >
+                ×
+              </button>
+            </div>
+            <p className="agent-login-help">
+              仅用于获取当前项目 JWT，不会把 Kibana 密码发送给 ELK 服务。
+            </p>
+            <form className="agent-login-form" onSubmit={loginElk}>
+              <label htmlFor="elk-username">后台账号</label>
+              <input
+                id="elk-username"
+                autoComplete="username"
+                value={elkUsername}
+                onChange={(event) => setElkUsername(event.target.value)}
+                disabled={elkLoginLoading}
+              />
+              <label htmlFor="elk-password">后台密码</label>
+              <input
+                id="elk-password"
+                type="password"
+                autoComplete="current-password"
+                value={elkPassword}
+                onChange={(event) => setElkPassword(event.target.value)}
+                disabled={elkLoginLoading}
+              />
+              <button type="submit" disabled={elkLoginLoading || !elkUsername.trim() || !elkPassword}>
+                {elkLoginLoading ? '登录中…' : '登录并继续'}
+              </button>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

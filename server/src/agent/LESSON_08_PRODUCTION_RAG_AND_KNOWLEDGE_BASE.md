@@ -4,6 +4,9 @@
 > [第 8 课小白重点版：RAG 核心原理与学习要点](./LESSON_08_RAG_KEY_POINTS_AND_LEARNING_GUIDE.md)。
 > 先完成主线版的学习清单和最小实验，再回到本文查询生产级细节。
 >
+> 如果希望以本文为主线，结合当前项目逐章编写可上线代码，请使用：
+> [生产级 RAG 代码实验课：从当前项目到真实上线](./rag-learning/production-code-labs/README.md)。
+>
 > 本章基于当前项目的 React、NestJS、LangChain.js v1、MySQL、Redis 和单 Agent 架构编写。
 >
 > 本章不会把 RAG 简化成“上传 PDF → 存向量 → 问模型”。真正可上线的知识库需要同时处理数据来源、文档解析、切分、Embedding、混合检索、重排序、引用、权限、版本、评估、安全和运维。

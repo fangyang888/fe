@@ -15,6 +15,10 @@ import { AgentHistoryService } from './persistence/agent-history.service';
 import { AgentChatApplicationService } from './persistence/agent-chat-application.service';
 import { AgentCheckpointerService } from './persistence/agent-checkpointer.service';
 import { AgentStreamApplicationService } from './stream/agent.stream-application.service';
+import { ElkMcpClientService } from './elk/elk-mcp-client.service';
+import { ElkAgentService } from './elk/elk-agent.service';
+import { ElkAgentController } from './elk/elk-agent.controller';
+import { ElkOperatorGuard } from './elk/elk-operator.guard';
 
 @Module({
   imports: [
@@ -22,8 +26,11 @@ import { AgentStreamApplicationService } from './stream/agent.stream-application
     CategoryModule,
     TypeOrmModule.forFeature([AgentConversationRecord, AgentMessageRecord]),
   ],
-  controllers: [AgentController, AgentHistoryController],
+  controllers: [AgentController, AgentHistoryController, ElkAgentController],
   providers: [
+    ElkMcpClientService,
+    ElkAgentService,
+    ElkOperatorGuard,
     AgentModelFactory,
     AgentIntentService,
     ProductCustomerService,

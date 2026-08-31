@@ -1,0 +1,30 @@
+{
+  "name": "elk-log-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local stdio and HTTP MCP server for restricted Kibana browser log queries",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "start:http": "node --env-file-if-exists=.env http-server.mjs",
+    "check:http": "node --env-file-if-exists=.env check-http.mjs",
+    "check": "node --check server.mjs && node --check http-server.mjs && node --check check-http.mjs && node --check lib/http-server.mjs && node --check check-mcp.mjs && node --check lib/mcp-server.mjs && node --check lib/kibana-session.mjs && node --check lib/tool-error.mjs && node --check check-kibana.mjs && node --check search-logs.mjs && node --check lib/log-query.mjs && node --check lib/kibana-query.mjs",
+    "check:mcp": "node check-mcp.mjs",
+    "check:kibana": "node check-kibana.mjs",
+    "query:logs": "node search-logs.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "hono": "4",
+    "playwright": "1.62.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  }
+}

@@ -1,5 +1,94 @@
 import React, { useState, useEffect } from "react";
 
+const BALL_COLORS = {
+  红: { background: "linear-gradient(145deg, #ff6573, #d92d3a)", shadow: "rgba(239, 68, 68, 0.28)" },
+  蓝: { background: "linear-gradient(145deg, #65a8ff, #2563c9)", shadow: "rgba(59, 130, 246, 0.28)" },
+  绿: { background: "linear-gradient(145deg, #4edb8b, #169456)", shadow: "rgba(34, 197, 94, 0.25)" },
+};
+
+const FALLBACK_BALL_COLOR = {
+  background: "linear-gradient(145deg, #607086, #39465a)",
+  shadow: "rgba(100, 116, 139, 0.2)",
+};
+
+const NUMBER_ROW_STYLE = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "3px 0",
+};
+
+function getNumberInfos(record) {
+  const value = record.numberInfos ?? record.number_infos;
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function HistoryNumberBall({ number, info, position }) {
+  const colorName = info?.color;
+  const color = BALL_COLORS[colorName] || FALLBACK_BALL_COLOR;
+  const zodiac = info?.zodiac || "--";
+  const displayNumber = String(number ?? "--").padStart(2, "0");
+
+  return (
+    <div
+      title={`第${position}位：${displayNumber}${colorName ? ` · ${colorName}波` : ""}${info?.zodiac ? ` · ${info.zodiac}` : ""}`}
+      aria-label={`第${position}位号码 ${displayNumber}，${colorName || "颜色未知"}，生肖${zodiac}`}
+      style={{ width: 44, flex: "0 0 44px", textAlign: "center" }}
+    >
+      <span style={{ display: "block", marginBottom: 4, color: "#67798f", fontSize: 9, lineHeight: 1 }}>
+        N{position}
+      </span>
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 38,
+          height: 38,
+          margin: "0 auto",
+          borderRadius: "50%",
+          background: color.background,
+          color: "#fff",
+          fontSize: 15,
+          fontWeight: 800,
+          letterSpacing: 0.3,
+          boxShadow: `0 6px 16px ${color.shadow}, inset 0 1px 1px rgba(255,255,255,0.28)`,
+        }}
+      >
+        {displayNumber}
+      </span>
+      <span style={{ display: "block", marginTop: 5, color: info?.zodiac ? "#cbd5e1" : "#64748b", fontSize: 11 }}>
+        {zodiac}
+      </span>
+    </div>
+  );
+}
+
+function HistoryNumberList({ record }) {
+  const infos = getNumberInfos(record);
+  const numbers = [record.n1, record.n2, record.n3, record.n4, record.n5, record.n6, record.n7];
+
+  return (
+    <div style={NUMBER_ROW_STYLE}>
+      {numbers.map((number, index) => (
+        <HistoryNumberBall
+          key={`${record.id}-${index}`}
+          number={number}
+          info={infos[index]}
+          position={index + 1}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
  * 历史数据管理页面 - 路由 /history
  * 查看、新增、删除 history 记录
@@ -248,7 +337,7 @@ export default function HistoryManager() {
 
   const styles = {
     container: {
-      maxWidth: 800,
+      maxWidth: 1100,
       margin: "0 auto",
       padding: "20px 16px",
       fontFamily: "'Inter', 'SF Pro', -apple-system, sans-serif",
@@ -299,6 +388,7 @@ export default function HistoryManager() {
       display: "flex",
       alignItems: "center",
       gap: 8,
+      flexWrap: "wrap",
     },
     inputRow: {
       display: "flex",
@@ -360,6 +450,7 @@ export default function HistoryManager() {
     }),
     table: {
       width: "100%",
+      minWidth: 920,
       borderCollapse: "collapse",
       fontSize: 14,
     },
@@ -377,9 +468,16 @@ export default function HistoryManager() {
       color: "#d0d0d0",
     },
     numCell: {
-      fontWeight: 600,
-      color: "#4fc3f7",
-      letterSpacing: 1,
+      minWidth: 390,
+    },
+    legend: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      marginLeft: 12,
+      color: "#8899aa",
+      fontSize: 11,
     },
   };
 
@@ -513,7 +611,27 @@ export default function HistoryManager() {
       {/* 数据列表 */}
       <div style={styles.card}>
         <div style={styles.cardTitle}>
-          <span>📊</span> 数据查询
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
+            <span>📊</span> 数据查询
+          </span>
+          {activeTab === "default" && (
+            <div style={styles.legend} aria-label="号码颜色图例">
+              {Object.keys(BALL_COLORS).map((colorName) => (
+                <span key={colorName} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <i
+                    aria-hidden="true"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: BALL_COLORS[colorName].background,
+                    }}
+                  />
+                  {colorName}波
+                </span>
+              ))}
+            </div>
+          )}
           <div style={{ marginLeft: "auto", display: "flex", gap: "8px", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: "#8899aa" }}>年份：</span>
             <input
@@ -550,9 +668,7 @@ export default function HistoryManager() {
                     <td style={styles.td}>{r.year || "-"}</td>
                     <td style={styles.td}>{r.No || "-"}</td>
                     <td style={{ ...styles.td, ...styles.numCell }}>
-                      {[r.n1, r.n2, r.n3, r.n4, r.n5, r.n6, r.n7]
-                        .map((n) => String(n).padStart(2, "0"))
-                        .join(", ")}
+                      <HistoryNumberList record={r} />
                     </td>
                     <td style={styles.td}>
                       {r.created_at ? new Date(r.created_at).toLocaleString("zh-CN") : "-"}

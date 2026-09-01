@@ -51,7 +51,12 @@ export class HistoryController {
   /** POST /api/history — 新增 { numbers: [7个数字] } */
   @Post()
   async create(@Body() dto: CreateHistoryDto): Promise<History> {
-    return this.historyService.create(dto.numbers, dto.year, dto.No);
+    return this.historyService.create(
+      dto.numbers,
+      dto.year,
+      dto.No,
+      dto.numberInfos,
+    );
   }
 
   /** POST /api/history/sync-year — 从 spider 同步整年，重复 year+No 自动忽略 */
@@ -72,7 +77,13 @@ export class HistoryController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateHistoryDto,
   ): Promise<History> {
-    return this.historyService.update(id, dto.numbers, dto.year, dto.No);
+    return this.historyService.update(
+      id,
+      dto.numbers,
+      dto.year,
+      dto.No,
+      dto.numberInfos,
+    );
   }
 
   /** DELETE /api/history/:id — 删除 */

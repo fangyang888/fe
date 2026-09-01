@@ -10,7 +10,111 @@ function parseYear(value) {
   return year;
 }
 
+const COLOR_LABELS = {
+  red: '红',
+  blue: '蓝',
+  green: '绿',
+};
+
+const VALID_ZODIACS = new Set([
+  '鼠',
+  '牛',
+  '虎',
+  '兔',
+  '龙',
+  '蛇',
+  '马',
+  '羊',
+  '猴',
+  '鸡',
+  '狗',
+  '猪',
+]);
+
+function repairInvalidZodiacs(results) {
+  const validByNumber = new Map();
+
+  for (const record of results) {
+    for (const info of record.numberInfos || []) {
+      if (!VALID_ZODIACS.has(info.zodiac)) continue;
+      const entries = validByNumber.get(info.number) || [];
+      entries.push({ No: record.No, zodiac: info.zodiac });
+      validByNumber.set(info.number, entries);
+    }
+  }
+
+  for (const record of results) {
+    for (const info of record.numberInfos || []) {
+      if (VALID_ZODIACS.has(info.zodiac)) continue;
+      const nearest = (validByNumber.get(info.number) || [])
+        .slice()
+        .sort(
+          (a, b) => Math.abs(a.No - record.No) - Math.abs(b.No - record.No),
+        )[0];
+      if (nearest) info.zodiac = nearest.zodiac;
+    }
+  }
+}
+
+function parseStructuredLotteryHtml(html, year) {
+  const headerRegex =
+    /(\d{4})年(\d{1,2})月(\d{1,2})日\s*第\s*<span[^>]*>\s*(\d{1,3})\s*<\/span>\s*期/gi;
+  const headers = [];
+  let headerMatch;
+
+  while ((headerMatch = headerRegex.exec(html)) !== null) {
+    headers.push({
+      index: headerMatch.index,
+      contentStart: headerRegex.lastIndex,
+      date: `${headerMatch[1]}-${headerMatch[2].padStart(2, '0')}-${headerMatch[3].padStart(2, '0')}`,
+      event: `第${headerMatch[4].padStart(3, '0')}期`,
+      No: parseInt(headerMatch[4], 10),
+      year: parseInt(headerMatch[1], 10) || year,
+    });
+  }
+
+  const results = [];
+  const ballRegex =
+    /<dt[^>]*class=["'][^"']*ball-(red|blue|green)[^"']*["'][^>]*>\s*(\d{1,2})\s*<\/dt>\s*<dd[^>]*>\s*([^<\s]+)/gi;
+
+  for (let index = 0; index < headers.length; index++) {
+    const current = headers[index];
+    const nextIndex =
+      index + 1 < headers.length ? headers[index + 1].index : html.length;
+    const block = html.slice(current.contentStart, nextIndex);
+    const numberInfos = [];
+    let ballMatch;
+
+    ballRegex.lastIndex = 0;
+    while ((ballMatch = ballRegex.exec(block)) !== null) {
+      numberInfos.push({
+        number: parseInt(ballMatch[2], 10),
+        color: COLOR_LABELS[ballMatch[1]],
+        zodiac: ballMatch[3],
+      });
+      if (numberInfos.length === 7) break;
+    }
+
+    if (numberInfos.length === 7) {
+      results.push({
+        date: current.date,
+        event: current.event,
+        year: current.year,
+        No: current.No,
+        items: numberInfos.map((info) => info.number),
+        numberInfos,
+      });
+    }
+  }
+
+  repairInvalidZodiacs(results);
+  return results.sort((a, b) => a.No - b.No);
+}
+
 function parseLotteryHtml(html, year) {
+  const structuredResults = parseStructuredLotteryHtml(html, year);
+  if (structuredResults.length > 0) return structuredResults;
+
   const results = [];
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const htmlBody = bodyMatch ? bodyMatch[1] : html;
@@ -160,6 +264,7 @@ module.exports = {
   fetchLotteryData,
   buildLotteryUrl,
   parseLotteryHtml,
+  parseStructuredLotteryHtml,
   parseSourceType,
   requestText,
 };

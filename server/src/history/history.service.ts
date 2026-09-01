@@ -6,13 +6,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { History } from './history.entity';
+import { History, LotteryNumberInfo } from './history.entity';
 import { loadSpider } from '../common/spider-loader';
 
 type HistorySyncItem = {
   year?: number;
   No?: number;
   items: number[];
+  numberInfos?: LotteryNumberInfo[];
 };
 
 @Injectable()
@@ -40,6 +41,10 @@ export class HistoryService {
     return count > 0;
   }
 
+  async findByYearNo(year: number, No: number): Promise<History | null> {
+    return this.historyRepo.findOneBy({ year, No });
+  }
+
   /** 获取单条记录 */
   async findOne(id: number): Promise<History> {
     const record = await this.historyRepo.findOneBy({ id });
@@ -54,11 +59,13 @@ export class HistoryService {
     numbers: number[],
     year?: number,
     No?: number,
+    numberInfos?: LotteryNumberInfo[],
   ): Promise<History> {
     if (numbers.length !== 7) {
       throw new BadRequestException('需要恰好 7 个数字');
     }
     this.validatePeriodPair(year, No);
+    this.validateNumberInfos(numbers, numberInfos);
     if (await this.existsByYearNo(year, No)) {
       throw new ConflictException(`第 ${year} 年第 ${No} 期数据已存在`);
     }
@@ -72,23 +79,41 @@ export class HistoryService {
       n7: numbers[6],
       year,
       No,
+      numberInfos,
     });
     return this.historyRepo.save(record);
   }
 
   async syncYear(year: number) {
-    const records = await this.fetchOnlineYear(year);
+    const records = await this.fetchYear(year);
     let inserted = 0;
+    let updated = 0;
     let skipped = 0;
     const insertedRecords: History[] = [];
 
     for (const item of records) {
       const itemYear = item.year || year;
-      if (await this.existsByYearNo(itemYear, item.No)) {
+      if (item.No === undefined) {
         skipped++;
         continue;
       }
-      const saved = await this.create(item.items, itemYear, item.No);
+      const existing = await this.findByYearNo(itemYear, item.No);
+      if (existing) {
+        const changed = this.applySyncItem(existing, item);
+        if (changed) {
+          await this.historyRepo.save(existing);
+          updated++;
+        } else {
+          skipped++;
+        }
+        continue;
+      }
+      const saved = await this.create(
+        item.items,
+        itemYear,
+        item.No,
+        item.numberInfos,
+      );
       inserted++;
       insertedRecords.push(saved);
     }
@@ -97,9 +122,22 @@ export class HistoryService {
       year,
       fetched: records.length,
       inserted,
+      updated,
       skipped,
       records: insertedRecords,
     };
+  }
+
+  private async fetchYear(year: number): Promise<HistorySyncItem[]> {
+    try {
+      const spider = loadSpider();
+      const records = await spider.fetchLotteryData(year);
+      if (Array.isArray(records) && records.length > 0) return records;
+    } catch {
+      // Local environments may not be able to reach the upstream HTTPS port.
+      // In that case, keep the existing online API fallback.
+    }
+    return this.fetchOnlineYear(year);
   }
 
   private async fetchOnlineYear(year: number): Promise<HistorySyncItem[]> {
@@ -121,6 +159,7 @@ export class HistoryService {
       year: item.year || year,
       No: item.No,
       items: [item.n1, item.n2, item.n3, item.n4, item.n5, item.n6, item.n7],
+      numberInfos: item.numberInfos,
     }));
   }
 
@@ -145,22 +184,43 @@ export class HistoryService {
     }
 
     const itemYear = latest.year || year;
-    if (await this.existsByYearNo(itemYear, latest.No)) {
+    const existing = await this.findByYearNo(itemYear, latest.No);
+    if (existing) {
+      const changed = this.applySyncItem(existing, latest);
+      if (changed) {
+        const saved = await this.historyRepo.save(existing);
+        return {
+          year,
+          sourceYear,
+          inserted: 0,
+          updated: 1,
+          skipped: 0,
+          record: saved,
+          message: `已更新第 ${itemYear} 年第 ${latest.No} 期附加信息`,
+        };
+      }
       return {
         year,
         sourceYear,
         inserted: 0,
+        updated: 0,
         skipped: 1,
         record: null,
         message: `第 ${itemYear} 年第 ${latest.No} 期数据已存在`,
       };
     }
 
-    const saved = await this.create(latest.items, itemYear, latest.No);
+    const saved = await this.create(
+      latest.items,
+      itemYear,
+      latest.No,
+      latest.numberInfos,
+    );
     return {
       year,
       sourceYear,
       inserted: 1,
+      updated: 0,
       skipped: 0,
       record: saved,
       message: `已同步第 ${itemYear} 年第 ${latest.No} 期`,
@@ -173,11 +233,13 @@ export class HistoryService {
     numbers: number[],
     year?: number,
     No?: number,
+    numberInfos?: LotteryNumberInfo[],
   ): Promise<History> {
     if (numbers.length !== 7) {
       throw new BadRequestException('需要恰好 7 个数字');
     }
     this.validatePeriodPair(year, No);
+    this.validateNumberInfos(numbers, numberInfos);
     const record = await this.findOne(id);
     record.n1 = numbers[0];
     record.n2 = numbers[1];
@@ -188,6 +250,7 @@ export class HistoryService {
     record.n7 = numbers[6];
     if (year !== undefined) record.year = year;
     if (No !== undefined) record.No = No;
+    if (numberInfos !== undefined) record.numberInfos = numberInfos;
     return this.historyRepo.save(record);
   }
 
@@ -217,5 +280,73 @@ export class HistoryService {
     if (onlyOneProvided) {
       throw new BadRequestException('year 和 No 必须同时提供');
     }
+  }
+
+  private validateNumberInfos(
+    numbers: number[],
+    numberInfos?: LotteryNumberInfo[],
+  ): void {
+    if (numberInfos === undefined) return;
+    if (numberInfos.length !== 7) {
+      throw new BadRequestException('numberInfos 需要恰好 7 项');
+    }
+    const validColors = new Set(['红', '蓝', '绿']);
+    const validZodiacs = new Set([
+      '鼠',
+      '牛',
+      '虎',
+      '兔',
+      '龙',
+      '蛇',
+      '马',
+      '羊',
+      '猴',
+      '鸡',
+      '狗',
+      '猪',
+    ]);
+    const invalidIndex = numberInfos.findIndex(
+      (info, index) =>
+        info.number !== numbers[index] ||
+        !validColors.has(info.color) ||
+        !validZodiacs.has(info.zodiac),
+    );
+    if (invalidIndex !== -1) {
+      throw new BadRequestException(
+        `numberInfos 第 ${invalidIndex + 1} 项与号码顺序不一致或属性无效`,
+      );
+    }
+  }
+
+  private applySyncItem(record: History, item: HistorySyncItem): boolean {
+    this.validateNumberInfos(item.items, item.numberInfos);
+    const currentNumbers = [
+      record.n1,
+      record.n2,
+      record.n3,
+      record.n4,
+      record.n5,
+      record.n6,
+      record.n7,
+    ];
+    const numbersChanged = currentNumbers.some(
+      (number, index) => number !== item.items[index],
+    );
+    const infosChanged =
+      item.numberInfos !== undefined &&
+      JSON.stringify(record.numberInfos || null) !==
+        JSON.stringify(item.numberInfos);
+
+    if (numbersChanged) {
+      record.n1 = item.items[0];
+      record.n2 = item.items[1];
+      record.n3 = item.items[2];
+      record.n4 = item.items[3];
+      record.n5 = item.items[4];
+      record.n6 = item.items[5];
+      record.n7 = item.items[6];
+    }
+    if (infosChanged) record.numberInfos = item.numberInfos;
+    return numbersChanged || infosChanged;
   }
 }

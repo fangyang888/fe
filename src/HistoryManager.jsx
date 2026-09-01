@@ -198,7 +198,7 @@ export default function HistoryManager() {
       if (mode === "year") {
         setMsg({
           type: "success",
-          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，忽略重复 ${data.skipped} 期`,
+          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，更新 ${data.updated || 0} 期，忽略未变 ${data.skipped} 期`,
         });
       } else {
         setMsg({

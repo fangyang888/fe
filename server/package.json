@@ -16,6 +16,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
+    "history:sync-metadata": "node scripts/sync-history-number-infos.js",
     "kill-one:db": "ts-node scripts/kill-one-db-backtest.ts",
     "seed:rbac": "ts-node scripts/seed-rbac.ts",
     "seed:home": "ts-node scripts/seed-home.ts",

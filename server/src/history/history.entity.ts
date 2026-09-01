@@ -5,6 +5,14 @@ import {
   CreateDateColumn,
 } from 'typeorm';
 
+export type LotteryBallColor = '红' | '蓝' | '绿';
+
+export type LotteryNumberInfo = {
+  number: number;
+  color: LotteryBallColor;
+  zodiac: string;
+};
+
 @Entity('history')
 export class History {
   @PrimaryGeneratedColumn()
@@ -36,6 +44,9 @@ export class History {
 
   @Column({ type: 'int', nullable: true })
   No: number;
+
+  @Column({ type: 'json', nullable: true, name: 'number_infos' })
+  numberInfos?: LotteryNumberInfo[];
 
   @CreateDateColumn()
   created_at: Date;

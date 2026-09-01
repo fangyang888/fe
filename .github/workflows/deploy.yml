@@ -150,6 +150,9 @@ jobs:
             if [ -f sql/init-tables.sql ]; then
               mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < sql/init-tables.sql || echo "init-tables 执行有警告，继续"
             fi
+            if [ -f sql/20260901-add-history-number-infos.sql ]; then
+              mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" < sql/20260901-add-history-number-infos.sql || echo "history number_infos 迁移有警告，继续"
+            fi
 
             # ---- 创建/更新后台管理员账号（密码来自 Secret，哈希用 Node 内置 scrypt）----
             ADMIN_USER="${{ secrets.ADMIN_USER }}"
@@ -184,6 +187,17 @@ jobs:
             # 确认 NestJS、Python Agent 和三个股票真实数据源都能访问。
             pm2 describe fe-server
             pm2 describe python-agent
+            HISTORY_YEAR=$(date +%Y)
+            if ! HISTORY_SYNC=$(curl --fail --show-error --max-time 90 --retry 5 --retry-delay 3 --retry-connrefused \
+              --request POST \
+              --header 'Content-Type: application/json' \
+              --data "{\"year\":${HISTORY_YEAR}}" \
+              http://127.0.0.1:3000/api/history/sync-year); then
+              echo "${HISTORY_YEAR} 年历史数据自动同步失败"
+              pm2 logs fe-server --lines 100 --nostream || true
+              exit 1
+            fi
+            node -e 'const result=JSON.parse(process.argv[1]);if(!Number.isInteger(result.fetched)||result.fetched<1||result.inserted+result.updated+result.skipped!==result.fetched){process.exit(1)};console.log(JSON.stringify({year:result.year,fetched:result.fetched,inserted:result.inserted,updated:result.updated,skipped:result.skipped}))' "$HISTORY_SYNC"
             if ! PYTHON_HEALTH=$(curl --fail --show-error --max-time 15 --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/api/agent/health); then
               pm2 logs python-agent --lines 100 --nostream || true
               exit 1

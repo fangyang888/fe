@@ -14,8 +14,9 @@ const FALLBACK_BALL_COLOR = {
 const NUMBER_ROW_STYLE = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  padding: "3px 0",
+  gap: 5,
+  padding: "2px 0",
+  flexWrap: "wrap",
 };
 
 function getNumberInfos(record) {
@@ -41,30 +42,29 @@ function HistoryNumberBall({ number, info, position }) {
     <div
       title={`第${position}位：${displayNumber}${colorName ? ` · ${colorName}波` : ""}${info?.zodiac ? ` · ${info.zodiac}` : ""}`}
       aria-label={`第${position}位号码 ${displayNumber}，${colorName || "颜色未知"}，生肖${zodiac}`}
-      style={{ width: 44, flex: "0 0 44px", textAlign: "center" }}
+      style={{ width: 24, flex: "0 0 24px", textAlign: "center" }}
     >
-      <span style={{ display: "block", marginBottom: 4, color: "#67798f", fontSize: 9, lineHeight: 1 }}>
+      <span style={{ display: "block", marginBottom: 2, color: "#67798f", fontSize: 7, lineHeight: 1 }}>
         N{position}
       </span>
       <span
         style={{
           display: "grid",
           placeItems: "center",
-          width: 38,
-          height: 38,
+          width: 20,
+          height: 20,
           margin: "0 auto",
           borderRadius: "50%",
           background: color.background,
           color: "#fff",
-          fontSize: 15,
+          fontSize: 9,
           fontWeight: 800,
-          letterSpacing: 0.3,
-          boxShadow: `0 6px 16px ${color.shadow}, inset 0 1px 1px rgba(255,255,255,0.28)`,
+          boxShadow: `0 3px 8px ${color.shadow}, inset 0 1px 1px rgba(255,255,255,0.28)`,
         }}
       >
         {displayNumber}
       </span>
-      <span style={{ display: "block", marginTop: 5, color: info?.zodiac ? "#cbd5e1" : "#64748b", fontSize: 11 }}>
+      <span style={{ display: "block", marginTop: 3, color: info?.zodiac ? "#cbd5e1" : "#64748b", fontSize: 9 }}>
         {zodiac}
       </span>
     </div>
@@ -128,7 +128,10 @@ export default function HistoryManager() {
       const res = await fetch(url);
       if (!res.ok) throw new Error("加载失败");
       const data = await res.json();
-      setRecords(data);
+      const sortedRecords = Array.isArray(data)
+        ? [...data].sort((a, b) => Number(b.year || 0) - Number(a.year || 0) || Number(b.No || 0) - Number(a.No || 0))
+        : [];
+      setRecords(sortedRecords);
       setError(null);
     } catch (e) {
       setError(e.message);
@@ -448,28 +451,6 @@ export default function HistoryManager() {
       color: type === "error" ? "#e74c3c" : "#2ecc71",
       border: `1px solid ${type === "error" ? "rgba(231,76,60,0.3)" : "rgba(46,204,113,0.3)"}`,
     }),
-    table: {
-      width: "100%",
-      minWidth: 920,
-      borderCollapse: "collapse",
-      fontSize: 14,
-    },
-    th: {
-      textAlign: "left",
-      padding: "10px 8px",
-      borderBottom: "1px solid rgba(255,255,255,0.1)",
-      color: "#8899aa",
-      fontWeight: 500,
-      fontSize: 12,
-    },
-    td: {
-      padding: "10px 8px",
-      borderBottom: "1px solid rgba(255,255,255,0.05)",
-      color: "#d0d0d0",
-    },
-    numCell: {
-      minWidth: 390,
-    },
     legend: {
       display: "flex",
       alignItems: "center",
@@ -478,6 +459,38 @@ export default function HistoryManager() {
       marginLeft: 12,
       color: "#8899aa",
       fontSize: 11,
+    },
+    recordList: {
+      display: "grid",
+      gridTemplateColumns: "minmax(0, 1fr)",
+      gap: 8,
+    },
+    recordItem: {
+      padding: "11px 12px",
+      borderRadius: 10,
+      border: "1px solid rgba(255,255,255,0.07)",
+      background: "rgba(255,255,255,0.035)",
+      contentVisibility: "auto",
+      containIntrinsicSize: "68px",
+    },
+    recordHead: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      marginBottom: 8,
+    },
+    recordPeriod: {
+      display: "block",
+      color: "#f1f5f9",
+      fontSize: 13,
+      fontWeight: 700,
+    },
+    recordTime: {
+      display: "block",
+      marginTop: 2,
+      color: "#66778b",
+      fontSize: 9,
     },
   };
 
@@ -649,42 +662,28 @@ export default function HistoryManager() {
         ) : records.length === 0 ? (
           <p style={{ color: "#8899aa" }}>暂无数据</p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>ID</th>
-                  <th style={styles.th}>Year</th>
-                  <th style={styles.th}>No</th>
-                  <th style={styles.th}>号码</th>
-                  <th style={styles.th}>时间</th>
-                  <th style={styles.th}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr key={r.id}>
-                    <td style={styles.td}>{r.id}</td>
-                    <td style={styles.td}>{r.year || "-"}</td>
-                    <td style={styles.td}>{r.No || "-"}</td>
-                    <td style={{ ...styles.td, ...styles.numCell }}>
-                      <HistoryNumberList record={r} />
-                    </td>
-                    <td style={styles.td}>
-                      {r.created_at ? new Date(r.created_at).toLocaleString("zh-CN") : "-"}
-                    </td>
-                    <td style={styles.td}>
-                      <button
-                        onClick={() => handleDelete(r.id)}
-                        style={styles.deleteBtn}
-                      >
-                        删除
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={styles.recordList}>
+            {records.map((r) => (
+              <article key={r.id} style={styles.recordItem}>
+                <div style={styles.recordHead}>
+                  <div>
+                    <strong style={styles.recordPeriod}>
+                      {r.year || "-"}年 · 第{r.No || "-"}期
+                    </strong>
+                    <span style={styles.recordTime}>
+                      {r.created_at ? new Date(r.created_at).toLocaleString("zh-CN") : "时间未知"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(r.id)}
+                    style={styles.deleteBtn}
+                  >
+                    删除
+                  </button>
+                </div>
+                <HistoryNumberList record={r} />
+              </article>
+            ))}
           </div>
         )}
       </div>

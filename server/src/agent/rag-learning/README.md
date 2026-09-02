@@ -12,6 +12,7 @@
 如果你的目标是结合当前项目完成可上线的真实代码，请直接进入：
 
 - [生产级 RAG 代码实验课：从当前项目到真实上线](./production-code-labs/README.md)
+- [商城客服 RAG 跟敲版：暂不依赖 Elasticsearch](./production-code-labs/guided-build/README.md)
 
 代码实验课以 `LESSON_08_PRODUCTION_RAG_AND_KNOWLEDGE_BASE.md` 的 62 节为主线，细分为 20 个实验，并覆盖 NestJS、MySQL、Elasticsearch Hybrid Search、引用、安全、评估、SSE、发布与回滚。
 

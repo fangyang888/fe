@@ -4,8 +4,13 @@
 
 目标不是运行一个 MemoryVectorStore Demo，而是最终形成可以发布、回滚、评估、鉴权和监控的商城客服知识库。
 
+> 推荐学习入口已经改为：[商城客服 RAG 跟敲版](./guided-build/README.md)。
+>
+> 跟敲版暂时忽略 Elasticsearch，使用可替换的 SearchPort + MemoryVectorStore 学透 RAG 和客服编排；本目录其余 00～19 文件作为生产架构参考，等你完成客服主线后再按需要选择持久化检索设施。
+
 本课程的业务主角始终是你当前的商城客服。开始代码前先阅读：
 
+- [商城客服 RAG 跟敲版（逐文件、测试和运行命令）](./guided-build/README.md)
 - [商城客服 RAG 实战主线](./customer-service-mainline/README.md)
 
 它把商品、库存、订单、退货政策、多轮对话和人工工单串成六个连续案例，并明确对应当前 `ProductCustomerService`、`OrderService`、`AgentConversationService`、历史持久化与 SSE 代码。

@@ -1,0 +1,8 @@
+{
+  "name": "component-search-monorepo-fixture",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

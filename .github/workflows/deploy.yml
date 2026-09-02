@@ -55,7 +55,7 @@ jobs:
       - name: Build and test Component Search MCP
         run: |
           cd component-search-mcp
-          pnpm install --frozen-lockfile
+          pnpm install --no-frozen-lockfile
           pnpm test
 
       - name: Package searchable component sources

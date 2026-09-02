@@ -39,3 +39,27 @@ test("finds a phone input from a Chinese natural-language question", async () =>
   assert.ok(result.results[0]?.matchScore > 0.8);
   assert.ok(result.results[0]?.matchScore <= 1);
 });
+
+test("deduplicates the same component from overlapping source roots", async () => {
+  const index = await buildComponentIndex({ projectRoot: fixtureRoot });
+  const phoneInput = index.components.find(
+    (component) => component.name === "PhoneInput",
+  );
+  assert.ok(phoneInput);
+
+  const result = searchComponents(
+    {
+      ...index,
+      components: [
+        ...index.components,
+        { ...phoneInput, id: `${phoneInput.id}:duplicate` },
+      ],
+    },
+    "PhoneInput",
+  );
+
+  assert.equal(
+    result.results.filter((component) => component.name === "PhoneInput").length,
+    1,
+  );
+});

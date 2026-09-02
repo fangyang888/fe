@@ -39,7 +39,7 @@ MCP Server
 | React/TSX | TypeScript Compiler AST | TypeScript Program + 类型解析 |
 | Vue | SFC 启发式抽取 | `@vue/compiler-sfc` AST |
 | 关键词召回 | 本地加权搜索 | 与向量召回混合排序 |
-| Embedding | 尚未接入 | 可插拔 OpenAI / Azure OpenAI / 本地模型 |
+| Embedding | 默认 Transformers.js 进程内推理；保留 Ollama / OpenAI Provider | 增加质量评测、监控与灰度切换 |
 | Vector DB | 尚未接入 | 本地 LanceDB，生产可换 Qdrant/pgvector |
 | MCP | STDIO、只读 | STDIO + Streamable HTTP |
 

@@ -62,6 +62,27 @@ export function resolveIndexPath(explicitPath?: string): string {
   );
 }
 
+export function resolveVectorIndexPath(
+  explicitPath?: string,
+  componentIndexPath = resolveIndexPath(),
+): string {
+  if (explicitPath) return path.resolve(explicitPath);
+  if (process.env.COMPONENT_MCP_VECTOR_INDEX_PATH) {
+    return path.resolve(process.env.COMPONENT_MCP_VECTOR_INDEX_PATH);
+  }
+
+  const parsed = path.parse(componentIndexPath);
+  return path.join(parsed.dir, `${parsed.name}.vectors.json`);
+}
+
+export function resolveTransformersCachePath(explicitPath?: string): string {
+  return path.resolve(
+    explicitPath ??
+      process.env.COMPONENT_MCP_MODEL_CACHE_PATH ??
+      path.join(packageRoot, ".cache", "transformers"),
+  );
+}
+
 export function resolveScopedIndexPath(
   projectRoot: string,
   sourceRoots: string[],

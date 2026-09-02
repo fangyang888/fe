@@ -178,13 +178,20 @@ export function searchComponents(
       (left, right) =>
         right.score - left.score || right.usageCount - left.usageCount,
     );
+  const seenComponents = new Set<string>();
+  const uniqueResults = results.filter((component) => {
+    const key = `${component.sourcePath.replaceAll("\\", "/")}\0${component.name}`;
+    if (seenComponents.has(key)) return false;
+    seenComponents.add(key);
+    return true;
+  });
 
   return {
     query,
     projectRoot: index.projectRoot,
     projectName: index.projectName,
     sourceRoots: index.sourceRoots,
-    total: results.length,
-    results: results.slice(0, limit),
+    total: uniqueResults.length,
+    results: uniqueResults.slice(0, limit),
   };
 }

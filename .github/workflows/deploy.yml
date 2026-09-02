@@ -22,6 +22,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            server/pnpm-lock.yaml
+            component-search-mcp/pnpm-lock.yaml
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
@@ -47,6 +51,22 @@ jobs:
           cd admin
           npm install
           npm run build
+
+      - name: Build and test Component Search MCP
+        run: |
+          cd component-search-mcp
+          pnpm install --frozen-lockfile
+          pnpm test
+
+      - name: Package searchable component sources
+        run: |
+          tar -czf component-search-source.tar.gz \
+            package.json \
+            src \
+            admin/package.json \
+            admin/src \
+            miniapp/package.json \
+            miniapp/src
 
       - name: Validate Python Agent
         run: |
@@ -84,7 +104,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/README.md,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,ecosystem.config.cjs,deploy/nginx.conf'
+          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/README.md,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,component-search-mcp/dist/**,component-search-mcp/package.json,component-search-mcp/pnpm-lock.yaml,component-search-source.tar.gz,ecosystem.config.cjs,deploy/nginx.conf'
           target: '/home/deploy/fe'
           strip_components: 0
           timeout: 120s
@@ -168,6 +188,23 @@ jobs:
             npm_config_cache=/home/deploy/fe/.npm-cache npx --yes pnpm@9 install --prod --frozen-lockfile
             cd ..
 
+            # 原子替换 MCP 检索使用的源码快照，避免已删除的组件残留在服务器上。
+            rm -rf component-search-source.next
+            mkdir -p component-search-source.next
+            tar -xzf component-search-source.tar.gz -C component-search-source.next
+            test -d component-search-source.next/src
+            rm -rf component-search-source.previous
+            if [ -d component-search-source ]; then
+              mv component-search-source component-search-source.previous
+            fi
+            mv component-search-source.next component-search-source
+            rm -rf component-search-source.previous component-search-source.tar.gz
+
+            # 安装 Component Search MCP 的生产依赖。
+            cd component-search-mcp
+            npm_config_cache=/home/deploy/fe/.npm-cache npx --yes pnpm@9 install --prod --frozen-lockfile
+            cd ..
+
             # 使用 CI 随发布包上传的 uv，创建隔离的 Python 3.14 运行环境。
             chmod +x python-agent/.deploy-bin/uv
             UV_CACHE_DIR=/home/deploy/fe/.uv-cache \
@@ -176,8 +213,8 @@ jobs:
               --frozen \
               --no-dev
 
-            # 清除旧进程，再按本次双进程配置启动 NestJS 和 Python Agent。
-            pm2 delete fe-server python-agent || true
+            # 清除旧进程，再按本次配置启动 NestJS、Python Agent 和 Component Search MCP。
+            pm2 delete fe-server python-agent component-search-mcp || true
             if ! pm2 start ecosystem.config.cjs --env production; then
               pm2 logs --lines 100 --nostream || true
               exit 1
@@ -187,6 +224,13 @@ jobs:
             # 确认 NestJS、Python Agent 和三个股票真实数据源都能访问。
             pm2 describe fe-server
             pm2 describe python-agent
+            pm2 describe component-search-mcp
+            if ! COMPONENT_MCP_HEALTH=$(curl --fail --show-error --max-time 15 --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:3102/healthz); then
+              pm2 logs component-search-mcp --lines 100 --nostream || true
+              exit 1
+            fi
+            echo "$COMPONENT_MCP_HEALTH"
+            node -e 'const health=JSON.parse(process.argv[1]);if(health.status!=="ok"){process.exit(1)}' "$COMPONENT_MCP_HEALTH"
             HISTORY_YEAR=$(date +%Y)
             if ! HISTORY_SYNC=$(curl --fail --show-error --max-time 90 --retry 5 --retry-delay 3 --retry-connrefused \
               --request POST \
@@ -225,3 +269,6 @@ jobs:
             curl --fail --show-error --max-time 15 \
               --header 'Host: 47.106.103.79' \
               http://127.0.0.1/api/agent/health
+            curl --fail --show-error --max-time 15 \
+              --header 'Host: 47.106.103.79' \
+              http://127.0.0.1/mcp/component-search/healthz

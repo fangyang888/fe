@@ -41,7 +41,15 @@ test("searches an explicitly selected project with auto-discovered roots", async
     const structuredContent = result.structuredContent as {
       projectName: string;
       sourceRoots: string[];
-      results: Array<{ name: string }>;
+      results: Array<{
+        name: string;
+        componentPath: string;
+        relativePath: string;
+        displayPathMarkdown: string;
+        sourcePath: string;
+        matchScore?: number;
+        matchReason?: string[];
+      }>;
     };
 
     assert.equal(structuredContent.projectName, "component-search-monorepo-fixture");
@@ -50,6 +58,39 @@ test("searches an explicitly selected project with auto-discovered roots", async
       "packages/ui/src",
     ]);
     assert.equal(structuredContent.results[0]?.name, "GridMenu");
+    assert.equal(
+      structuredContent.results[0]?.componentPath,
+      path.join(fixturesRoot, "monorepo/packages/ui/src/GridMenu.vue"),
+    );
+    assert.equal(
+      structuredContent.results[0]?.sourcePath,
+      "packages/ui/src/GridMenu.vue",
+    );
+    assert.equal(
+      structuredContent.results[0]?.relativePath,
+      "/ui/src/GridMenu.vue",
+    );
+    assert.equal(
+      structuredContent.results[0]?.displayPathMarkdown,
+      `[/ui/src/GridMenu.vue](<${path.join(fixturesRoot, "monorepo/packages/ui/src/GridMenu.vue")}>)`,
+    );
+    assert.equal(structuredContent.results[0]?.matchScore, undefined);
+    assert.equal(structuredContent.results[0]?.matchReason, undefined);
+    const textContent = (
+      result.content as Array<{ type: string; text?: string }>
+    ).find((content) => content.type === "text");
+    assert.equal(textContent?.type, "text");
+    if (textContent?.type === "text" && textContent.text) {
+      assert.match(
+        textContent.text,
+        /GridMenu.*使用次数：0 次/,
+      );
+      assert.match(
+        textContent.text,
+        /组件路径：\[\/ui\/src\/GridMenu\.vue\]\(<.*packages\/ui\/src\/GridMenu\.vue>\)/,
+      );
+      assert.doesNotMatch(textContent.text, /实际绝对路径：|相对路径：/);
+    }
   } finally {
     await client.close();
     await rm(temporaryDirectory, { recursive: true, force: true });

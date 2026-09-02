@@ -10,11 +10,20 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
+    "start:http": "node dist/src/http-server.js",
     "index": "node dist/src/cli/build-index.js",
+    "index:vectors": "pnpm run build && node dist/src/cli/build-vector-index.js",
     "search:components": "node dist/src/cli/search.js",
-    "test": "pnpm run build && node --test dist/test/*.test.js"
+    "search:semantic": "pnpm run build && node dist/src/cli/semantic-search.js",
+    "check:embedding": "pnpm run build && node dist/src/cli/check-embedding.js",
+    "example:bag-of-words": "pnpm run build && node dist/src/examples/bag-of-words-search.js",
+    "example:transformers-similarity": "pnpm run build && node dist/src/examples/transformersjs-similarity.js",
+    "example:compare-search": "pnpm run build && node dist/src/examples/compare-keyword-and-transformersjs.js",
+    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "fe": "ossutil cp -r ./dist/ oss://front-static/ctrm-subscribe/fe/  --update"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.25.3",
     "typescript": "~5.9.3",
     "zod": "^4.3.6"

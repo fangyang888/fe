@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -18,6 +20,10 @@ import {
   writeComponentIndex,
 } from "./scanner.js";
 import { searchComponents } from "./search.js";
+import {
+  formatComponentSearchResult,
+  toDisplayRelativePath,
+} from "./search-result-format.js";
 import { resolveSourceRootsForProject } from "./source-roots.js";
 import type { ComponentIndex } from "./types.js";
 
@@ -86,7 +92,9 @@ const resultItemSchema = z.object({
   framework: z.enum(["react", "vue"]),
   parser: z.enum(["typescript-ast", "vue-sfc-heuristic"]),
   projectName: z.string(),
-  sourcePath: z.string(),
+  sourcePath: z
+    .string()
+    .describe("Original source path relative to the selected project root."),
   exportPath: z.string(),
   exportKind: z.enum(["named", "default"]),
   status: z.enum(["stable", "deprecated"]),
@@ -105,31 +113,46 @@ const resultItemSchema = z.object({
   renderedElements: z.array(z.string()),
   sourceSnippet: z.string(),
   embeddingText: z.string(),
-  usageCount: z.number(),
+  usageCount: z
+    .number()
+    .describe("Number of project usage sites. Must be printed for every result."),
   usedBy: z.array(z.string()),
-  score: z.number(),
-  matchScore: z.number(),
-  matchReason: z.array(z.string()),
+  componentPath: z
+    .string()
+    .describe(
+      "Full absolute component path string. Print it inside inline-code backticks; never convert it to a link or citation.",
+    ),
+  relativePath: z
+    .string()
+    .describe(
+      "Display-relative component path such as /puzzle/src/components/PreviewModal.tsx.",
+    ),
+  displayPathMarkdown: z
+    .string()
+    .describe(
+      "Ready-to-render Markdown. Copy this value verbatim as the only visible component path: its full relative-path label is clickable and targets componentPath.",
+    ),
   importExample: z.string(),
 });
 
-const server = new McpServer(
+export function createComponentSearchServer(): McpServer {
+  const server = new McpServer(
   {
     name: "internal-component-search",
     version: "0.1.0",
   },
   {
     instructions:
-      "在实现常见 UI 功能或新建组件前，先搜索当前或用户指定项目的已有组件。需要切换项目时传入 projectRoot；省略 sourceRoots 可自动发现源码目录。优先推荐稳定且已有实际使用记录的组件，并依据 sourcePath 和 usedBy 检查真实用法。不要把搜索结果当成写操作；本服务只读项目源码。",
+      "在实现常见 UI 功能或新建组件前，先搜索当前或用户指定项目的已有组件。需要切换项目时传入 projectRoot；省略 sourceRoots 可自动发现源码目录。结果已按组件名和实际文件路径去重。向用户展示候选组件时，组件标题使用普通文字；每个组件只展示一条组件路径，必须逐字复制 displayPathMarkdown，不要同时打印 sourcePath、componentPath 或 relativePath。displayPathMarkdown 的可见文字是完整相对路径，点击后打开 componentPath 指向的实际文件。每个候选还必须打印描述、Props 和 usageCount 的明确次数。不要展示内部排序分或匹配原因。不要把搜索结果当成写操作；本服务只读项目源码。",
   },
 );
 
-server.registerTool(
+  server.registerTool(
   "search_internal_component",
   {
     title: "Search internal project components",
     description:
-      "Search reusable frontend components in the current or explicitly selected project. Use before implementing common UI, when the user asks whether an existing component can be reused, or when you need source paths, props, and real usage locations. Source directories are discovered automatically when sourceRoots is omitted.",
+      "Search deduplicated reusable frontend components in the current or explicitly selected project. For each result, render its plain component title and copy displayPathMarkdown verbatim as the only visible path; the full relative-path label is clickable and opens componentPath. Do not separately print sourcePath, componentPath, or relativePath. Also print numeric usageCount, description, and props. Internal ranking scores and reasons are intentionally omitted.",
     inputSchema: {
       query: z.string().min(1).describe("Natural-language component requirement"),
       limit: z.number().int().min(1).max(20).default(5),
@@ -179,28 +202,38 @@ server.registerTool(
       limit,
       includeDeprecated,
     });
-    const summary = result.results.length
-      ? result.results
-          .map(
-            (component, position) =>
-              `${position + 1}. ${component.name}\n` +
-              `   路径：${component.sourcePath}\n` +
-              `   匹配分：${component.matchScore.toFixed(2)}\n` +
-              `   原因：${component.matchReason.join("；")}`,
-          )
-          .join("\n")
-      : "没有找到匹配的项目组件。可以尝试组件名、业务用途或 Props 关键词。";
+    const summary = formatComponentSearchResult(result);
+    const publicResult = {
+      ...result,
+      results: result.results.map(
+        ({
+          score: _score,
+          matchScore: _matchScore,
+          matchReason: _matchReason,
+          ...component
+        }) => ({
+          ...component,
+          componentPath: path.resolve(result.projectRoot, component.sourcePath),
+          relativePath: toDisplayRelativePath(component.sourcePath),
+          displayPathMarkdown: `[${toDisplayRelativePath(component.sourcePath)}](<${path.resolve(result.projectRoot, component.sourcePath)}>)`,
+        }),
+      ),
+    };
 
     return {
-      structuredContent: result,
+      structuredContent: publicResult,
       content: [{ type: "text", text: summary }],
     };
   },
-);
+  );
+
+  return server;
+}
 
 async function main(): Promise<void> {
   await fs.access(defaultProjectRoot);
   const defaultSourceRoots = await resolveSourceRootsForProject(defaultProjectRoot);
+  const server = createComponentSearchServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(
@@ -208,7 +241,12 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}

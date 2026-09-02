@@ -34,11 +34,13 @@ search_internal_component
 - 在 Tool 调用中选择允许范围内的项目根目录。
 - 自动发现普通项目和 monorepo 的常见源码目录。
 - 搜索前检查目标项目指纹，变化时先更新索引再返回结果。
+- 通过 Transformers.js 在 Node.js 进程内生成真实 Embedding。
+- 将向量写入本地增量 JSON 索引，并提供独立语义搜索与评测 CLI。
 
 当前还没有完成：
 
-- 没有真正调用 Embedding 模型。
 - 没有把向量写入 LanceDB、Qdrant 或 pgvector。
+- MCP Tool 当前仍走关键词主链路，尚未融合语义召回。
 - `matchScore` 不是余弦相似度，只是关键词总分的归一化结果。
 - Vue 暂时使用正则和文件约定进行启发式抽取，不是 Vue Compiler AST。
 - 还没有 `get_component`、`find_similar_component`、`find_usage` 等独立工具。
@@ -301,7 +303,7 @@ Export: named from ./src/components/UserSelectModal
 1. `embeddingText` 是准备送给 Embedding 模型的文本。
 2. Embedding 是模型把这段文本转换成一组数字向量的过程。
 
-当前项目只完成了第 1 步，**还没有生成数字向量**。因此“九宫格”和英文 `GridMenu` 如果没有同义词、描述或 `@use-case`，当前搜索可能找不到；接入 Embedding 后，语义相近但字面不同的查询更容易召回。
+当前项目已经完成这两步：默认由 Transformers.js 的多语言 E5 模型生成 384 维向量，并保存到独立的本地向量索引。关键词 MCP 主链路尚未直接替换；可以使用 `pnpm search:semantic` 单独验证语义召回，再根据评测结果实现 Hybrid Search。
 
 ### 4.7 当前关键词检索算法
 

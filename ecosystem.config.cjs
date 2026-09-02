@@ -46,7 +46,11 @@ module.exports = {
     {
       name: 'component-search-mcp',
       cwd: path.join(__dirname, 'component-search-mcp'),
-      script: 'dist/src/http-server.js',
+      // 直接执行 Node，避免 PM2 fork wrapper 改写 process.argv[1]，导致
+      // http-server 的 direct-entry guard 判断为“仅导入”而不启动监听。
+      script: process.execPath,
+      args: 'dist/src/http-server.js',
+      interpreter: 'none',
       instances: 1,
       exec_mode: 'fork',
       env: {

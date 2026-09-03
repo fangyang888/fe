@@ -160,7 +160,7 @@ codex mcp add internal-components \
   --env COMPONENT_MCP_PROJECT_ROOT=/absolute/path/to/project \
   --env COMPONENT_MCP_ALLOWED_ROOTS=/absolute/path/to/workspaces \
   --env COMPONENT_MCP_SEARCH_MODE=hybrid \
-  -- npx -y internal-component-search-mcp@0.1.1
+  -- npx -y internal-component-search-mcp@0.1.2
 ```
 
 选择 STDIO 的原因是组件源码位于使用者电脑上。本地 MCP 可以读取本地项目；部署在服务器上的 HTTP MCP 只能读取服务器文件系统，无法直接看到开发者尚未提交的代码。

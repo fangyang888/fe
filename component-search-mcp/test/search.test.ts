@@ -5,6 +5,10 @@ import { buildComponentIndex } from "../src/scanner.js";
 import { searchComponents } from "../src/search.js";
 
 const fixtureRoot = path.resolve(process.cwd(), "test/fixtures/project");
+const harmonyFixtureRoot = path.resolve(
+  process.cwd(),
+  "test/fixtures/harmony-project",
+);
 
 test("indexes exported project components and usage locations", async () => {
   const index = await buildComponentIndex({ projectRoot: fixtureRoot });
@@ -62,4 +66,23 @@ test("deduplicates the same component from overlapping source roots", async () =
     result.results.filter((component) => component.name === "PhoneInput").length,
     1,
   );
+});
+
+test("indexes and searches ArkUI components from a HarmonyOS project", async () => {
+  const index = await buildComponentIndex({
+    projectRoot: harmonyFixtureRoot,
+    sourceRoots: ["feature/profile/src", "product/entry/src"],
+  });
+  const component = index.components.find(
+    (candidate) => candidate.name === "UserProfileCard",
+  );
+
+  assert.ok(component);
+  assert.equal(component.framework, "arkui");
+  assert.equal(component.parser, "arkts-ast");
+  assert.equal(component.props.find((prop) => prop.name === "userId")?.required, true);
+  assert.deepEqual(component.renderedElements, ["Column", "Avatar", "Image", "Text"]);
+
+  const result = searchComponents(index, "展示用户头像和昵称的资料卡片");
+  assert.equal(result.results[0]?.name, "UserProfileCard");
 });

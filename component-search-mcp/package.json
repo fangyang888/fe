@@ -1,6 +1,6 @@
 {
   "name": "internal-component-search-mcp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": false,
   "description": "Search reusable frontend components in a local project through MCP",
   "type": "module",

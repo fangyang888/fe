@@ -198,8 +198,8 @@ const resultItemSchema = z.object({
   name: z.string(),
   description: z.string(),
   scope: z.literal("project"),
-  framework: z.enum(["react", "vue"]),
-  parser: z.enum(["typescript-ast", "vue-sfc-heuristic"]),
+  framework: z.enum(["react", "vue", "arkui"]),
+  parser: z.enum(["typescript-ast", "vue-sfc-heuristic", "arkts-ast"]),
   projectName: z.string(),
   sourcePath: z
     .string()
@@ -248,7 +248,7 @@ export function createComponentSearchServer(): McpServer {
   const server = new McpServer(
   {
     name: "internal-component-search",
-    version: "0.1.1",
+    version: "0.1.2",
   },
   {
     instructions:

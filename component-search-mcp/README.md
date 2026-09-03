@@ -15,11 +15,11 @@ Component Search MCP 把项目源码转换为可检索的组件知识，并通�
 ## 2. 整体技术架构
 
 ```text
-React / Vue 项目源码
+React / Vue / HarmonyOS ArkUI 项目源码
         ↓
 源码目录自动发现
         ↓
-TypeScript AST / Vue SFC 解析
+TypeScript AST / ArkTS AST / Vue SFC 解析
         ↓
 结构化组件索引
         ↓
@@ -42,6 +42,7 @@ Codex 等本地 MCP 客户端
 | Model Context Protocol SDK     | 向 Codex 暴露 `search_internal_component` | 使用统一协议接入 AI 编程工具                            |
 | Zod                            | Tool 输入、输出 Schema 校验               | 减少参数错误，保证结果结构稳定                          |
 | TypeScript Compiler AST        | 分析 React、TSX 和 JSX                    | 精确提取组件、Props、JSDoc、import/export、Hooks 和 JSX |
+| ArkTS 兼容 AST                 | 分析 HarmonyOS `.ets` 和 ArkUI 组件       | 提取装饰器、Props、状态字段、`build()` 和 UI 组件调用   |
 | Vue SFC 启发式解析             | 分析 `.vue` 文件                          | 在不引入完整 Vue 编译器的情况下提供基础支持             |
 | Transformers.js                | 在本地生成 Embedding                      | 不需要 API Key，也不需要独立模型服务                    |
 | `Xenova/multilingual-e5-small` | 中英文语义向量模型                        | 支持中文需求与英文组件名之间的语义匹配                  |
@@ -64,14 +65,17 @@ components
 pages
 apps/*/src
 packages/*/src
+feature/*/src
+common/*/src
+product/*/src
 package.json workspaces
 ```
 
-扫描过程会忽略 `.git`、`node_modules`、`dist`、`.next`、`.nuxt`、`.cache` 等无关目录。
+扫描过程会忽略 `.git`、`node_modules`、`oh_modules`、`.hvigor`、`dist`、`.next`、`.nuxt`、`.cache` 等无关目录。
 
 ### 4.2 AST 组件抽取
 
-React 和 TypeScript 文件使用 TypeScript Compiler AST 解析，而不是通过正则表达式猜测代码结构。每个组件会生成结构化数据：
+React 和 TypeScript 文件使用 TypeScript Compiler AST 解析。HarmonyOS `.ets` 会先进行保持字符位置不变的 ArkTS 兼容转换，再由同一套 AST 能力识别 `@Component`、`@ComponentV2`、`@Entry`、`@CustomDialog`、Props、状态字段和 `build()` / `@Builder` 中的 ArkUI 组件调用。它不要求使用者安装 DevEco Studio。每个组件会生成结构化数据：
 
 ```ts
 interface ComponentMetadata {
@@ -160,7 +164,7 @@ codex mcp add internal-components \
   --env COMPONENT_MCP_PROJECT_ROOT=/absolute/path/to/project \
   --env COMPONENT_MCP_ALLOWED_ROOTS=/absolute/path/to/workspaces \
   --env COMPONENT_MCP_SEARCH_MODE=hybrid \
-  -- npx -y internal-component-search-mcp@0.1.1
+  -- npx -y internal-component-search-mcp@0.1.2
 ```
 
 选择 STDIO 的原因是组件源码位于使用者电脑上。本地 MCP 可以读取本地项目；部署在服务器上的 HTTP MCP 只能读取服务器文件系统，无法直接看到开发者尚未提交的代码。
@@ -213,7 +217,7 @@ Codex 可以获得真实组件路径、导出方式和 Props，而不是根据�
 - 否定表达仍可能误判，例如“展示员工列表，但不要选择人员”。
 - 首次安装 Transformers/ONNX 运行库较大，首次语义查询还需要下载量化模型。
 - 当前向量索引是本地 JSON 文件，不适合直接承担大型团队级、多仓库集中检索。
-- 当前主要扫描 `.tsx`、`.jsx` 和 `.vue`，尚未覆盖所有前端模板格式。
+- ArkTS 使用兼容预处理加 TypeScript AST，适合组件检索和元数据提取，但不是完整的 ArkTS 编译器或类型检查器。
 - 评估集规模仍较小，需要持续加入团队真实查询并调整混合权重。
 
 ## 10. 后续可扩展方向

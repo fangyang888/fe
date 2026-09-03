@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const SOURCE_EXTENSIONS = new Set([".tsx", ".jsx", ".vue"]);
+const SOURCE_EXTENSIONS = new Set([".tsx", ".jsx", ".vue", ".ets"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".cache",
@@ -13,10 +13,12 @@ const IGNORED_DIRECTORIES = new Set([
   "coverage",
   "dist",
   "node_modules",
+  "oh_modules",
   "out",
+  ".hvigor",
 ]);
 const DIRECT_SOURCE_DIRECTORIES = ["src", "modules", "components", "pages"];
-const WORKSPACE_CONTAINERS = ["apps", "packages"];
+const WORKSPACE_CONTAINERS = ["apps", "packages", "feature", "common", "product"];
 
 async function isDirectory(directory: string): Promise<boolean> {
   try {

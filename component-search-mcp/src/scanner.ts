@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createEmbeddingText } from "./embedding-document.js";
+import { extractArktsComponents } from "./extractors/arkts.js";
 import { extractReactComponents } from "./extractors/react.js";
 import type { ExtractedComponent } from "./extractors/types.js";
 import { extractVueComponents } from "./extractors/vue.js";
@@ -11,7 +12,7 @@ import type {
   SourceFileFingerprint,
 } from "./types.js";
 
-const SOURCE_EXTENSIONS = new Set([".tsx", ".jsx", ".vue"]);
+const SOURCE_EXTENSIONS = new Set([".tsx", ".jsx", ".vue", ".ets"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".cache",
@@ -23,9 +24,11 @@ const IGNORED_DIRECTORIES = new Set([
   "coverage",
   "dist",
   "node_modules",
+  "oh_modules",
   "out",
+  ".hvigor",
 ]);
-const IGNORED_FILE_PATTERN = /(?:\.test|\.spec|\.stories|\.config|\.d)\.[cm]?[jt]sx?$/i;
+const IGNORED_FILE_PATTERN = /(?:\.test|\.spec|\.stories|\.config|\.d)\.(?:[cm]?[jt]sx?|ets)$/i;
 
 interface SourceFile {
   absolutePath: string;
@@ -98,9 +101,14 @@ function splitWords(value: string): string[] {
 }
 
 function extractComponents(file: SourceFile): ExtractedComponent[] {
-  return path.extname(file.absolutePath).toLowerCase() === ".vue"
-    ? extractVueComponents(file.absolutePath, file.content)
-    : extractReactComponents(file.absolutePath, file.content);
+  const extension = path.extname(file.absolutePath).toLowerCase();
+  if (extension === ".vue") {
+    return extractVueComponents(file.absolutePath, file.content);
+  }
+  if (extension === ".ets") {
+    return extractArktsComponents(file.absolutePath, file.content);
+  }
+  return extractReactComponents(file.absolutePath, file.content);
 }
 
 function createExportPath(relativePath: string): string {

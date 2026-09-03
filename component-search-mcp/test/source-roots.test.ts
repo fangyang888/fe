@@ -21,6 +21,14 @@ test("discovers app and package source roots in a workspace", async () => {
   assert.deepEqual(roots, ["apps/admin/src", "packages/ui/src"]);
 });
 
+test("discovers feature and product roots in a HarmonyOS project", async () => {
+  const roots = await discoverSourceRoots(
+    path.join(fixturesRoot, "harmony-project"),
+  );
+
+  assert.deepEqual(roots, ["feature/profile/src", "product/entry/src"]);
+});
+
 test("rejects source roots outside the selected project", () => {
   const projectRoot = path.join(fixturesRoot, "project");
 

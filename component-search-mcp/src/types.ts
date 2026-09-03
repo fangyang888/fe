@@ -10,8 +10,8 @@ export interface ComponentMetadata {
   name: string;
   description: string;
   scope: "project";
-  framework: "react" | "vue";
-  parser: "typescript-ast" | "vue-sfc-heuristic";
+  framework: "react" | "vue" | "arkui";
+  parser: "typescript-ast" | "vue-sfc-heuristic" | "arkts-ast";
   projectName: string;
   sourcePath: string;
   exportPath: string;

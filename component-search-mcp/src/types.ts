@@ -64,6 +64,9 @@ export interface ComponentSearchResult {
   projectRoot: string;
   projectName: string;
   sourceRoots: string[];
+  searchMode?: "keyword" | "hybrid" | "keyword-fallback";
+  semanticModel?: string;
+  semanticWarning?: string;
   total: number;
   results: ComponentSearchMatch[];
 }

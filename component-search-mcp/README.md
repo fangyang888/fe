@@ -27,7 +27,7 @@ A · B = 4
 cosine(A, B) = 4 / sqrt(70) ≈ 0.478091
 ```
 
-生产用真实 Embedding 当前默认通过 Transformers.js 在 Node.js 进程内生成，不需要 API Key，也不需要启动 Ollama 等常驻服务。内置运行档为 `Xenova/multilingual-e5-small`、固定 revision、q8 量化和 384 维。第一次运行会通过可配置的 Hugging Face 模型源下载到 `.cache/transformers`，后续直接复用本地缓存；当前默认下载源使用这台机器实测可达的 `hf-mirror.com`。完整步骤见上面的“真实 Embedding 接入、自测与设计说明”。快速检查：
+生产用真实 Embedding 当前默认通过 Transformers.js 在 Node.js 进程内生成，不需要 API Key，也不需要启动 Ollama 等常驻服务。内置运行档为 `Xenova/multilingual-e5-small`、固定 revision、q8 量化和 384 维。第一次运行会通过可配置的 Hugging Face 模型源下载约 129 MB 的量化模型，后续从操作系统的用户缓存目录复用；因此升级或重装 `npx` 包不会重复下载模型。当前默认下载源使用这台机器实测可达的 `hf-mirror.com`。完整步骤见上面的“真实 Embedding 接入、自测与设计说明”。快速检查：
 
 ```bash
 pnpm check:embedding
@@ -68,7 +68,7 @@ pnpm index -- \
   --source-root miniapp/src
 ```
 
-默认索引写入 `.cache/components-index.json`，不会提交到 Git。
+默认索引写入操作系统的用户缓存目录，并按项目绝对路径隔离；也可以通过 `COMPONENT_MCP_INDEX_PATH` 指定位置。
 
 ## 3. 不启动 MCP，先验证搜索
 
@@ -78,9 +78,58 @@ pnpm search:components -- \
   --query "登录权限布局组件"
 ```
 
+MCP Tool 默认使用关键词分数与 Embedding 相似度组合的混合检索。首次语义查询会下载模型，之后复用用户级缓存：
+
+```bash
+COMPONENT_MCP_SEARCH_MODE=hybrid pnpm start
+```
+
+每次 Tool 调用也可以通过 `searchMode` 选择 `hybrid` 或 `keyword`。当模型缺失、下载失败或 Embedding 服务不可用时，`hybrid` 会自动回退关键词检索，并在结构化结果中返回 `searchMode: "keyword-fallback"`。只使用关键词时：
+
+```bash
+COMPONENT_MCP_SEARCH_MODE=keyword pnpm start
+```
+
 ## 4. 接入 Codex
 
-先取得绝对路径，然后添加本地 STDIO MCP：
+### 通过 npm 使用
+
+发布后，使用者无需 clone 本仓库。先取得项目和允许搜索父目录的绝对路径，然后添加本地 STDIO MCP：
+
+```bash
+codex mcp add internal-components \
+  --env COMPONENT_MCP_PROJECT_ROOT=/absolute/path/to/project \
+  --env COMPONENT_MCP_ALLOWED_ROOTS=/absolute/path/to/workspaces \
+  --env COMPONENT_MCP_SEARCH_MODE=hybrid \
+  -- npx -y internal-component-search-mcp@0.1.1
+```
+
+`@huggingface/transformers` 是必需依赖，以保证默认语义搜索不会因缺包而退化。npm 包本身只发布 `dist/src`；较大的 Transformers/ONNX 运行库由 npm 安装，量化模型则延迟到第一次语义查询时下载。两者都会复用本机缓存。
+
+默认缓存位置：
+
+- macOS：`~/Library/Caches/internal-component-search-mcp`
+- Linux：`${XDG_CACHE_HOME:-~/.cache}/internal-component-search-mcp`
+- Windows：`%LOCALAPPDATA%/internal-component-search-mcp`
+
+可以通过 `COMPONENT_MCP_CACHE_PATH` 覆盖整个缓存目录，或分别使用 `COMPONENT_MCP_INDEX_PATH` 与 `COMPONENT_MCP_MODEL_CACHE_PATH` 覆盖索引和模型路径。
+
+### 发布到 npm（维护者）
+
+```bash
+cd component-search-mcp
+npm login
+npm whoami
+pnpm test
+npm pack --dry-run
+npm publish --access public
+```
+
+发布新版本前需要先更新 `package.json` 的 `version`。`prepack` 会再次构建 TypeScript，发布清单仅包含 `dist/src`、`README.md` 和 `package.json`。
+
+### 从源码使用
+
+先构建本仓库，然后添加本地 STDIO MCP：
 
 ```bash
 codex mcp add internal-components \
@@ -146,21 +195,9 @@ url = "http://<server>:3102/mcp"
 
 HTTP 入口按无状态模式运行，不包含 Token、Host 或 Origin 校验。只应部署在可信内网；如果需要公网访问，应由反向代理、API 网关或 VPN 提供 HTTPS 和访问控制。
 
-本服务扫描的是服务器文件系统，不能直接读取客户端电脑上的项目。因此部署时需要把代码仓库 clone 或只读挂载到服务器，并让 `COMPONENT_MCP_PROJECT_ROOT` 和 `COMPONENT_MCP_ALLOWED_ROOTS` 使用服务器上的绝对路径。`.cache` 目录需要保持可写。它是常驻 Node.js 服务，不能作为静态文件上传到 OSS 后直接运行。
+本服务扫描的是服务器文件系统，不能直接读取客户端电脑上的项目。因此部署时需要把代码仓库 clone 或只读挂载到服务器，并让 `COMPONENT_MCP_PROJECT_ROOT` 和 `COMPONENT_MCP_ALLOWED_ROOTS` 使用服务器上的绝对路径。配置的用户缓存目录需要保持可写。它是常驻 Node.js 服务，不能作为静态文件上传到 OSS 后直接运行。
 
-当前仓库的 `.github/workflows/deploy.yml` 已将该服务接入阿里云 ECS 发布流程：CI 构建并测试 MCP，把根项目、`admin` 和 `miniapp` 的源码打包为干净快照，ECS 使用 PM2 运行 HTTP 服务，并由 Nginx 暴露：
-
-```text
-http://47.106.103.79/mcp/component-search
-http://47.106.103.79/mcp/component-search/healthz
-```
-
-对应的 Codex 配置为：
-
-```toml
-[mcp_servers.internal-components]
-url = "http://47.106.103.79/mcp/component-search"
-```
+当前仓库不部署 HTTP MCP；GitHub Actions、ECS PM2 和 Nginx 均不包含该服务。日常使用请通过上面的本地 STDIO 方式连接，才能读取使用者电脑上的项目源码。
 
 ## 组件注释建议
 
@@ -186,5 +223,5 @@ export function UserSelectModal() {}
 - 每次搜索前检查目标项目文件指纹；有新增、修改、删除或重命名时，先刷新索引再搜索。
 - React/TypeScript 使用 TypeScript AST；Vue 当前是 SFC 启发式抽取，下一阶段替换为 Vue Compiler AST。
 - React Props 支持函数参数、内联类型、`ComponentNameProps`、`Props` 和常见 `React.FC<Props>` 写法。
-- 搜索使用可解释的关键词与同义词加权，尚未使用向量数据库。
+- 搜索默认组合关键词/同义词加权与 Embedding 向量相似度；语义能力不可用时自动回退关键词结果。
 - 当前变化后会自动整体重建；按文件增量解析和远程组件文档留到下一阶段。

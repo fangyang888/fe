@@ -120,7 +120,7 @@ revision: 761b726dd34fb83930e26aab4e9ac3899aa1fa78
 dimensions: 384
 batchSize: 16
 dtype: q8
-cacheDir: .cache/transformers
+cacheDir: <用户缓存目录>/internal-component-search-mcp/models
 modelHubUrl: https://hf-mirror.com/
 ```
 
@@ -252,11 +252,11 @@ pnpm install
 pnpm check:embedding
 ```
 
-第一次运行会通过 `hf-mirror.com` 下载 `Xenova/multilingual-e5-small` 的 tokenizer、配置和 q8 ONNX 权重，并保存到项目的 `.cache/transformers`。选择该默认源是因为当前机器访问 Hugging Face 官方源发生连接超时，而该镜像已完成真实下载验证；需要使用官方源或公司制品库时，通过 `COMPONENT_MCP_MODEL_HUB_URL` 覆盖。缓存完成后，推理在 Node.js 进程内完成，不需要模型服务。
+第一次运行会通过 `hf-mirror.com` 下载 `Xenova/multilingual-e5-small` 的 tokenizer、配置和 q8 ONNX 权重，并保存到操作系统的用户缓存目录。选择该默认源是因为当前机器访问 Hugging Face 官方源发生连接超时，而该镜像已完成真实下载验证；需要使用官方源或公司制品库时，通过 `COMPONENT_MCP_MODEL_HUB_URL` 覆盖。缓存完成后，推理在 Node.js 进程内完成，不需要模型服务。
 
 模型名、revision、维度和量化类型是当前部署选择。这个固定配置与“学习用默认词表”不同：Provider、模型 revision 和维度会写入向量索引，发生变化时程序能识别并重建；词袋默认词表如果静默改变含义，旧向量无法自证兼容。
 
-默认情况下不需要设置任何 Embedding 环境变量。生产机没有外网时，应在构建或发布阶段预热 `.cache/transformers`，并通过 `COMPONENT_MCP_MODEL_CACHE_PATH` 指向随制品分发的只读/可读模型目录。本项目不会自动加载 `.env.example`；它只是可选覆盖项的配置模板。
+默认情况下不需要设置任何 Embedding 环境变量。生产机没有外网时，应在构建或发布阶段预热模型缓存，并通过 `COMPONENT_MCP_MODEL_CACHE_PATH` 指向随制品分发的只读/可读模型目录。本项目不会自动加载 `.env.example`；它只是可选覆盖项的配置模板。
 
 ### 7.3 运行真实烟雾测试
 
@@ -318,7 +318,7 @@ pnpm search:components -- --project-root /absolute/path/to/project --query "查�
 
 ### 模型每次启动都重新下载
 
-检查 `.cache/transformers` 是否持久化、运行用户是否有读取权限，以及启动时的 `COMPONENT_MCP_MODEL_CACHE_PATH` 是否一致。不要把模型放在容器临时层。
+检查用户级模型缓存是否持久化、运行用户是否有读取权限，以及启动时的 `COMPONENT_MCP_MODEL_CACHE_PATH` 是否一致。不要把模型放在容器临时层。
 
 ### 切换回 Ollama
 

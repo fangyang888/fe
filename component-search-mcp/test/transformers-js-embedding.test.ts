@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import { test } from "node:test";
 import {
   createEmbeddingProvider,
@@ -8,6 +9,7 @@ import {
   readTransformersJsEmbeddingConfig,
   TransformersJsEmbeddingProvider,
 } from "../src/embeddings/transformers-js.js";
+import { resolveCacheRoot } from "../src/config.js";
 
 test("uses the fixed Transformers.js profile by default", () => {
   assert.equal(readEmbeddingProviderName({}), "transformers-js");
@@ -22,7 +24,7 @@ test("uses the fixed Transformers.js profile by default", () => {
   assert.equal(config.batchSize, 16);
   assert.equal(config.dtype, "q8");
   assert.equal(config.modelHubUrl, "https://hf-mirror.com/");
-  assert.match(config.cacheDir ?? "", /\.cache\/transformers$/);
+  assert.equal(config.cacheDir, path.join(resolveCacheRoot(), "models"));
 });
 
 test("factory creates a Transformers.js provider without service configuration", () => {

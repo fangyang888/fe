@@ -43,30 +43,5 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
     },
-    {
-      name: 'component-search-mcp',
-      cwd: path.join(__dirname, 'component-search-mcp'),
-      // 直接执行 Node，避免 PM2 fork wrapper 改写 process.argv[1]，导致
-      // http-server 的 direct-entry guard 判断为“仅导入”而不启动监听。
-      script: process.execPath,
-      args: 'dist/src/http-server.js',
-      interpreter: 'none',
-      instances: 1,
-      exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'production',
-        COMPONENT_MCP_PROJECT_ROOT: path.join(__dirname, 'component-search-source'),
-        COMPONENT_MCP_ALLOWED_ROOTS: path.join(__dirname, 'component-search-source'),
-        COMPONENT_MCP_HTTP_HOST: '127.0.0.1',
-        COMPONENT_MCP_HTTP_PORT: 3102,
-      },
-      watch: false,
-      max_memory_restart: '512M',
-      restart_delay: 3000,
-      max_restarts: 10,
-      min_uptime: '10s',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
-      merge_logs: true,
-    },
   ],
 };

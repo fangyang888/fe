@@ -191,6 +191,7 @@ export function searchComponents(
     projectRoot: index.projectRoot,
     projectName: index.projectName,
     sourceRoots: index.sourceRoots,
+    searchMode: "keyword",
     total: uniqueResults.length,
     results: uniqueResults.slice(0, limit),
   };

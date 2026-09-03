@@ -12,7 +12,11 @@ import {
   resolveProjectRoot,
   resolveRequestedProjectRoot,
   resolveScopedIndexPath,
+  resolveVectorIndexPath,
 } from "./config.js";
+import { createEmbeddingProvider } from "./embeddings/factory.js";
+import type { EmbeddingProvider } from "./embeddings/provider.js";
+import { searchComponentsHybrid } from "./hybrid-search.js";
 import {
   buildComponentIndex,
   createSourceSnapshot,
@@ -26,14 +30,44 @@ import {
 } from "./search-result-format.js";
 import { resolveSourceRootsForProject } from "./source-roots.js";
 import type { ComponentIndex } from "./types.js";
+import {
+  buildVectorIndex,
+  readVectorIndex,
+  searchVectorIndex,
+  writeVectorIndex,
+  type ComponentVectorIndex,
+} from "./vector-index.js";
+
+type RequestedSearchMode = "keyword" | "hybrid";
 
 const defaultProjectRoot = resolveProjectRoot();
 const allowedRoots = resolveAllowedRoots(defaultProjectRoot);
 const indexPath = resolveIndexPath();
 const memoryIndexes = new Map<string, ComponentIndex>();
+const memoryVectorIndexes = new Map<string, ComponentVectorIndex>();
+const vectorIndexLoads = new Map<string, Promise<ComponentVectorIndex>>();
+let embeddingProvider: EmbeddingProvider | undefined;
+
+function readDefaultSearchMode(): RequestedSearchMode {
+  const mode = process.env.COMPONENT_MCP_SEARCH_MODE?.trim() || "hybrid";
+  if (mode !== "keyword" && mode !== "hybrid") {
+    throw new Error(
+      "COMPONENT_MCP_SEARCH_MODE must be either keyword or hybrid",
+    );
+  }
+  return mode;
+}
+
+const defaultSearchMode = readDefaultSearchMode();
 
 function createIndexKey(projectRoot: string, sourceRoots: string[]): string {
   return `${projectRoot}\0${[...sourceRoots].sort().join("\0")}`;
+}
+
+function componentIndexPath(projectRoot: string, sourceRoots: string[]): string {
+  return projectRoot === defaultProjectRoot
+    ? indexPath
+    : resolveScopedIndexPath(projectRoot, sourceRoots);
 }
 
 async function loadIndex(
@@ -50,10 +84,7 @@ async function loadIndex(
     return memoryIndex;
   }
 
-  const projectIndexPath =
-    projectRoot === defaultProjectRoot
-      ? indexPath
-      : resolveScopedIndexPath(projectRoot, sourceRoots);
+  const projectIndexPath = componentIndexPath(projectRoot, sourceRoots);
   try {
     const diskIndex = await readComponentIndex(projectIndexPath);
     if (
@@ -82,6 +113,84 @@ async function loadIndex(
     `Component index refreshed for ${projectRoot} (${sourceSnapshot.files.length} source files)`,
   );
   return builtIndex;
+}
+
+function getEmbeddingProvider(): EmbeddingProvider {
+  embeddingProvider ??= createEmbeddingProvider();
+  return embeddingProvider;
+}
+
+function isFreshVectorIndex(
+  vectorIndex: ComponentVectorIndex | undefined,
+  componentIndex: ComponentIndex,
+  provider: EmbeddingProvider,
+): vectorIndex is ComponentVectorIndex {
+  return (
+    vectorIndex?.schemaVersion === 1 &&
+    vectorIndex.projectRoot === componentIndex.projectRoot &&
+    vectorIndex.sourceFingerprint === componentIndex.sourceFingerprint &&
+    vectorIndex.provider === provider.provider &&
+    vectorIndex.model === provider.model &&
+    vectorIndex.dimensions === provider.dimensions
+  );
+}
+
+async function loadSemanticVectorIndex(
+  componentIndex: ComponentIndex,
+  provider: EmbeddingProvider,
+): Promise<ComponentVectorIndex> {
+  const componentKey = createIndexKey(
+    componentIndex.projectRoot,
+    componentIndex.sourceRoots,
+  );
+  const vectorKey = `${componentKey}\0${provider.provider}\0${provider.model}\0${provider.dimensions}`;
+  const memoryIndex = memoryVectorIndexes.get(vectorKey);
+  if (isFreshVectorIndex(memoryIndex, componentIndex, provider)) {
+    return memoryIndex;
+  }
+
+  const activeLoad = vectorIndexLoads.get(vectorKey);
+  if (activeLoad) return activeLoad;
+
+  const load = (async () => {
+    const vectorPath = resolveVectorIndexPath(
+      undefined,
+      componentIndexPath(
+        componentIndex.projectRoot,
+        componentIndex.sourceRoots,
+      ),
+    );
+    let previousIndex: ComponentVectorIndex | undefined;
+    try {
+      previousIndex = await readVectorIndex(vectorPath);
+      if (isFreshVectorIndex(previousIndex, componentIndex, provider)) {
+        memoryVectorIndexes.set(vectorKey, previousIndex);
+        return previousIndex;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.error(`Existing vector index cannot be reused: ${String(error)}`);
+      }
+    }
+
+    const built = await buildVectorIndex(
+      componentIndex,
+      provider,
+      previousIndex,
+    );
+    await writeVectorIndex(built.index, vectorPath);
+    memoryVectorIndexes.set(vectorKey, built.index);
+    console.error(
+      `Semantic index refreshed for ${componentIndex.projectRoot} (${built.generatedCount} generated, ${built.reusedCount} reused)`,
+    );
+    return built.index;
+  })();
+  vectorIndexLoads.set(vectorKey, load);
+  try {
+    return await load;
+  } finally {
+    vectorIndexLoads.delete(vectorKey);
+  }
 }
 
 const resultItemSchema = z.object({
@@ -139,11 +248,11 @@ export function createComponentSearchServer(): McpServer {
   const server = new McpServer(
   {
     name: "internal-component-search",
-    version: "0.1.0",
+    version: "0.1.1",
   },
   {
     instructions:
-      "在实现常见 UI 功能或新建组件前，先搜索当前或用户指定项目的已有组件。需要切换项目时传入 projectRoot；省略 sourceRoots 可自动发现源码目录。结果已按组件名和实际文件路径去重。向用户展示候选组件时，组件标题使用普通文字；每个组件只展示一条组件路径，必须逐字复制 displayPathMarkdown，不要同时打印 sourcePath、componentPath 或 relativePath。displayPathMarkdown 的可见文字是完整相对路径，点击后打开 componentPath 指向的实际文件。每个候选还必须打印描述、Props 和 usageCount 的明确次数。不要展示内部排序分或匹配原因。不要把搜索结果当成写操作；本服务只读项目源码。",
+      "在实现常见 UI 功能或新建组件前，先搜索当前或用户指定项目的已有组件。默认使用关键词与 Embedding 混合检索；语义模型不可用时自动回退关键词检索。需要切换项目时传入 projectRoot；省略 sourceRoots 可自动发现源码目录。结果已按组件名和实际文件路径去重。向用户展示候选组件时，组件标题使用普通文字；每个组件只展示一条组件路径，必须逐字复制 displayPathMarkdown，不要同时打印 sourcePath、componentPath 或 relativePath。每个候选还必须打印描述、Props 和 usageCount 的明确次数。不要展示内部排序分或匹配原因。本服务只读项目源码。",
   },
 );
 
@@ -152,11 +261,17 @@ export function createComponentSearchServer(): McpServer {
   {
     title: "Search internal project components",
     description:
-      "Search deduplicated reusable frontend components in the current or explicitly selected project. For each result, render its plain component title and copy displayPathMarkdown verbatim as the only visible path; the full relative-path label is clickable and opens componentPath. Do not separately print sourcePath, componentPath, or relativePath. Also print numeric usageCount, description, and props. Internal ranking scores and reasons are intentionally omitted.",
+      "Search deduplicated reusable frontend components with hybrid keyword and semantic ranking. Falls back to keyword ranking when embeddings are unavailable. For each result, render its plain component title and copy displayPathMarkdown verbatim as the only visible path. Also print numeric usageCount, description, and props. Internal ranking scores and reasons are intentionally omitted.",
     inputSchema: {
       query: z.string().min(1).describe("Natural-language component requirement"),
       limit: z.number().int().min(1).max(20).default(5),
       includeDeprecated: z.boolean().default(false),
+      searchMode: z
+        .enum(["keyword", "hybrid"])
+        .default(defaultSearchMode)
+        .describe(
+          "Use hybrid for keyword plus semantic ranking, or keyword to avoid loading an embedding model.",
+        ),
       projectRoot: z
         .string()
         .optional()
@@ -176,6 +291,9 @@ export function createComponentSearchServer(): McpServer {
       projectRoot: z.string(),
       projectName: z.string(),
       sourceRoots: z.array(z.string()),
+      searchMode: z.enum(["keyword", "hybrid", "keyword-fallback"]),
+      semanticModel: z.string().optional(),
+      semanticWarning: z.string().optional(),
       total: z.number(),
       results: z.array(resultItemSchema),
     },
@@ -185,7 +303,14 @@ export function createComponentSearchServer(): McpServer {
       destructiveHint: false,
     },
   },
-  async ({ query, limit, includeDeprecated, projectRoot, sourceRoots }) => {
+  async ({
+    query,
+    limit,
+    includeDeprecated,
+    searchMode,
+    projectRoot,
+    sourceRoots,
+  }) => {
     const requestedProjectRoot = resolveRequestedProjectRoot(
       projectRoot,
       defaultProjectRoot,
@@ -198,10 +323,38 @@ export function createComponentSearchServer(): McpServer {
       { useEnvironment: requestedProjectRoot === defaultProjectRoot },
     );
     const index = await loadIndex(requestedProjectRoot, requestedSourceRoots);
-    const result = searchComponents(index, query, {
-      limit,
-      includeDeprecated,
-    });
+    let result;
+    if (searchMode === "keyword") {
+      result = searchComponents(index, query, { limit, includeDeprecated });
+    } else {
+      try {
+        const provider = getEmbeddingProvider();
+        const vectorIndex = await loadSemanticVectorIndex(index, provider);
+        const queryVector = await provider.embedQuery(query);
+        const semanticMatches = searchVectorIndex(
+          vectorIndex,
+          queryVector,
+          Math.min(index.components.length, Math.max(limit * 4, 20)),
+        );
+        result = {
+          ...searchComponentsHybrid(index, query, semanticMatches, {
+            limit,
+            includeDeprecated,
+          }),
+          semanticModel: `${provider.provider}:${provider.model}`,
+        };
+      } catch (error) {
+        const warning = error instanceof Error ? error.message : String(error);
+        console.error(
+          `Semantic search unavailable; falling back to keyword search: ${warning}`,
+        );
+        result = {
+          ...searchComponents(index, query, { limit, includeDeprecated }),
+          searchMode: "keyword-fallback" as const,
+          semanticWarning: warning.slice(0, 500),
+        };
+      }
+    }
     const summary = formatComponentSearchResult(result);
     const publicResult = {
       ...result,
@@ -241,10 +394,23 @@ async function main(): Promise<void> {
   );
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+async function isDirectExecution(): Promise<boolean> {
+  const entryPath = process.argv[1];
+  if (!entryPath) return false;
+
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    const [resolvedEntryPath, resolvedModulePath] = await Promise.all([
+      fs.realpath(entryPath),
+      fs.realpath(modulePath),
+    ]);
+    return resolvedEntryPath === resolvedModulePath;
+  } catch {
+    return path.resolve(entryPath) === modulePath;
+  }
+}
+
+if (await isDirectExecution()) {
   main().catch((error) => {
     console.error(error);
     process.exitCode = 1;

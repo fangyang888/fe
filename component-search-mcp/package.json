@@ -1,14 +1,21 @@
 {
   "name": "internal-component-search-mcp",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
+  "private": false,
   "description": "Search reusable frontend components in a local project through MCP",
   "type": "module",
+  "files": [
+    "dist/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "internal-component-search-mcp": "dist/src/server.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "pnpm run build",
     "start": "node dist/src/server.js",
     "start:http": "node dist/src/http-server.js",
     "index": "node dist/src/cli/build-index.js",

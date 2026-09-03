@@ -16,6 +16,7 @@ test("serves component search over stateless Streamable HTTP", async () => {
     projectRoot: process.env.COMPONENT_MCP_PROJECT_ROOT,
     allowedRoots: process.env.COMPONENT_MCP_ALLOWED_ROOTS,
     indexPath: process.env.COMPONENT_MCP_INDEX_PATH,
+    searchMode: process.env.COMPONENT_MCP_SEARCH_MODE,
   };
 
   process.env.COMPONENT_MCP_PROJECT_ROOT = path.join(fixturesRoot, "project");
@@ -24,6 +25,7 @@ test("serves component search over stateless Streamable HTTP", async () => {
     temporaryDirectory,
     "index.json",
   );
+  process.env.COMPONENT_MCP_SEARCH_MODE = "keyword";
 
   const { startComponentSearchHttpServer } = await import(
     "../src/http-server.js"
@@ -76,6 +78,11 @@ test("serves component search over stateless Streamable HTTP", async () => {
       delete process.env.COMPONENT_MCP_INDEX_PATH;
     } else {
       process.env.COMPONENT_MCP_INDEX_PATH = previousEnvironment.indexPath;
+    }
+    if (previousEnvironment.searchMode === undefined) {
+      delete process.env.COMPONENT_MCP_SEARCH_MODE;
+    } else {
+      process.env.COMPONENT_MCP_SEARCH_MODE = previousEnvironment.searchMode;
     }
   }
 });

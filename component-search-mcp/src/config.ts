@@ -1,23 +1,40 @@
-import { existsSync } from "node:fs";
 import { createHash } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-function findPackageRoot(startPath: string): string {
-  let current = path.resolve(startPath);
-  while (true) {
-    if (existsSync(path.join(current, "package.json"))) {
-      return current;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      throw new Error("Cannot locate component-search-mcp package root");
-    }
-    current = parent;
+const CACHE_DIRECTORY_NAME = "internal-component-search-mcp";
+
+export function resolveCacheRoot(
+  explicitPath?: string,
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  homeDirectory: string = os.homedir(),
+): string {
+  const configuredPath =
+    explicitPath ?? environment.COMPONENT_MCP_CACHE_PATH?.trim();
+  if (configuredPath) return path.resolve(configuredPath);
+
+  const xdgCacheHome = environment.XDG_CACHE_HOME?.trim();
+  if (xdgCacheHome) {
+    return path.resolve(xdgCacheHome, CACHE_DIRECTORY_NAME);
   }
+
+  const localAppData = environment.LOCALAPPDATA?.trim();
+  if (platform === "win32" && localAppData) {
+    return path.resolve(localAppData, CACHE_DIRECTORY_NAME);
+  }
+
+  return platform === "darwin"
+    ? path.join(homeDirectory, "Library", "Caches", CACHE_DIRECTORY_NAME)
+    : path.join(homeDirectory, ".cache", CACHE_DIRECTORY_NAME);
 }
 
-const packageRoot = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
+function projectCacheKey(projectRoot: string): string {
+  return createHash("sha256")
+    .update(path.resolve(projectRoot))
+    .digest("hex")
+    .slice(0, 20);
+}
 
 export function resolveProjectRoot(explicitRoot?: string): string {
   return path.resolve(
@@ -54,11 +71,18 @@ export function resolveRequestedProjectRoot(
   return projectRoot;
 }
 
-export function resolveIndexPath(explicitPath?: string): string {
+export function resolveIndexPath(
+  explicitPath?: string,
+  projectRoot: string = resolveProjectRoot(),
+): string {
   return path.resolve(
     explicitPath ??
       process.env.COMPONENT_MCP_INDEX_PATH ??
-      path.join(packageRoot, ".cache", "components-index.json"),
+      path.join(
+        resolveCacheRoot(),
+        "indexes",
+        `${projectCacheKey(projectRoot)}.json`,
+      ),
   );
 }
 
@@ -79,7 +103,7 @@ export function resolveTransformersCachePath(explicitPath?: string): string {
   return path.resolve(
     explicitPath ??
       process.env.COMPONENT_MCP_MODEL_CACHE_PATH ??
-      path.join(packageRoot, ".cache", "transformers"),
+      path.join(resolveCacheRoot(), "models"),
   );
 }
 
@@ -93,6 +117,6 @@ export function resolveScopedIndexPath(
     .slice(0, 20);
   const cacheRoot = process.env.COMPONENT_MCP_INDEX_PATH
     ? path.dirname(resolveIndexPath())
-    : path.join(packageRoot, ".cache");
+    : path.join(resolveCacheRoot(), "indexes");
   return path.join(cacheRoot, "projects", `${cacheKey}.json`);
 }

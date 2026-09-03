@@ -1,6 +1,6 @@
 # 组件搜索 MCP：当前实现、工作原理与学习路线
 
-> 对应项目版本：`internal-component-search-mcp@0.1.0`  
+> 对应项目版本：`internal-component-search-mcp@0.1.1`
 > 当前阶段：可运行的本地 MVP，不是最终的向量检索版本。
 
 ## 1. 这个项目解决什么问题
@@ -356,10 +356,10 @@ matchScore = 1 - exp(-score / 60)
 
 ### 4.8 保存和加载索引
 
-手动索引命令会把数据写入：
+手动索引命令默认会按项目绝对路径生成哈希，并把数据写入操作系统的用户缓存目录：
 
 ```text
-.cache/components-index.json
+<用户缓存目录>/internal-component-search-mcp/indexes/<project-hash>.json
 ```
 
 MCP 第一次被调用时：
@@ -369,10 +369,10 @@ MCP 第一次被调用时：
 3. 内存不可用时，再检查磁盘索引及其指纹。
 4. 指纹一致就直接搜索；不一致才重新扫描、写入缓存并搜索。
 
-默认项目继续使用这个兼容路径。通过 Tool 选择的其他项目会根据项目绝对路径和源码目录生成哈希，并保存独立缓存：
+通过 Tool 选择的其他项目会根据项目绝对路径和源码目录生成哈希，并保存独立缓存：
 
 ```text
-.cache/projects/<hash>.json
+<用户缓存目录>/internal-component-search-mcp/indexes/projects/<hash>.json
 ```
 
 schema version 3 会为每个源码文件保存：
@@ -609,10 +609,10 @@ pnpm index -- --project-root /Users/yang/meiyou/node-tools
 
 ### 7.3 每个项目独立缓存
 
-默认项目继续兼容 `.cache/components-index.json`。通过 Tool 选择的其他项目会根据 `projectRoot + sourceRoots` 生成哈希，保存到：
+默认项目按项目绝对路径生成缓存键。通过 Tool 选择的其他项目会根据 `projectRoot + sourceRoots` 生成哈希，保存到：
 
 ```text
-.cache/projects/<hash>.json
+<用户缓存目录>/internal-component-search-mcp/indexes/projects/<hash>.json
 ```
 
 这样不同项目不会互相覆盖缓存。下一步仍应把 `parserVersion + schemaVersion` 加入缓存键，并保存文件修改时间或内容哈希，只重建发生变化的文件。

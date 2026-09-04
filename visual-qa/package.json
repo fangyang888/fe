@@ -1,0 +1,34 @@
+{
+  "name": "@internal/visual-qa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic H5 screenshot capture and visual comparison CLI",
+  "type": "module",
+  "bin": {
+    "visual-qa": "dist/src/cli.js"
+  },
+  "exports": {
+    "./capture": "./dist/src/capture.js",
+    "./verify": "./dist/src/verify.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "visual-qa": "node dist/src/cli.js",
+    "install:browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "pixelmatch": "^7.1.0",
+    "playwright": "^1.55.0",
+    "pngjs": "^7.0.0",
+    "ssim.js": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

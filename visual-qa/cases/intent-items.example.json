@@ -1,0 +1,18 @@
+{
+  "items": [
+    "138:97030",
+    {
+      "itemId": "138:97117",
+      "name": "member-card",
+      "format": "png",
+      "bounds": { "x": 38, "y": 260, "width": 300, "height": 163 },
+      "selector": "[data-visual='member-card']"
+    },
+    {
+      "itemId": "138:97220",
+      "name": "claim-finger",
+      "format": "png"
+    }
+  ],
+  "hints": []
+}

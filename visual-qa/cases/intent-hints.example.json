@@ -1,0 +1,52 @@
+[
+  {
+    "order": 1,
+    "name": "page-title",
+    "mode": "dom-text",
+    "selector": "[data-visual='page-title']",
+    "note": "标题与说明保持为可访问的 DOM 文字"
+  },
+  {
+    "order": 2,
+    "name": "member-card",
+    "mode": "single-image",
+    "nodeId": "138:97117",
+    "bounds": { "x": 38, "y": 172, "width": 300, "height": 163 },
+    "selector": "[data-visual='member-card']",
+    "note": "背景、卡片文字和粉色图标整体导出"
+  },
+  {
+    "order": 3,
+    "name": "claim-button",
+    "mode": "layers",
+    "selector": "[data-visual='claim-button']",
+    "layers": [
+      {
+        "name": "claim-button-base",
+        "role": "base-image",
+        "nodeId": "138:97159",
+        "format": "svg"
+      },
+      {
+        "name": "claim-finger",
+        "role": "overlay-image",
+        "nodeId": "138:97220",
+        "format": "svg"
+      }
+    ],
+    "note": "按钮主体是整图，手指作为透明图片叠加在上方"
+  },
+  {
+    "order": 4,
+    "name": "brand-logo",
+    "mode": "single-image",
+    "export": false,
+    "selector": "[data-visual='brand-logo']"
+  },
+  {
+    "order": 5,
+    "name": "home-indicator",
+    "mode": "ignore",
+    "note": "手机系统 Home Indicator，不属于业务页面"
+  }
+]

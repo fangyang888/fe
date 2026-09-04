@@ -1,0 +1,58 @@
+{
+  "name": "family-card-external",
+  "pixsoNodeId": "138:97029",
+  "pixsoNodeVersion": "2026-09-04",
+  "designImage": "./family-card-external/design.png",
+  "url": "http://127.0.0.1:3000/family-card?visual_case=external-active",
+  "outputDir": "./family-card-external/output",
+  "viewport": {
+    "width": 375,
+    "height": 812,
+    "deviceScaleFactor": 1
+  },
+  "browserChannel": "chrome",
+  "cssRules": {
+    "preferFlex": true,
+    "allowGap": false,
+    "preferResponsivePage": true,
+    "rejectSuspiciousCss": true,
+    "failOnMismatch": true,
+    "failOnSeverity": "error",
+    "scopeSelector": "#app",
+    "pageShellSelector": ":scope > .family-card-page",
+    "positionContextMaxDepth": 2,
+    "ignoreSelectors": []
+  },
+  "changeDetection": {
+    "projectRoot": "../..",
+    "baseRef": "HEAD",
+    "regions": [
+      {
+        "name": "heading",
+        "bounds": { "x": 20, "y": 40, "width": 335, "height": 100 },
+        "sourcePatterns": ["src/family-card/heading/**"]
+      },
+      {
+        "name": "member-card",
+        "bounds": { "x": 38, "y": 172, "width": 300, "height": 163 },
+        "sourcePatterns": ["src/family-card/member-card/**"]
+      },
+      {
+        "name": "claim-button",
+        "bounds": { "x": 26, "y": 396, "width": 323, "height": 107 },
+        "sourcePatterns": ["src/family-card/claim-button/**"]
+      }
+    ]
+  },
+  "wait": {
+    "networkIdle": true,
+    "readyExpression": "window.__VISUAL_READY__ === true",
+    "timeoutMs": 15000,
+    "stableFrames": 3
+  },
+  "thresholds": {
+    "pixelThreshold": 0.1,
+    "maxMismatchPercent": 1.5,
+    "minSsim": 0.98
+  }
+}

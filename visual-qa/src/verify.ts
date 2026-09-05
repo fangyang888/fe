@@ -10,6 +10,8 @@ import {
 } from "./cache.js";
 import { captureH5Screenshot } from "./capture.js";
 import { compareScreenshots, writeComparisonCrops } from "./compare.js";
+import { recordMeasurement } from "./measure.js";
+import { measurementIdentity } from "./measure-case.js";
 import type {
   VerificationOptions,
   VerificationReport,
@@ -82,7 +84,7 @@ export async function verifyVisualCase(
   );
   const cachedVerification = cache.verifications[visualCase.name];
   const mayReuseVerification =
-    options.reuseVerification ?? (mode === "quick" || mode === "agent");
+    options.reuseVerification ?? (!visualCase.contract && (mode === "quick" || mode === "agent"));
   let cacheLookupMs = Date.now() - cacheStarted;
   if (
     mayReuseVerification &&
@@ -140,6 +142,9 @@ export async function verifyVisualCase(
       : {}),
   });
   const captureMs = Date.now() - captureStarted;
+  if (capture.measurement) {
+    await recordMeasurement(capture.measurement, path.join(outputDirectory, "measurement-history.json"), measurementIdentity(visualCase));
+  }
   const comparisonStarted = Date.now();
   const comparison = await compareScreenshots(
     visualCase.designImage,
@@ -159,6 +164,7 @@ export async function verifyVisualCase(
   const comparisonMs = Date.now() - comparisonStarted;
   const passed =
     comparison.passed &&
+    (!capture.measurement || !capture.measurement.failOnMismatch || capture.measurement.passed) &&
     capture.readiness.fontsReady &&
     capture.readiness.imagesFailed.length === 0 &&
     capture.readiness.layoutStable &&
@@ -171,8 +177,10 @@ export async function verifyVisualCase(
       capture.cssRules.passed);
 
   const diagnosticCropsStarted = Date.now();
+  const shouldReviewImages = mode !== "quick" && !comparison.passed &&
+    (!capture.measurement || capture.measurement.passed || Boolean(capture.measurement.iteration?.recommendImageReview));
   const diagnosticCrops =
-    mode === "agent" && !passed && comparison.differenceRegions.length > 0
+    mode === "agent" && shouldReviewImages && comparison.differenceRegions.length > 0
       ? await writeComparisonCrops(
           visualCase.designImage,
           actualPath,
@@ -202,8 +210,8 @@ export async function verifyVisualCase(
       codeVersion: code.version,
     },
     ai: {
-      shouldAnalyze: mode !== "quick" && !passed,
-      skipped: mode === "quick" || Boolean((options.noAiOnPass || mode === "agent") && passed),
+      shouldAnalyze: shouldReviewImages,
+      skipped: !shouldReviewImages,
       reason:
         mode === "quick"
           ? "Quick mode performs local iteration without image understanding"
@@ -211,7 +219,9 @@ export async function verifyVisualCase(
           ? "Local visual validation passed; image understanding is not needed"
           : passed
             ? "Local visual validation passed"
-            : "Local visual validation failed; inspect the reported difference regions",
+            : shouldReviewImages
+              ? "Inspect the reported difference regions"
+              : "Resolve the reported measurement or local validation failures first",
       ...(diagnosticCrops.length > 0
         ? {
             diagnosticCrops,

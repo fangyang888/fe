@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { hashFile, hashValue } from "./cache.js";
 import { readVisualCase } from "./config.js";
+import { summarizeMeasurement } from "./measure.js";
 import type {
   ExportManifest,
   IntentPlan,
@@ -92,6 +93,7 @@ export async function writeAgentContext(
       designHash,
     },
     viewport: visualCase.viewport,
+    contract: visualCase.contract,
     images,
     unresolvedIntentCount: plan?.ambiguities.length ?? 0,
     rules: {
@@ -104,6 +106,7 @@ export async function writeAgentContext(
       ? {
           verification: {
             status: report.status,
+            measurement: summarizeMeasurement(report.capture.measurement),
             mode: report.mode,
             mismatchPercent: report.comparison.mismatchPercent,
             ssim: report.comparison.ssim,

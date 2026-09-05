@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-05T15:26:06.029Z",
+  "designs": {
+    "138:97029": {
+      "nodeId": "138:97029",
+      "file": "/tmp/pixso-test5/reference.png",
+      "hash": "062ad5754727cd54da7650a226358ac911e1760519abd18045114b5fec16bb5e"
+    }
+  },
+  "assets": {},
+  "code": {
+    "revision": "3bc12306321ca27ba42fe6c69cb357970074ad2e",
+    "version": "3257b1f33f1fafedb7e9bb73e2c68cb95258f67c836acd6f094b2f3eb6764719",
+    "changedFiles": [
+      "cache.json",
+      "visual-qa/README.md",
+      "visual-qa/cases/contract.example.json",
+      "visual-qa/package.json",
+      "visual-qa/src/agent-context.ts",
+      "visual-qa/src/capture.ts",
+      "visual-qa/src/cli.ts",
+      "visual-qa/src/config.ts",
+      "visual-qa/src/measure-case.ts",
+      "visual-qa/src/measure.ts",
+      "visual-qa/src/types.ts",
+      "visual-qa/src/verify.ts",
+      "visual-qa/test/measure.browser.ts",
+      "visual-qa/test/measure.test.ts"
+    ]
+  },
+  "verifications": {
+    "test5-gift-card": {
+      "status": "passed",
+      "designHash": "062ad5754727cd54da7650a226358ac911e1760519abd18045114b5fec16bb5e",
+      "codeVersion": "3257b1f33f1fafedb7e9bb73e2c68cb95258f67c836acd6f094b2f3eb6764719",
+      "caseHash": "47832cc395090277aff053bfc51b17aebb01d9b176d9659939ec584349637eb6",
+      "mode": "final",
+      "report": "/tmp/test5-qa/report.json"
+    }
+  }
+}

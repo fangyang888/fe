@@ -88,6 +88,43 @@ window.__VISUAL_READY__ = true;
 
 也可以在用例中删除 `readyExpression`，仅使用网络、字体、图片和布局稳定检测。此时 `networkidle` 最多占用统一等待预算中的 5 秒。
 
+## 设计契约、DOM 测量和轮次差量
+
+复制 `cases/contract.example.json`，把 Pixso 的关键尺寸、样式和关系填入 `contract`。此文件中的数值仅为示例，必须替换为设计数据；工具不会从当前页面反推并自动批准设计预期，也不会自动访问 Pixso。通过 `data-visual` 或明确的 CSS selector 对应页面元素。
+
+```bash
+# 高频修复：只测量 DOM，不读设计 PNG，不截图，不运行 Pixelmatch/SSIM
+npm run visual-qa -- measure --case cases/contract.example.json
+
+# 测量通过后，做完整本地检查和视觉兜底
+npm run visual-qa -- verify --case cases/contract.example.json --mode agent
+
+# 最终验收
+npm run visual-qa -- verify --case cases/contract.example.json --mode final
+```
+
+`measure` 会等待 case 中的就绪条件，支持 `--browser-endpoint` 复用 Chrome。case 仍保留 `designImage` 路径，方便后续 verify；仅 measure 时该 PNG 不必存在。measure 不执行结构和 CSS 规则检查，退出码 `0` 表示契约、字体、图片、布局就绪及控制台检查通过，`1` 表示检查失败，`2` 表示配置或执行错误。
+
+契约字段：
+
+- `bounds`：可选的 `x/y/width/height`，均为 CSS 像素。`x/y` 使用文档坐标，不随滚动偏移；DPR 不影响这些值。
+- `styles`：只读取声明的 kebab-case CSS 属性。数字用于计算值为 `px` 的属性，例如 `"font-size": 16`；字符串与浏览器 computed style 精确比较，例如 `"color": "rgb(255, 255, 255)"`、`"font-weight": "700"`。颜色不会自动做 hex/rgb 等价转换。
+- `relations`：`target` 引用另一个元素的 `name`。`gapY` 为当前元素顶部减目标底部，`gapX` 为当前左侧减目标右侧，`alignLeft/alignTop` 为对应边差，`centerX` 为水平中心差。对齐时 `expected` 设为 `0`。
+- `tolerance`：几何和数字样式的允许偏差，默认 `1` CSS px；每条关系可以覆盖，边界值视为通过。字符串精确匹配。
+- `failOnMismatch`：默认 `true`，契约失败会使 verify 失败；设为 `false` 时 verify 仅报告契约偏差。measure 始终如实返回测量失败。
+
+元素不存在、selector 匹配多项或元素没有可见布局框时都会报告问题。可见性检测不代表已检查遮挡、透明祖先或实际绘制效果，这些仍由截图兜底。自适应页面优先写间距和对齐关系，避免把所有设计绝对坐标写成约束。
+
+stdout 仅返回单行摘要，最多 8 条偏差，新增和恶化问题优先。每条包含 `element/selector/property/expected/actual`，数值偏差还包含 `delta`（实际减预期）。完整证据在 `measurement.json`（measure）或 `report.json`（verify）。
+
+同一输出目录的 `measurement-history.json` 保存最近一轮，measure 和 verify 共用历史；摘要返回新增、解决、改善、恶化、未变化的数量及最多 8 个已解决问题 ID。契约、URL、viewport 或环境配置变化会开始新基线。连续两轮没有问题解决或偏差缩小时，`recommendImageReview` 为 true。每个 case 使用独立输出目录，避免并发覆盖同一历史。
+
+有契约时，quick/agent 默认重新测量，不复用旧验收报告；`--reuse-verification` 可显式启用，`--no-cache` 强制重验。缓存命中不推进轮次。请在 Git ignore 中排除输出目录和 cache 文件，避免验证产物进入代码指纹。
+
+agent 模式会优先让 Agent 处理明确的契约偏差；当契约通过或连续两轮无改善，且图片比较失败时，才生成诊断裁片并设置 `imageReview: true`。图片比较本身仍照常执行，final 不降低验收标准。quick 仍不生成图片诊断，但也会运行已声明的契约。
+
+运行 `npm test` 检查契约计算和差量逻辑；`npm run test:browser` 使用本机 Chrome 验证真实 DOM、DPR、滚动、轮次记录及图片诊断升级流程。
+
 ## 耗时统计
 
 `capture`、`compare` 和 `verify` 的结果都包含 `timings`：

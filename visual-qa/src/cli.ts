@@ -18,6 +18,8 @@ import type {
   RectangleBounds,
 } from "./types.js";
 import { verifyVisualCase } from "./verify.js";
+import { measureVisualCase } from "./measure-case.js";
+import { summarizeMeasurement } from "./measure.js";
 
 function parseFlags(args: string[]): Map<string, string> {
   const flags = new Map<string, string>();
@@ -128,6 +130,8 @@ function agentResult(result: any): Record<string, unknown> {
     status: result.status,
     name: result.name,
     mode: result.mode,
+    measurement: summarizeMeasurement(result.capture?.measurement),
+    imageReview: result.ai?.shouldAnalyze,
     mismatchPercent: result.comparison?.mismatchPercent,
     ...(typeof result.comparison?.ssim === "number"
       ? { ssim: result.comparison.ssim }
@@ -245,9 +249,10 @@ function printHelp(): void {
   console.log(`visual-qa
 
 Usage:
+  visual-qa measure --case <case.json> [--browser-endpoint ws://...]
   visual-qa capture --url <url> --output <actual.png> --width 375 --height 812 [--browser-channel chrome] [--browser-endpoint ws://...] [--compact] [--quiet]
   visual-qa compare --expected <design.png> --actual <actual.png> --output <diff.png> [--top-regions 3] [--compact] [--quiet]
-  visual-qa verify --case <case.json> [--mode quick|agent|final] [--browser-endpoint ws://...] [--changed-only] [--top-regions 3] [--reuse-design] [--reuse-verification] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
+  visual-qa verify --case <case.json> [--mode quick|agent|final] [--browser-endpoint ws://...] [--changed-only] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
   visual-qa browser-server [--browser-channel chrome]
   visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> --intent intent.json [--annotated marked.png --width 375 --height 812 --frame x,y,width,height]
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
@@ -340,7 +345,7 @@ async function main(): Promise<void> {
     const visualCase = await readVisualCase(required(flags, "case"));
     const report = await verifyVisualCase(visualCase, {
       mode: verificationMode(flags.get("mode")),
-      reuseVerification: flags.has("reuse-verification") ? true : undefined,
+      reuseVerification: flags.has("no-cache") ? false : flags.has("reuse-verification") ? true : undefined,
       changedOnly: flags.has("changed-only"),
       topRegions: flags.has("top-regions")
         ? integerFlag(flags, "top-regions")
@@ -353,6 +358,15 @@ async function main(): Promise<void> {
     });
     printResult(command, report, flags);
     process.exitCode = report.status === "passed" ? 0 : 1;
+    return;
+  }
+
+  if (command === "measure") {
+    const result = await measureVisualCase(await readVisualCase(required(flags, "case")), {
+      browserEndpoint: flags.get("browser-endpoint"),
+    });
+    console.log(JSON.stringify(result));
+    process.exitCode = result.status === "passed" ? 0 : 1;
     return;
   }
 

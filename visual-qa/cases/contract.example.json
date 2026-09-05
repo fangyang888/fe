@@ -1,0 +1,29 @@
+{
+  "name": "contract-example",
+  "url": "http://127.0.0.1:3000/family-card",
+  "designImage": "./design.png",
+  "outputDir": "../artifacts/contract-example",
+  "viewport": { "width": 375, "height": 812, "deviceScaleFactor": 1 },
+  "wait": { "readyExpression": "window.__VISUAL_READY__ === true" },
+  "contract": {
+    "tolerance": 1,
+    "failOnMismatch": true,
+    "elements": [
+      {
+        "name": "member-card",
+        "selector": "[data-visual='member-card']",
+        "bounds": { "width": 300, "height": 163 }
+      },
+      {
+        "name": "claim-button",
+        "selector": "[data-visual='claim-button']",
+        "bounds": { "height": 48 },
+        "styles": { "font-size": 16, "color": "rgb(255, 255, 255)" },
+        "relations": [
+          { "target": "member-card", "metric": "gapY", "expected": 16 },
+          { "target": "member-card", "metric": "centerX", "expected": 0 }
+        ]
+      }
+    ]
+  }
+}

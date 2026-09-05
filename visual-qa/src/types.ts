@@ -241,6 +241,7 @@ export interface VisualStructureIntent {
 }
 
 export interface VisualCase {
+  contract?: DesignContract;
   name: string;
   pixsoNodeId?: string;
   pixsoNodeVersion?: string;
@@ -313,6 +314,7 @@ export interface CssRulesInspectionResult {
 }
 
 export interface CaptureResult {
+  measurement?: MeasurementResult;
   url: string;
   title: string;
   outputPath: string;
@@ -342,11 +344,64 @@ export interface CaptureResult {
     structureMs: number;
     cssRulesMs: number;
     screenshotMs: number;
+    measurementMs?: number;
     totalMs: number;
   };
   consoleErrors: string[];
   structure?: StructureInspectionResult;
   cssRules?: CssRulesInspectionResult;
+}
+
+export interface DesignContract {
+  tolerance?: number;
+  failOnMismatch?: boolean;
+  elements: Array<{
+    name: string;
+    selector: string;
+    bounds?: Partial<RectangleBounds>;
+    /** Numeric values are CSS pixels, strings are computed CSS values. */
+    styles?: Record<string, number | string>;
+    relations?: Array<{
+      target: string;
+      metric: "gapY" | "gapX" | "alignLeft" | "alignTop" | "centerX";
+      expected: number;
+      tolerance?: number;
+    }>;
+  }>;
+}
+
+export interface MeasurementIssue {
+  id: string;
+  element: string;
+  selector: string;
+  property: string;
+  expected: number | string;
+  actual: number | string;
+  delta?: number;
+  tolerance?: number;
+}
+
+export interface MeasurementResult {
+  passed: boolean;
+  failOnMismatch: boolean;
+  measurements: Array<{
+    name: string;
+    count: number;
+    visible: boolean;
+    bounds?: RectangleBounds;
+    styles: Record<string, string>;
+  }>;
+  issues: MeasurementIssue[];
+  iteration?: {
+    baseline: boolean;
+    added: string[];
+    resolved: string[];
+    improved: string[];
+    worsened: string[];
+    unchanged: string[];
+    stagnantRounds: number;
+    recommendImageReview: boolean;
+  };
 }
 
 export interface ComparisonResult {

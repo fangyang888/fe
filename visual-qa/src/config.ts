@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { normalizeContract } from "./measure.js";
 import type {
   ChangeDetectionConfig,
   CssRulesConfig,
@@ -196,6 +197,7 @@ export function normalizeVisualCase(
   return {
     ...input,
     name: input.name.trim(),
+    ...(input.contract ? { contract: normalizeContract(input.contract) } : {}),
     designImage: path.resolve(baseDirectory, input.designImage),
     outputDir: path.resolve(
       baseDirectory,

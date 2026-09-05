@@ -5,9 +5,11 @@ import type { Browser } from "playwright";
 import { inspectCssRules } from "./css-rules.js";
 import { waitForVisualReadiness } from "./readiness.js";
 import { inspectVisualStructure } from "./structure.js";
+import { inspectMeasurements } from "./measure.js";
 import type { CaptureResult, VisualCase } from "./types.js";
 
 export interface CaptureOptions {
+  skipScreenshot?: boolean;
   browser?: Browser;
   browserEndpoint?: string;
 }
@@ -106,8 +108,13 @@ export async function captureH5Screenshot(
       ? await inspectCssRules(page, visualCase.cssRules as Required<typeof visualCase.cssRules>)
       : undefined;
     timings.cssRulesMs = Date.now() - cssRulesStarted;
+    const measurementStarted = Date.now();
+    const measurement = visualCase.contract
+      ? await inspectMeasurements(page, visualCase.contract)
+      : undefined;
+    timings.measurementMs = Date.now() - measurementStarted;
     const screenshotStarted = Date.now();
-    await page.screenshot({
+    if (!options.skipScreenshot) await page.screenshot({
       path: outputPath,
       fullPage: visualCase.fullPage ?? false,
       animations: "disabled",
@@ -122,6 +129,7 @@ export async function captureH5Screenshot(
       readiness,
       timings,
       consoleErrors,
+      ...(measurement ? { measurement } : {}),
       ...(structure ? { structure } : {}),
       ...(cssRules ? { cssRules } : {}),
     };

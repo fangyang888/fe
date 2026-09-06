@@ -1,0 +1,836 @@
+{
+  "count": 112,
+  "configs": [
+    {
+      "key": "select-w1-tie0-appearance0",
+      "type": "select",
+      "weight": 1,
+      "tie": 0,
+      "appearance": 0
+    },
+    {
+      "key": "select-w1-tie0-appearance0.5",
+      "type": "select",
+      "weight": 1,
+      "tie": 0,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w1-tie0-appearance1",
+      "type": "select",
+      "weight": 1,
+      "tie": 0,
+      "appearance": 1
+    },
+    {
+      "key": "select-w1-tie1-appearance0",
+      "type": "select",
+      "weight": 1,
+      "tie": 1,
+      "appearance": 0
+    },
+    {
+      "key": "select-w1-tie1-appearance0.5",
+      "type": "select",
+      "weight": 1,
+      "tie": 1,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w1-tie1-appearance1",
+      "type": "select",
+      "weight": 1,
+      "tie": 1,
+      "appearance": 1
+    },
+    {
+      "key": "select-w2-tie0-appearance0",
+      "type": "select",
+      "weight": 2,
+      "tie": 0,
+      "appearance": 0
+    },
+    {
+      "key": "select-w2-tie0-appearance0.5",
+      "type": "select",
+      "weight": 2,
+      "tie": 0,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w2-tie0-appearance1",
+      "type": "select",
+      "weight": 2,
+      "tie": 0,
+      "appearance": 1
+    },
+    {
+      "key": "select-w2-tie1-appearance0",
+      "type": "select",
+      "weight": 2,
+      "tie": 1,
+      "appearance": 0
+    },
+    {
+      "key": "select-w2-tie1-appearance0.5",
+      "type": "select",
+      "weight": 2,
+      "tie": 1,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w2-tie1-appearance1",
+      "type": "select",
+      "weight": 2,
+      "tie": 1,
+      "appearance": 1
+    },
+    {
+      "key": "select-w0.5-tie0-appearance0",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 0,
+      "appearance": 0
+    },
+    {
+      "key": "select-w0.5-tie0-appearance0.5",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 0,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w0.5-tie0-appearance1",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 0,
+      "appearance": 1
+    },
+    {
+      "key": "select-w0.5-tie1-appearance0",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 1,
+      "appearance": 0
+    },
+    {
+      "key": "select-w0.5-tie1-appearance0.5",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 1,
+      "appearance": 0.5
+    },
+    {
+      "key": "select-w0.5-tie1-appearance1",
+      "type": "select",
+      "weight": 0.5,
+      "tie": 1,
+      "appearance": 1
+    },
+    {
+      "key": "switch-after-failure-0",
+      "type": "switch",
+      "initial": 0
+    },
+    {
+      "key": "switch-after-failure-1",
+      "type": "switch",
+      "initial": 1
+    },
+    {
+      "key": "state-50-2-0",
+      "type": "state",
+      "window": 50,
+      "strength": 2,
+      "tie": 0
+    },
+    {
+      "key": "state-50-2-1",
+      "type": "state",
+      "window": 50,
+      "strength": 2,
+      "tie": 1
+    },
+    {
+      "key": "state-50-10-0",
+      "type": "state",
+      "window": 50,
+      "strength": 10,
+      "tie": 0
+    },
+    {
+      "key": "state-50-10-1",
+      "type": "state",
+      "window": 50,
+      "strength": 10,
+      "tie": 1
+    },
+    {
+      "key": "state-100-2-0",
+      "type": "state",
+      "window": 100,
+      "strength": 2,
+      "tie": 0
+    },
+    {
+      "key": "state-100-2-1",
+      "type": "state",
+      "window": 100,
+      "strength": 2,
+      "tie": 1
+    },
+    {
+      "key": "state-100-10-0",
+      "type": "state",
+      "window": 100,
+      "strength": 10,
+      "tie": 0
+    },
+    {
+      "key": "state-100-10-1",
+      "type": "state",
+      "window": 100,
+      "strength": 10,
+      "tie": 1
+    },
+    {
+      "key": "state-200-2-0",
+      "type": "state",
+      "window": 200,
+      "strength": 2,
+      "tie": 0
+    },
+    {
+      "key": "state-200-2-1",
+      "type": "state",
+      "window": 200,
+      "strength": 2,
+      "tie": 1
+    },
+    {
+      "key": "state-200-10-0",
+      "type": "state",
+      "window": 200,
+      "strength": 10,
+      "tie": 0
+    },
+    {
+      "key": "state-200-10-1",
+      "type": "state",
+      "window": 200,
+      "strength": 10,
+      "tie": 1
+    },
+    {
+      "key": "adjust-0-0-difference--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-0-difference--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-0-difference-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-0-difference-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-0-0-sum--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-0-sum--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-0-sum-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-0-sum-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-0-0-xor--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-0-xor--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-0-xor-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-0-xor-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-0-6-difference--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-6-difference--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-6-difference-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-6-difference-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-0-6-sum--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-6-sum--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-6-sum-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-6-sum-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-0-6-xor--2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-0-6-xor--1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-0-6-xor-1",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-0-6-xor-2",
+      "type": "adjust",
+      "base": 0,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-0-difference--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-0-difference--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-0-difference-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-0-difference-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "difference",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-0-sum--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-0-sum--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-0-sum-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-0-sum-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "sum",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-0-xor--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-0-xor--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-0-xor-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-0-xor-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 0,
+      "transform": "xor",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-6-difference--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-6-difference--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-6-difference-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-6-difference-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "difference",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-6-sum--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-6-sum--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-6-sum-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-6-sum-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "sum",
+      "coefficient": 2
+    },
+    {
+      "key": "adjust-1-6-xor--2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": -2
+    },
+    {
+      "key": "adjust-1-6-xor--1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": -1
+    },
+    {
+      "key": "adjust-1-6-xor-1",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": 1
+    },
+    {
+      "key": "adjust-1-6-xor-2",
+      "type": "adjust",
+      "base": 1,
+      "position": 6,
+      "transform": "xor",
+      "coefficient": 2
+    },
+    {
+      "key": "two-draw-0--2--2",
+      "type": "two-draw",
+      "position": 0,
+      "a": -2,
+      "b": -2
+    },
+    {
+      "key": "two-draw-0--2--1",
+      "type": "two-draw",
+      "position": 0,
+      "a": -2,
+      "b": -1
+    },
+    {
+      "key": "two-draw-0--2-1",
+      "type": "two-draw",
+      "position": 0,
+      "a": -2,
+      "b": 1
+    },
+    {
+      "key": "two-draw-0--2-2",
+      "type": "two-draw",
+      "position": 0,
+      "a": -2,
+      "b": 2
+    },
+    {
+      "key": "two-draw-0--1--2",
+      "type": "two-draw",
+      "position": 0,
+      "a": -1,
+      "b": -2
+    },
+    {
+      "key": "two-draw-0--1--1",
+      "type": "two-draw",
+      "position": 0,
+      "a": -1,
+      "b": -1
+    },
+    {
+      "key": "two-draw-0--1-1",
+      "type": "two-draw",
+      "position": 0,
+      "a": -1,
+      "b": 1
+    },
+    {
+      "key": "two-draw-0--1-2",
+      "type": "two-draw",
+      "position": 0,
+      "a": -1,
+      "b": 2
+    },
+    {
+      "key": "two-draw-0-1--2",
+      "type": "two-draw",
+      "position": 0,
+      "a": 1,
+      "b": -2
+    },
+    {
+      "key": "two-draw-0-1--1",
+      "type": "two-draw",
+      "position": 0,
+      "a": 1,
+      "b": -1
+    },
+    {
+      "key": "two-draw-0-1-1",
+      "type": "two-draw",
+      "position": 0,
+      "a": 1,
+      "b": 1
+    },
+    {
+      "key": "two-draw-0-1-2",
+      "type": "two-draw",
+      "position": 0,
+      "a": 1,
+      "b": 2
+    },
+    {
+      "key": "two-draw-0-2--2",
+      "type": "two-draw",
+      "position": 0,
+      "a": 2,
+      "b": -2
+    },
+    {
+      "key": "two-draw-0-2--1",
+      "type": "two-draw",
+      "position": 0,
+      "a": 2,
+      "b": -1
+    },
+    {
+      "key": "two-draw-0-2-1",
+      "type": "two-draw",
+      "position": 0,
+      "a": 2,
+      "b": 1
+    },
+    {
+      "key": "two-draw-0-2-2",
+      "type": "two-draw",
+      "position": 0,
+      "a": 2,
+      "b": 2
+    },
+    {
+      "key": "two-draw-6--2--2",
+      "type": "two-draw",
+      "position": 6,
+      "a": -2,
+      "b": -2
+    },
+    {
+      "key": "two-draw-6--2--1",
+      "type": "two-draw",
+      "position": 6,
+      "a": -2,
+      "b": -1
+    },
+    {
+      "key": "two-draw-6--2-1",
+      "type": "two-draw",
+      "position": 6,
+      "a": -2,
+      "b": 1
+    },
+    {
+      "key": "two-draw-6--2-2",
+      "type": "two-draw",
+      "position": 6,
+      "a": -2,
+      "b": 2
+    },
+    {
+      "key": "two-draw-6--1--2",
+      "type": "two-draw",
+      "position": 6,
+      "a": -1,
+      "b": -2
+    },
+    {
+      "key": "two-draw-6--1--1",
+      "type": "two-draw",
+      "position": 6,
+      "a": -1,
+      "b": -1
+    },
+    {
+      "key": "two-draw-6--1-1",
+      "type": "two-draw",
+      "position": 6,
+      "a": -1,
+      "b": 1
+    },
+    {
+      "key": "two-draw-6--1-2",
+      "type": "two-draw",
+      "position": 6,
+      "a": -1,
+      "b": 2
+    },
+    {
+      "key": "two-draw-6-1--2",
+      "type": "two-draw",
+      "position": 6,
+      "a": 1,
+      "b": -2
+    },
+    {
+      "key": "two-draw-6-1--1",
+      "type": "two-draw",
+      "position": 6,
+      "a": 1,
+      "b": -1
+    },
+    {
+      "key": "two-draw-6-1-1",
+      "type": "two-draw",
+      "position": 6,
+      "a": 1,
+      "b": 1
+    },
+    {
+      "key": "two-draw-6-1-2",
+      "type": "two-draw",
+      "position": 6,
+      "a": 1,
+      "b": 2
+    },
+    {
+      "key": "two-draw-6-2--2",
+      "type": "two-draw",
+      "position": 6,
+      "a": 2,
+      "b": -2
+    },
+    {
+      "key": "two-draw-6-2--1",
+      "type": "two-draw",
+      "position": 6,
+      "a": 2,
+      "b": -1
+    },
+    {
+      "key": "two-draw-6-2-1",
+      "type": "two-draw",
+      "position": 6,
+      "a": 2,
+      "b": 1
+    },
+    {
+      "key": "two-draw-6-2-2",
+      "type": "two-draw",
+      "position": 6,
+      "a": 2,
+      "b": 2
+    }
+  ],
+  "cutoff": "2026-243",
+  "selection": "Most successes in last 200 draws ending 2026-198; ties use config order; no evaluation-period retuning",
+  "caveat": "Retrospective exploration on previously seen historical data; the two base formulas were themselves selected using this history. Latest 50 both bases perfect, so any selector between them is trivially perfect there."
+}

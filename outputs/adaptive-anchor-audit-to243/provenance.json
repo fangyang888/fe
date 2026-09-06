@@ -1,0 +1,10 @@
+{
+  "historySha256": "139b3d8d846019f4c39f4309abadab583b63723f569e0994f9b66d72f5e887d9",
+  "scriptSha256": "220ed62b36861fd75214b10b72f59ef73b04813828e9de6fedc563184bac76ac",
+  "date": "2026-09-06",
+  "source": "Prior local snapshot filtered through 2026-243 only",
+  "posthocPerfects": [
+    "L14-P1-A2-B15",
+    "L100-P7-A48-B0"
+  ]
+}

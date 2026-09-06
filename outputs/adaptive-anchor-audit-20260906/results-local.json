@@ -1,0 +1,5743 @@
+{
+  "name": "local",
+  "source": "history.json",
+  "count": 1340,
+  "latest": {
+    "year": 2026,
+    "No": 247
+  },
+  "sha256": "8f3b832239fbf8fc5ed769ea6d0224fadd97a2f5deeaf52bcef843e3da9ce2d0",
+  "gaps": [
+    [
+      2026,
+      243,
+      247
+    ]
+  ],
+  "protocol": {
+    "candidateCount": 46,
+    "configs": [
+      {
+        "key": "anchor-loss-10",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "weight": 0
+      },
+      {
+        "key": "anchor-loss-20",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "weight": 0
+      },
+      {
+        "key": "anchor-loss-30",
+        "family": "anchor",
+        "type": "loss",
+        "window": 30,
+        "weight": 0
+      },
+      {
+        "key": "anchor-loss-50",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "weight": 0
+      },
+      {
+        "key": "anchor-loss-100",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "weight": 0
+      },
+      {
+        "key": "anchor-loss-200",
+        "family": "anchor",
+        "type": "loss",
+        "window": 200,
+        "weight": 0
+      },
+      {
+        "key": "anchor-risk-10-50-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 50,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-10-50-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 50,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-10-50-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 50,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-10-100-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 100,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-10-100-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 100,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-10-100-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 10,
+        "riskWindow": 100,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-20-50-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 50,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-20-50-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 50,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-20-50-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 50,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-20-100-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 100,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-20-100-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 100,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-20-100-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 20,
+        "riskWindow": 100,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-50-50-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 50,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-50-50-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 50,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-50-50-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 50,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-50-100-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 100,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-50-100-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 100,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-50-100-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 50,
+        "riskWindow": 100,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-100-50-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 50,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-100-50-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 50,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-100-50-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 50,
+        "weight": 1.5
+      },
+      {
+        "key": "anchor-risk-100-100-0.25",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 100,
+        "weight": 0.25
+      },
+      {
+        "key": "anchor-risk-100-100-0.75",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 100,
+        "weight": 0.75
+      },
+      {
+        "key": "anchor-risk-100-100-1.5",
+        "family": "anchor",
+        "type": "loss",
+        "window": 100,
+        "riskWindow": 100,
+        "weight": 1.5
+      },
+      {
+        "key": "cold-20",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 20,
+        "direction": 1
+      },
+      {
+        "key": "hot-20",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 20,
+        "direction": -1
+      },
+      {
+        "key": "ewma-20",
+        "family": "non-anchor",
+        "type": "ewma",
+        "window": 20
+      },
+      {
+        "key": "cold-50",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 50,
+        "direction": 1
+      },
+      {
+        "key": "hot-50",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 50,
+        "direction": -1
+      },
+      {
+        "key": "ewma-50",
+        "family": "non-anchor",
+        "type": "ewma",
+        "window": 50
+      },
+      {
+        "key": "cold-100",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 100,
+        "direction": 1
+      },
+      {
+        "key": "hot-100",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 100,
+        "direction": -1
+      },
+      {
+        "key": "ewma-100",
+        "family": "non-anchor",
+        "type": "ewma",
+        "window": 100
+      },
+      {
+        "key": "cold-200",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 200,
+        "direction": 1
+      },
+      {
+        "key": "hot-200",
+        "family": "non-anchor",
+        "type": "frequency",
+        "window": 200,
+        "direction": -1
+      },
+      {
+        "key": "ewma-200",
+        "family": "non-anchor",
+        "type": "ewma",
+        "window": 200
+      },
+      {
+        "key": "longest-absence",
+        "family": "non-anchor",
+        "type": "gap",
+        "direction": -1
+      },
+      {
+        "key": "most-recent",
+        "family": "non-anchor",
+        "type": "gap",
+        "direction": 1
+      },
+      {
+        "key": "markov-shrunk",
+        "family": "non-anchor",
+        "type": "markov"
+      },
+      {
+        "key": "gap-hazard-pooled",
+        "family": "non-anchor",
+        "type": "hazard"
+      }
+    ],
+    "training": "last 200 draws through 2026-198",
+    "test": "2026-199 onwards",
+    "primaryComparison": "2026-212 onwards",
+    "tie": "configuration order",
+    "criterion": "single excluded number absent from all seven",
+    "disclaimer": "Retrospective temporal validation, not a previously unseen or prospectively registered test."
+  },
+  "chosen": "anchor-risk-20-100-1.5",
+  "chosenIndependent": "ewma-200",
+  "results": [
+    {
+      "key": "K",
+      "train": {
+        "count": 200,
+        "success": 186,
+        "failure": 14,
+        "rate": 0.93,
+        "specialSuccess": 199,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8859451911438936,
+          0.9578478281716571
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 97,
+          "failure": 3,
+          "rate": 0.97,
+          "specialSuccess": 100,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9154806357094724,
+            0.9897454759759611
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 200,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "R50",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 95,
+          "failure": 5,
+          "rate": 0.95,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8882495307680808,
+            0.9784563208456319
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 193,
+          "failure": 7,
+          "rate": 0.965,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9295293884777092,
+            0.9829444579914328
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "R20/50",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 96,
+          "failure": 4,
+          "rate": 0.96,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9016292856411208,
+            0.9843366960084523
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 193,
+          "failure": 7,
+          "rate": 0.965,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9295293884777092,
+            0.9829444579914328
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "M10",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 199,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 192,
+          "failure": 8,
+          "rate": 0.96,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.923067931799067,
+            0.9795943679338476
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "A100",
+      "train": {
+        "count": 200,
+        "success": 196,
+        "failure": 4,
+        "rate": 0.98,
+        "specialSuccess": 200,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9497129130941735,
+          0.9921955735836505
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-loss-10",
+      "train": {
+        "count": 200,
+        "success": 190,
+        "failure": 10,
+        "rate": 0.95,
+        "specialSuccess": 199,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.9104218518612239,
+          0.972617354399236
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 95,
+          "failure": 5,
+          "rate": 0.95,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8882495307680808,
+            0.9784563208456319
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-loss-20",
+      "train": {
+        "count": 200,
+        "success": 189,
+        "failure": 11,
+        "rate": 0.945,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9042130012276914,
+          0.9690146582965411
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 43,
+        "failure": 3,
+        "rate": 0.9347826086956522,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8249725891809578,
+          0.9775721385707115
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 31,
+        "failure": 2,
+        "rate": 0.9393939393939394,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8039375519135219,
+          0.9832191169128082
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 95,
+          "failure": 5,
+          "rate": 0.95,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8882495307680808,
+            0.9784563208456319
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-loss-30",
+      "train": {
+        "count": 200,
+        "success": 190,
+        "failure": 10,
+        "rate": 0.95,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.9104218518612239,
+          0.972617354399236
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 96,
+          "failure": 4,
+          "rate": 0.96,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9016292856411208,
+            0.9843366960084523
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-loss-50",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 95,
+          "failure": 5,
+          "rate": 0.95,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8882495307680808,
+            0.9784563208456319
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 193,
+          "failure": 7,
+          "rate": 0.965,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9295293884777092,
+            0.9829444579914328
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-loss-100",
+      "train": {
+        "count": 200,
+        "success": 187,
+        "failure": 13,
+        "rate": 0.935,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8919809207009312,
+          0.961623645350847
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-loss-200",
+      "train": {
+        "count": 200,
+        "success": 188,
+        "failure": 12,
+        "rate": 0.94,
+        "specialSuccess": 197,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8980683070423372,
+          0.9653478057456681
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 29,
+        "failure": 4,
+        "rate": 0.8787878787878788,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7267449482892476,
+          0.9518383869058644
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 90,
+          "failure": 10,
+          "rate": 0.9,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8256343384950865,
+            0.9447708629393249
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 198,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-10-50-0.25",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 199,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 29,
+        "failure": 4,
+        "rate": 0.8787878787878788,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7267449482892476,
+          0.9518383869058644
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 45,
+          "failure": 5,
+          "rate": 0.9,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7863976856252035,
+            0.9565242350681096
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-10-50-0.75",
+      "train": {
+        "count": 200,
+        "success": 192,
+        "failure": 8,
+        "rate": 0.96,
+        "specialSuccess": 199,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.923067931799067,
+          0.9795943679338476
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 95,
+          "failure": 5,
+          "rate": 0.95,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8882495307680808,
+            0.9784563208456319
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 192,
+          "failure": 8,
+          "rate": 0.96,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.923067931799067,
+            0.9795943679338476
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-risk-10-50-1.5",
+      "train": {
+        "count": 200,
+        "success": 188,
+        "failure": 12,
+        "rate": 0.94,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8980683070423372,
+          0.9653478057456681
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 29,
+        "failure": 4,
+        "rate": 0.8787878787878788,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7267449482892476,
+          0.9518383869058644
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 45,
+          "failure": 5,
+          "rate": 0.9,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7863976856252035,
+            0.9565242350681096
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-risk-10-100-0.25",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 200,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 29,
+        "failure": 4,
+        "rate": 0.8787878787878788,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7267449482892476,
+          0.9518383869058644
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 45,
+          "failure": 5,
+          "rate": 0.9,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7863976856252035,
+            0.9565242350681096
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-10-100-0.75",
+      "train": {
+        "count": 200,
+        "success": 194,
+        "failure": 6,
+        "rate": 0.97,
+        "specialSuccess": 200,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9361057075454807,
+          0.9861796856598887
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-risk-10-100-1.5",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 199,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 187,
+          "failure": 13,
+          "rate": 0.935,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8919809207009312,
+            0.961623645350847
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-risk-20-50-0.25",
+      "train": {
+        "count": 200,
+        "success": 190,
+        "failure": 10,
+        "rate": 0.95,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9104218518612239,
+          0.972617354399236
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 187,
+          "failure": 13,
+          "rate": 0.935,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8919809207009312,
+            0.961623645350847
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-20-50-0.75",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-20-50-1.5",
+      "train": {
+        "count": 200,
+        "success": 190,
+        "failure": 10,
+        "rate": 0.95,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9104218518612239,
+          0.972617354399236
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 34
+    },
+    {
+      "key": "anchor-risk-20-100-0.25",
+      "train": {
+        "count": 200,
+        "success": 192,
+        "failure": 8,
+        "rate": 0.96,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.923067931799067,
+          0.9795943679338476
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-20-100-0.75",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 42,
+          "failure": 8,
+          "rate": 0.84,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7148578393696501,
+            0.916625793219666
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 90,
+          "failure": 10,
+          "rate": 0.9,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8256343384950865,
+            0.9447708629393249
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-20-100-1.5",
+      "train": {
+        "count": 200,
+        "success": 195,
+        "failure": 5,
+        "rate": 0.975,
+        "specialSuccess": 199,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.942821659593358,
+          0.9892752803482386
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-50-0.25",
+      "train": {
+        "count": 200,
+        "success": 192,
+        "failure": 8,
+        "rate": 0.96,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.923067931799067,
+          0.9795943679338476
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 43,
+        "failure": 3,
+        "rate": 0.9347826086956522,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8249725891809578,
+          0.9775721385707115
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 31,
+        "failure": 2,
+        "rate": 0.9393939393939394,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8039375519135219,
+          0.9832191169128082
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 47,
+          "failure": 3,
+          "rate": 0.94,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8378290831116182,
+            0.979385029651026
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 94,
+          "failure": 6,
+          "rate": 0.94,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8752318455410406,
+            0.9722138760368118
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-50-0.75",
+      "train": {
+        "count": 200,
+        "success": 193,
+        "failure": 7,
+        "rate": 0.965,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9295293884777092,
+          0.9829444579914328
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-50-1.5",
+      "train": {
+        "count": 200,
+        "success": 191,
+        "failure": 9,
+        "rate": 0.955,
+        "specialSuccess": 197,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9167032959981803,
+          0.976147456998507
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 94,
+          "failure": 6,
+          "rate": 0.94,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8752318455410406,
+            0.9722138760368118
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-100-0.25",
+      "train": {
+        "count": 200,
+        "success": 192,
+        "failure": 8,
+        "rate": 0.96,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.923067931799067,
+          0.9795943679338476
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 43,
+        "failure": 3,
+        "rate": 0.9347826086956522,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8249725891809578,
+          0.9775721385707115
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 31,
+        "failure": 2,
+        "rate": 0.9393939393939394,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8039375519135219,
+          0.9832191169128082
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 47,
+          "failure": 3,
+          "rate": 0.94,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8378290831116182,
+            0.979385029651026
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 94,
+          "failure": 6,
+          "rate": 0.94,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8752318455410406,
+            0.9722138760368118
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-100-0.75",
+      "train": {
+        "count": 200,
+        "success": 191,
+        "failure": 9,
+        "rate": 0.955,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.9167032959981803,
+          0.976147456998507
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 90,
+          "failure": 10,
+          "rate": 0.9,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8256343384950865,
+            0.9447708629393249
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 187,
+          "failure": 13,
+          "rate": 0.935,
+          "specialSuccess": 198,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8919809207009312,
+            0.961623645350847
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-50-100-1.5",
+      "train": {
+        "count": 200,
+        "success": 192,
+        "failure": 8,
+        "rate": 0.96,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.923067931799067,
+          0.9795943679338476
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 40,
+        "failure": 6,
+        "rate": 0.8695652173913043,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.74334142220927,
+          0.9388215963796489
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 98,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 188,
+          "failure": 12,
+          "rate": 0.94,
+          "specialSuccess": 198,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8980683070423372,
+            0.9653478057456681
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-50-0.25",
+      "train": {
+        "count": 200,
+        "success": 189,
+        "failure": 11,
+        "rate": 0.945,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9042130012276914,
+          0.9690146582965411
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-50-0.75",
+      "train": {
+        "count": 200,
+        "success": 189,
+        "failure": 11,
+        "rate": 0.945,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9042130012276914,
+          0.9690146582965411
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 190,
+          "failure": 10,
+          "rate": 0.95,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9104218518612239,
+            0.972617354399236
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-50-1.5",
+      "train": {
+        "count": 200,
+        "success": 189,
+        "failure": 11,
+        "rate": 0.945,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9042130012276914,
+          0.9690146582965411
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 43,
+        "failure": 3,
+        "rate": 0.9347826086956522,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8249725891809578,
+          0.9775721385707115
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 31,
+        "failure": 2,
+        "rate": 0.9393939393939394,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8039375519135219,
+          0.9832191169128082
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 47,
+          "failure": 3,
+          "rate": 0.94,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8378290831116182,
+            0.979385029651026
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 189,
+          "failure": 11,
+          "rate": 0.945,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9042130012276914,
+            0.9690146582965411
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-100-0.25",
+      "train": {
+        "count": 200,
+        "success": 191,
+        "failure": 9,
+        "rate": 0.955,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9167032959981803,
+          0.976147456998507
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 44,
+        "failure": 2,
+        "rate": 0.9565217391304348,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8546774097378094,
+          0.9879945544014435
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 32,
+        "failure": 1,
+        "rate": 0.9696969696969697,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.846812746178811,
+          0.9946305894631283
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 48,
+          "failure": 2,
+          "rate": 0.96,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8653990931249297,
+            0.9889611156723802
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 99,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 199,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-100-0.75",
+      "train": {
+        "count": 200,
+        "success": 194,
+        "failure": 6,
+        "rate": 0.97,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9361057075454807,
+          0.9861796856598887
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 43,
+        "failure": 3,
+        "rate": 0.9347826086956522,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8249725891809578,
+          0.9775721385707115
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 31,
+        "failure": 2,
+        "rate": 0.9393939393939394,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.8039375519135219,
+          0.9832191169128082
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 47,
+          "failure": 3,
+          "rate": 0.94,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8378290831116182,
+            0.979385029651026
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 93,
+          "failure": 7,
+          "rate": 0.93,
+          "specialSuccess": 98,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8625048526092651,
+            0.9656807389327273
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 192,
+          "failure": 8,
+          "rate": 0.96,
+          "specialSuccess": 198,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.923067931799067,
+            0.9795943679338476
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "anchor-risk-100-100-1.5",
+      "train": {
+        "count": 200,
+        "success": 194,
+        "failure": 6,
+        "rate": 0.97,
+        "specialSuccess": 198,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.9361057075454807,
+          0.9861796856598887
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 20,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 20,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.8388748419471806,
+            1
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 92,
+          "failure": 8,
+          "rate": 0.92,
+          "specialSuccess": 98,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8500189229905127,
+            0.9589065385156194
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 191,
+          "failure": 9,
+          "rate": 0.955,
+          "specialSuccess": 198,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.9167032959981803,
+            0.976147456998507
+          ]
+        }
+      },
+      "next": 27
+    },
+    {
+      "key": "cold-20",
+      "train": {
+        "count": 200,
+        "success": 180,
+        "failure": 20,
+        "rate": 0.9,
+        "specialSuccess": 193,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8505941875672826,
+          0.9343295513309041
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 8,
+          "failure": 2,
+          "rate": 0.8,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.49016247153664183,
+            0.9433178485456247
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 48,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 88,
+          "failure": 12,
+          "rate": 0.88,
+          "specialSuccess": 96,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8018790057328857,
+            0.9300059356298052
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 180,
+          "failure": 20,
+          "rate": 0.9,
+          "specialSuccess": 194,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8505941875672826,
+            0.9343295513309041
+          ]
+        }
+      },
+      "next": 48
+    },
+    {
+      "key": "hot-20",
+      "train": {
+        "count": 200,
+        "success": 165,
+        "failure": 35,
+        "rate": 0.825,
+        "specialSuccess": 191,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.7663556885175099,
+          0.8713948493372666
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 37,
+        "failure": 9,
+        "rate": 0.8043478260869565,
+        "specialSuccess": 44,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6682874107701539,
+          0.8934938986560147
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 26,
+        "failure": 7,
+        "rate": 0.7878787878787878,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6224835500784931,
+          0.8932397846697919
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 15,
+          "failure": 5,
+          "rate": 0.75,
+          "specialSuccess": 19,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.531299122381256,
+            0.8881382985923343
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 38,
+          "failure": 12,
+          "rate": 0.76,
+          "specialSuccess": 48,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.6258731624205708,
+            0.8570260860300828
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 81,
+          "failure": 19,
+          "rate": 0.81,
+          "specialSuccess": 97,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7222115462093562,
+            0.8748524849023126
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 166,
+          "failure": 34,
+          "rate": 0.83,
+          "specialSuccess": 192,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7718411637168737,
+            0.8757209208741302
+          ]
+        }
+      },
+      "next": 17
+    },
+    {
+      "key": "ewma-20",
+      "train": {
+        "count": 200,
+        "success": 177,
+        "failure": 23,
+        "rate": 0.885,
+        "specialSuccess": 194,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.8333528310151243,
+          0.9221362676743804
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 19,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 44,
+          "failure": 6,
+          "rate": 0.88,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7619518261679701,
+            0.9438239984906773
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 86,
+          "failure": 14,
+          "rate": 0.86,
+          "specialSuccess": 96,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7786281178903616,
+            0.9147365634006086
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 177,
+          "failure": 23,
+          "rate": 0.885,
+          "specialSuccess": 194,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.8333528310151243,
+            0.9221362676743804
+          ]
+        }
+      },
+      "next": 33
+    },
+    {
+      "key": "cold-50",
+      "train": {
+        "count": 200,
+        "success": 177,
+        "failure": 23,
+        "rate": 0.885,
+        "specialSuccess": 194,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8333528310151243,
+          0.9221362676743804
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 88,
+          "failure": 12,
+          "rate": 0.88,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8018790057328857,
+            0.9300059356298052
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 178,
+          "failure": 22,
+          "rate": 0.89,
+          "specialSuccess": 196,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.839073090026985,
+            0.926227555398747
+          ]
+        }
+      },
+      "next": 2
+    },
+    {
+      "key": "hot-50",
+      "train": {
+        "count": 200,
+        "success": 172,
+        "failure": 28,
+        "rate": 0.86,
+        "specialSuccess": 195,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.8051011913429243,
+          0.9013301736654437
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 44,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 19,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 48,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 87,
+          "failure": 13,
+          "rate": 0.87,
+          "specialSuccess": 96,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7901964855992357,
+            0.9224283257275948
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 179,
+          "failure": 21,
+          "rate": 0.895,
+          "specialSuccess": 196,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8448196800887696,
+            0.9302925120731899
+          ]
+        }
+      },
+      "next": 17
+    },
+    {
+      "key": "ewma-50",
+      "train": {
+        "count": 200,
+        "success": 170,
+        "failure": 30,
+        "rate": 0.85,
+        "specialSuccess": 194,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7939442071583334,
+          0.89286406437758
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 46,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 33,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 42,
+          "failure": 8,
+          "rate": 0.84,
+          "specialSuccess": 50,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7148578393696501,
+            0.916625793219666
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 85,
+          "failure": 15,
+          "rate": 0.85,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7671644040916763,
+            0.9069401471634337
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 166,
+          "failure": 34,
+          "rate": 0.83,
+          "specialSuccess": 194,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7718411637168737,
+            0.8757209208741302
+          ]
+        }
+      },
+      "next": 33
+    },
+    {
+      "key": "cold-100",
+      "train": {
+        "count": 200,
+        "success": 170,
+        "failure": 30,
+        "rate": 0.85,
+        "specialSuccess": 194,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7939442071583334,
+          0.89286406437758
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 35,
+        "failure": 11,
+        "rate": 0.7608695652173914,
+        "specialSuccess": 45,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6206486144237798,
+          0.8608782222272219
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 26,
+        "failure": 7,
+        "rate": 0.7878787878787878,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6224835500784931,
+          0.8932397846697919
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 6,
+          "failure": 4,
+          "rate": 0.6,
+          "specialSuccess": 10,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.31267376973365824,
+            0.8318196702937638
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 14,
+          "failure": 6,
+          "rate": 0.7,
+          "specialSuccess": 20,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.4810271816464765,
+            0.8545227551323956
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 39,
+          "failure": 11,
+          "rate": 0.78,
+          "specialSuccess": 49,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6475845041874634,
+            0.8724608402978559
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 82,
+          "failure": 18,
+          "rate": 0.82,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7333264161369926,
+            0.8829977450105364
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 162,
+          "failure": 38,
+          "rate": 0.81,
+          "specialSuccess": 193,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7499876129240015,
+            0.8583282847220932
+          ]
+        }
+      },
+      "next": 33
+    },
+    {
+      "key": "hot-100",
+      "train": {
+        "count": 200,
+        "success": 169,
+        "failure": 31,
+        "rate": 0.845,
+        "specialSuccess": 196,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.7883930940765792,
+          0.8886036307231068
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 41,
+        "failure": 5,
+        "rate": 0.8913043478260869,
+        "specialSuccess": 43,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7696217135574916,
+          0.9526685414190106
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 29,
+        "failure": 4,
+        "rate": 0.8787878787878788,
+        "specialSuccess": 31,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.7267449482892476,
+          0.9518383869058644
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 19,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 45,
+          "failure": 5,
+          "rate": 0.9,
+          "specialSuccess": 47,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7863976856252035,
+            0.9565242350681096
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 88,
+          "failure": 12,
+          "rate": 0.88,
+          "specialSuccess": 97,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8018790057328857,
+            0.9300059356298052
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 176,
+          "failure": 24,
+          "rate": 0.88,
+          "specialSuccess": 196,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.8276574790170326,
+            0.9180200729362449
+          ]
+        }
+      },
+      "next": 19
+    },
+    {
+      "key": "ewma-100",
+      "train": {
+        "count": 200,
+        "success": 179,
+        "failure": 21,
+        "rate": 0.895,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8448196800887696,
+          0.9302925120731899
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 38,
+        "failure": 8,
+        "rate": 0.8260869565217391,
+        "specialSuccess": 45,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.692766462836215,
+          0.9091420829775368
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 26,
+        "failure": 7,
+        "rate": 0.7878787878787878,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6224835500784931,
+          0.8932397846697919
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 7,
+          "failure": 3,
+          "rate": 0.7,
+          "specialSuccess": 10,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.39677814746114537,
+            0.8922087325936989
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 16,
+          "failure": 4,
+          "rate": 0.8,
+          "specialSuccess": 20,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.5839825677481064,
+            0.919342337420202
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 42,
+          "failure": 8,
+          "rate": 0.84,
+          "specialSuccess": 49,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7148578393696501,
+            0.916625793219666
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 87,
+          "failure": 13,
+          "rate": 0.87,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7901964855992357,
+            0.9224283257275948
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 174,
+          "failure": 26,
+          "rate": 0.87,
+          "specialSuccess": 197,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8163364812775159,
+            0.9097179772033067
+          ]
+        }
+      },
+      "next": 2
+    },
+    {
+      "key": "cold-200",
+      "train": {
+        "count": 200,
+        "success": 180,
+        "failure": 20,
+        "rate": 0.9,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8505941875672826,
+          0.9343295513309041
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 37,
+        "failure": 9,
+        "rate": 0.8043478260869565,
+        "specialSuccess": 44,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.6682874107701539,
+          0.8934938986560147
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 24,
+        "failure": 9,
+        "rate": 0.7272727272727273,
+        "specialSuccess": 31,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.5578244099712737,
+          0.8493255911457935
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 6,
+          "failure": 4,
+          "rate": 0.6,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.31267376973365824,
+            0.8318196702937638
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 15,
+          "failure": 5,
+          "rate": 0.75,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.531299122381256,
+            0.8881382985923343
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 40,
+          "failure": 10,
+          "rate": 0.8,
+          "specialSuccess": 48,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6696289406777459,
+            0.887562499842239
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 86,
+          "failure": 14,
+          "rate": 0.86,
+          "specialSuccess": 97,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.7786281178903616,
+            0.9147365634006086
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 174,
+          "failure": 26,
+          "rate": 0.87,
+          "specialSuccess": 196,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8163364812775159,
+            0.9097179772033067
+          ]
+        }
+      },
+      "next": 47
+    },
+    {
+      "key": "hot-200",
+      "train": {
+        "count": 200,
+        "success": 162,
+        "failure": 38,
+        "rate": 0.81,
+        "specialSuccess": 196,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.7499876129240015,
+          0.8583282847220932
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 46,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 33,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 8,
+          "failure": 2,
+          "rate": 0.8,
+          "specialSuccess": 10,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.49016247153664183,
+            0.9433178485456247
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 42,
+          "failure": 8,
+          "rate": 0.84,
+          "specialSuccess": 50,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7148578393696501,
+            0.916625793219666
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 82,
+          "failure": 18,
+          "rate": 0.82,
+          "specialSuccess": 100,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7333264161369926,
+            0.8829977450105364
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 169,
+          "failure": 31,
+          "rate": 0.845,
+          "specialSuccess": 199,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7883930940765792,
+            0.8886036307231068
+          ]
+        }
+      },
+      "next": 46
+    },
+    {
+      "key": "ewma-200",
+      "train": {
+        "count": 200,
+        "success": 181,
+        "failure": 19,
+        "rate": 0.905,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8563983883518006,
+          0.9383368972826135
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 45,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 32,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 8,
+          "failure": 2,
+          "rate": 0.8,
+          "specialSuccess": 10,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.49016247153664183,
+            0.9433178485456247
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 20,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 49,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 89,
+          "failure": 11,
+          "rate": 0.89,
+          "specialSuccess": 98,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8136870349691969,
+            0.9374580364293543
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 177,
+          "failure": 23,
+          "rate": 0.885,
+          "specialSuccess": 197,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8333528310151243,
+            0.9221362676743804
+          ]
+        }
+      },
+      "next": 14
+    },
+    {
+      "key": "longest-absence",
+      "train": {
+        "count": 200,
+        "success": 179,
+        "failure": 21,
+        "rate": 0.895,
+        "specialSuccess": 195,
+        "maxFailureRun": 4,
+        "ci95": [
+          0.8448196800887696,
+          0.9302925120731899
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 9,
+          "failure": 1,
+          "rate": 0.9,
+          "specialSuccess": 10,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.5958499732047615,
+            0.9821237869049271
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 17,
+          "failure": 3,
+          "rate": 0.85,
+          "specialSuccess": 19,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.6395811352592431,
+            0.9476312541037835
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 89,
+          "failure": 11,
+          "rate": 0.89,
+          "specialSuccess": 97,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8136870349691969,
+            0.9374580364293543
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 180,
+          "failure": 20,
+          "rate": 0.9,
+          "specialSuccess": 195,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8505941875672826,
+            0.9343295513309041
+          ]
+        }
+      },
+      "next": 48
+    },
+    {
+      "key": "most-recent",
+      "train": {
+        "count": 200,
+        "success": 164,
+        "failure": 36,
+        "rate": 0.82,
+        "specialSuccess": 196,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.7608852497127511,
+          0.8670537414057983
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 46,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 33,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 7,
+          "failure": 3,
+          "rate": 0.7,
+          "specialSuccess": 10,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.39677814746114537,
+            0.8922087325936989
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 15,
+          "failure": 5,
+          "rate": 0.75,
+          "specialSuccess": 20,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.531299122381256,
+            0.8881382985923343
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 42,
+          "failure": 8,
+          "rate": 0.84,
+          "specialSuccess": 50,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7148578393696501,
+            0.916625793219666
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 81,
+          "failure": 19,
+          "rate": 0.81,
+          "specialSuccess": 99,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7222115462093562,
+            0.8748524849023126
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 165,
+          "failure": 35,
+          "rate": 0.825,
+          "specialSuccess": 198,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7663556885175099,
+            0.8713948493372666
+          ]
+        }
+      },
+      "next": 3
+    },
+    {
+      "key": "markov-shrunk",
+      "train": {
+        "count": 200,
+        "success": 176,
+        "failure": 24,
+        "rate": 0.88,
+        "specialSuccess": 198,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8276574790170326,
+          0.9180200729362449
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 42,
+        "failure": 4,
+        "rate": 0.9130434782608695,
+        "specialSuccess": 45,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7967533592588116,
+          0.9656641321052741
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 30,
+        "failure": 3,
+        "rate": 0.9090909090909091,
+        "specialSuccess": 32,
+        "maxFailureRun": 1,
+        "ci95": [
+          0.7642739435353026,
+          0.9685960584754184
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 19,
+          "failure": 1,
+          "rate": 0.95,
+          "specialSuccess": 20,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.763868806553258,
+            0.9911185511992047
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 46,
+          "failure": 4,
+          "rate": 0.92,
+          "specialSuccess": 49,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.8116175308165717,
+            0.968450485911407
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 98,
+          "maxFailureRun": 1,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 176,
+          "failure": 24,
+          "rate": 0.88,
+          "specialSuccess": 197,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.8276574790170326,
+            0.9180200729362449
+          ]
+        }
+      },
+      "next": 14
+    },
+    {
+      "key": "gap-hazard-pooled",
+      "train": {
+        "count": 200,
+        "success": 174,
+        "failure": 26,
+        "rate": 0.87,
+        "specialSuccess": 193,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.8163364812775159,
+          0.9097179772033067
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 42,
+        "maxFailureRun": 4,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 28,
+        "failure": 5,
+        "rate": 0.8484848484848485,
+        "specialSuccess": 31,
+        "maxFailureRun": 4,
+        "ci95": [
+          0.6908012411955788,
+          0.9334954271839244
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 7,
+          "failure": 3,
+          "rate": 0.7,
+          "specialSuccess": 9,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.39677814746114537,
+            0.8922087325936989
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 16,
+          "failure": 4,
+          "rate": 0.8,
+          "specialSuccess": 19,
+          "maxFailureRun": 4,
+          "ci95": [
+            0.5839825677481064,
+            0.919342337420202
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 46,
+          "maxFailureRun": 4,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 91,
+          "failure": 9,
+          "rate": 0.91,
+          "specialSuccess": 96,
+          "maxFailureRun": 4,
+          "ci95": [
+            0.837737871472837,
+            0.9519274599974348
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 173,
+          "failure": 27,
+          "rate": 0.865,
+          "specialSuccess": 190,
+          "maxFailureRun": 4,
+          "ci95": [
+            0.8107086162924745,
+            0.9055342954521209
+          ]
+        }
+      },
+      "next": 18
+    },
+    {
+      "key": "fixed-01",
+      "train": {
+        "count": 200,
+        "success": 162,
+        "failure": 38,
+        "rate": 0.81,
+        "specialSuccess": 189,
+        "maxFailureRun": 3,
+        "ci95": [
+          0.7499876129240015,
+          0.8583282847220932
+        ]
+      },
+      "test": {
+        "count": 46,
+        "success": 39,
+        "failure": 7,
+        "rate": 0.8478260869565217,
+        "specialSuccess": 43,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.71775860447939,
+          0.9242771777219454
+        ]
+      },
+      "forward": {
+        "count": 33,
+        "success": 27,
+        "failure": 6,
+        "rate": 0.8181818181818182,
+        "specialSuccess": 31,
+        "maxFailureRun": 2,
+        "ci95": [
+          0.6561176836533009,
+          0.9138923179105933
+        ]
+      },
+      "rolling": {
+        "10": {
+          "count": 10,
+          "success": 10,
+          "failure": 0,
+          "rate": 1,
+          "specialSuccess": 10,
+          "maxFailureRun": 0,
+          "ci95": [
+            0.7224672001371107,
+            0.9999999999999999
+          ]
+        },
+        "20": {
+          "count": 20,
+          "success": 18,
+          "failure": 2,
+          "rate": 0.9,
+          "specialSuccess": 19,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.6989663547715128,
+            0.9721335187862319
+          ]
+        },
+        "50": {
+          "count": 50,
+          "success": 43,
+          "failure": 7,
+          "rate": 0.86,
+          "specialSuccess": 47,
+          "maxFailureRun": 2,
+          "ci95": [
+            0.7381380628941446,
+            0.9304916657298371
+          ]
+        },
+        "100": {
+          "count": 100,
+          "success": 80,
+          "failure": 20,
+          "rate": 0.8,
+          "specialSuccess": 94,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7111708344068411,
+            0.8666330666689676
+          ]
+        },
+        "200": {
+          "count": 200,
+          "success": 160,
+          "failure": 40,
+          "rate": 0.8,
+          "specialSuccess": 189,
+          "maxFailureRun": 3,
+          "ci95": [
+            0.7391448134346212,
+            0.8495479907390189
+          ]
+        }
+      },
+      "next": 1
+    }
+  ],
+  "comparisons": {
+    "anchor-risk-20-100-1.5": {
+      "K": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "R50": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "R20/50": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "M10": {
+        "wins": 0,
+        "losses": 3,
+        "oneSidedExactP": 1
+      },
+      "A100": {
+        "wins": 0,
+        "losses": 0,
+        "oneSidedExactP": 1
+      }
+    },
+    "ewma-200": {
+      "K": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "R50": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "R20/50": {
+        "wins": 0,
+        "losses": 5,
+        "oneSidedExactP": 1
+      },
+      "M10": {
+        "wins": 2,
+        "losses": 5,
+        "oneSidedExactP": 0.9374999999999998
+      },
+      "A100": {
+        "wins": 3,
+        "losses": 3,
+        "oneSidedExactP": 0.6562500000000001
+      }
+    }
+  },
+  "randomBaseline": {
+    "probability": 0.8571428571428571,
+    "selectedP": 0.8169331745627829
+  },
+  "verification": {
+    "prefixChecks": [
+      1194,
+      1294,
+      1307,
+      1330,
+      1339
+    ],
+    "allCandidatesAndOriginalsPassed": true,
+    "originalServiceSummaryParity": true
+  }
+}

@@ -115,6 +115,8 @@ import SelectedAnchorSuite from './SelectedAnchorSuite.jsx';
 // @ts-ignore
 import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
 // @ts-ignore
+import DualLinearAnchor from './DualLinearAnchor.jsx';
+// @ts-ignore
 import DrawFingerprintControl from './DrawFingerprintControl.jsx';
 // @ts-ignore
 import TieredKillCombo from './TieredKillCombo.jsx';
@@ -392,6 +394,12 @@ const routes = [
     label: 'K/R50/R20/50/M10/A100',
     section: '杀码',
     element: <AdaptiveAnchorSuite />,
+  },
+  {
+    path: '/kill/dual-linear-anchor',
+    label: '14/100 双锚点',
+    section: '杀码',
+    element: <DualLinearAnchor />,
   },
   // {
   //   path: '/kill/tiered-combo',

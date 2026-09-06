@@ -87,6 +87,8 @@ import { SelectedAnchorSuiteController } from './selected-anchor-suite.controlle
 import { SelectedAnchorSuiteService } from './selected-anchor-suite.service';
 import { AdaptiveAnchorSuiteController } from './adaptive-anchor-suite.controller';
 import { AdaptiveAnchorSuiteService } from './adaptive-anchor-suite.service';
+import { DualLinearAnchorController } from './dual-linear-anchor.controller';
+import { DualLinearAnchorService } from './dual-linear-anchor.service';
 
 @Module({
   imports: [HistoryModule, HistoryHkModule],
@@ -134,6 +136,7 @@ import { AdaptiveAnchorSuiteService } from './adaptive-anchor-suite.service';
     EliteFourKillController,
     SelectedAnchorSuiteController,
     AdaptiveAnchorSuiteController,
+    DualLinearAnchorController,
   ],
   providers: [
     PredictorService,
@@ -179,6 +182,7 @@ import { AdaptiveAnchorSuiteService } from './adaptive-anchor-suite.service';
     EliteFourKillService,
     SelectedAnchorSuiteService,
     AdaptiveAnchorSuiteService,
+    DualLinearAnchorService,
   ],
 })
 export class PredictorModule {}

@@ -1,0 +1,17 @@
+{
+  "name": "visual-qa",
+  "version": "0.1.0",
+  "description": "从 Pixso 设计还原页面，优先复用本地组件，并使用确定性的浏览器截图和差异检查完成视觉验收。",
+  "author": { "name": "yang" },
+  "skills": "./skills/",
+  "keywords": ["pixso", "visual-qa", "frontend", "component-reuse"],
+  "interface": {
+    "displayName": "Visual QA",
+    "shortDescription": "设计还原、本地组件复用与视觉验收",
+    "longDescription": "通过 Skill 编排 Pixso 设计读取、可选 internal-components 检索、页面实现以及本地 CLI 截图、测量和视觉对比。组件 MCP 不可用时直接跳过，保留现有项目结构。",
+    "developerName": "yang",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": ["使用 Visual QA 按 Pixso 设计生成页面，优先复用本地组件。", "对比这个页面与设计图，修复视觉差异并保存验收报告。"]
+  }
+}

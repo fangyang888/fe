@@ -406,10 +406,20 @@ npm run visual-qa -- verify --case cases/example.json --mode final
 
 无论使用哪种模式，完整验证结果都会保存到 `report.json`。Agent 应先读取单行摘要，仅在失败时打开 `diagnosticCrops`，不要重复读取完整设计图、页面截图或完整报告。
 
+### 生成前优先复用本地组件（可选 MCP）
+
+页面生成由 Agent 编排：读取 Pixso 设计 → 搜索本地组件 → 生成或整合页面代码 → visual-qa 验收。visual-qa CLI 不直接连接 internal-components MCP，也不新增必需依赖。
+
+- 在编写页面或新建组件前，检查当前是否可调用 `internal-components` 的 `search_internal_component`。工具可用时，按设计区域的功能搜索，传入目标项目的 `projectRoot`，并用 `sourceRoots` 限定允许读取的组件目录。
+- 遵守用户排除的页面或目录；不要用全项目自动扫描绕过排除要求。无法限定安全搜索范围时，跳过该次 MCP 搜索。
+- 根据返回的 Props、导入方式和源码确认适配性，优先复用功能和视觉符合设计的组件；没有合适组件时按项目规范实现。用户指定为图片的节点保持图片，不用组件重画内部视觉。
+- **未发现该 MCP、工具不可调用、连接/读取失败、超时或权限不足时直接跳过**，继续现有页面生成及视觉验收流程。不要求安装或连接 MCP，不反复重试，不将它作为阻塞项；简单记录跳过原因即可。没有匹配结果同样继续实现。
+- 复用组件后仍须执行 visual-qa，检查布局、图片结构和视觉差异；搜索命中不等于符合设计。
+
 Agent 编排必须遵循以下低 Token 顺序：
 
 1. Pixso 设计结构只读取一次；已提供 `items` 时只读取和导出这些 item id，不展开其内部 vector、path、mask 和 effect 子节点。
-2. 首次实现后使用 `quick` 迭代，不把 `design.png`、`actual.png` 或 `diff.png` 发送给模型。
+2. 首次生成前执行上述可选本地组件搜索；同一需求和源码未变化时复用已有搜索结果。首次实现后使用 `quick` 迭代，不把 `design.png`、`actual.png` 或 `diff.png` 发送给模型。
 3. 接近完成时执行一次 `agent`。通过则直接结束；失败只查看摘要中的 `diagnosticCrops`。
 4. 只有差异裁片无法判断全局布局问题时，才允许读取完整截图。
 5. 最终交付只执行一次 `final`；未改变的设计图和素材必须复用缓存。
@@ -492,3 +502,21 @@ npm run visual-qa -- agent-context \
 - `verifyVisualCase`
 - `createIntentPlan`
 - `createExportManifest`
+
+## Codex 插件
+
+当前目录同时是可独立使用的 CLI 项目和插件源码，manifest 位于 `.codex-plugin/plugin.json`，Skill 位于 `skills/visual-qa/SKILL.md`。插件编排页面实现与验收，保持 CLI 接口不变；不包含 `.mcp.json`，Pixso 与 internal-components 使用当前环境已有工具，后者不可用时直接跳过。
+
+插件分发需包含 `.codex-plugin/`、`skills/`、`scripts/`、`src/`、`test/`、`cases/`、`package.json`、`package-lock.json`、`tsconfig.json`、`INSTALL.md` 和本 README。不要包含 `node_modules/`、项目截图、缓存或验收产物。新安装的插件在其实际根目录执行：
+
+```bash
+npm ci
+npm run build
+node scripts/run.mjs help
+```
+
+随后从业务项目目录调用 `node "<插件根目录>/scripts/run.mjs" verify --case "<用例路径>" --mode final`。入口基于自身位置解析 CLI，不依赖作者机器路径，保留调用方工作目录。运行时缺失时只报初始化步骤，不自动安装依赖。
+
+安装插件后可用自然语言请求：“使用 Visual QA 根据这个 Pixso 设计实现页面，优先复用本地组件，并完成视觉验收。”也可以只要求对已有页面截图和验收。安装后的插件副本与此源码目录独立，修改源码后需更新分发副本并重新安装插件。
+
+手动安装步骤见 [INSTALL.md](./INSTALL.md)。`python3 scripts/prepare-personal-plugin.py` 只准备个人插件副本和列表条目，安装由用户自行执行输出的 Codex 命令。

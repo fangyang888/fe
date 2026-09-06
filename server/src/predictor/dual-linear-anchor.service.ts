@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { HistoryService } from '../history/history.service';
+import { DualLinearLedgerService } from './dual-linear-ledger.service';
 
 @Injectable()
 export class DualLinearAnchorService {
-  constructor(private readonly history: HistoryService) {}
+  constructor(private readonly history: HistoryService, @Optional() private readonly ledger?: DualLinearLedgerService) {}
 
   async getPrediction(latest = false) {
     const raw = (await this.history.findAll()).map(r => ({
@@ -29,7 +30,7 @@ export class DualLinearAnchorService {
     const period = (r: { year: number; No: number }) => ({ year: r.year, No: r.No });
     const meta = { mode: latest ? 'latest' : 'research', notice, availableLatest: raw.length ? period(raw.at(-1)!) : null, evaluatedThrough: end ? period(end) : null };
     if (rows.length < 103) return { ...meta, status: 'insufficient-history', message: '至少需要103期连续有效记录，才能计算双公式、前两期择优及回测。' };
-    const summarize = (records: Array<{ success: boolean }>) => ({ count: records.length, successCount: records.filter(r => r.success).length });
+    const summarize = (records: Array<{ success: boolean; number: number; actual: number[] }>) => ({ count: records.length, successCount: records.filter(r => r.success).length, specialCodeMissCount: records.filter(r => r.number !== r.actual[6]).length });
     const definitions = [
       { key: 'L14', name: '14期前第1位', lag: 14, position: 1, multiplier: 2, offset: 15, formula: '2x + 15' },
       { key: 'L100', name: '100期前第7位', lag: 100, position: 7, multiplier: 48, offset: 0, formula: '48x' },
@@ -83,6 +84,14 @@ export class DualLinearAnchorService {
     });
     const yearLength = new Date(Date.UTC(end!.year, 1, 29)).getUTCMonth() === 1 ? 366 : 365;
     const target = end!.No >= yearLength ? { year: end!.year + 1, No: 1 } : { year: end!.year, No: end!.No + 1 };
-    return { ...meta, status: 'ok', target, algorithms: [...algorithms, ...dynamicAlgorithms] };
+    const allAlgorithms = [...algorithms, ...dynamicAlgorithms];
+    let live: Awaited<ReturnType<DualLinearLedgerService['observe']>> | { status: string; message: string } = { status: 'unavailable', message: '实战留档未启用。' };
+    if (this.ledger) {
+      try {
+        // Never capture predictions aimed at already imported or discontinuous periods.
+        live = await this.ledger.observe(raw, latest && !notice ? { target, algorithms: allAlgorithms } : undefined);
+      } catch { live = { status: 'error', message: '实战留档读取或保存失败，未展示实战成功率，请检查服务器数据目录。' }; }
+    }
+    return { ...meta, status: 'ok', target, algorithms: allAlgorithms, live };
   }
 }

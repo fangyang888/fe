@@ -52,4 +52,25 @@ describe('DualLinearAnchorService', () => {
     expect((await run(history().slice(0,50))).status).toBe('insufficient-history');
     expect((await run(history().slice(0,365),true)).target).toEqual({year:2026,No:1});
   });
+  it('reports special-code misses independently for all rolling windows and strategies', async () => {
+    const result=await run(history());
+    for(const algorithm of result.algorithms) {
+      for(const metric of algorithm.windows) {
+        expect(metric.specialCodeMissCount).toBe(algorithm.recent.slice(0,metric.window).filter((r:any)=>r.number!==r.actual[6]).length);
+        expect(metric.specialCodeMissCount).toBeGreaterThanOrEqual(metric.successCount);
+      }
+    }
+  });
+  it('captures only latest continuous predictions, never a research or gap target', async () => {
+    const ledger={observe:jest.fn().mockResolvedValue({status:'ok'})};
+    const rows=history();
+    const service=new DualLinearAnchorService({findAll:async()=>rows} as any,ledger as any);
+    await service.getPrediction(false);
+    expect(ledger.observe.mock.calls[0][1]).toBeUndefined();
+    await service.getPrediction(true);
+    expect(ledger.observe.mock.calls[1][1].target).toEqual({year:2026,No:248});
+    rows.splice(rows.findIndex(r=>r.year===2026&&r.No===244),1);
+    await service.getPrediction(true);
+    expect(ledger.observe.mock.calls[2][1]).toBeUndefined();
+  });
 });

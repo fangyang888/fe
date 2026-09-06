@@ -6,6 +6,6 @@ export class DualLinearAnchorController {
   constructor(private readonly service: DualLinearAnchorService) {}
   @Get()
   getPrediction(@Query('mode') mode?: string) {
-    return this.service.getPrediction(mode === 'latest');
+    return this.service.getPrediction(mode !== 'research');
   }
 }

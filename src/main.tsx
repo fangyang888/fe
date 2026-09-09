@@ -114,6 +114,7 @@ import EliteFourKill from './EliteFourKill.jsx';
 import SelectedAnchorSuite from './SelectedAnchorSuite.jsx';
 // @ts-ignore
 import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
+import OnlineRiskRanking from './OnlineRiskRanking.jsx';
 // @ts-ignore
 import DualLinearAnchor from './DualLinearAnchor.jsx';
 // @ts-ignore
@@ -394,6 +395,12 @@ const routes = [
     label: 'K/R50/R20/50/M10/A100',
     section: '杀码',
     element: <AdaptiveAnchorSuite />,
+  },
+  {
+    path: '/kill/online-risk-ranking',
+    label: '动态号码排序',
+    section: '杀码',
+    element: <OnlineRiskRanking />,
   },
   {
     path: '/kill/dual-linear-anchor',

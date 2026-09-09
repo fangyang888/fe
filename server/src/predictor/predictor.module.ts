@@ -89,6 +89,8 @@ import { AdaptiveAnchorSuiteController } from './adaptive-anchor-suite.controlle
 import { AdaptiveAnchorSuiteService } from './adaptive-anchor-suite.service';
 import { OnlineRiskRankingController } from './online-risk-ranking.controller';
 import { OnlineRiskRankingService } from './online-risk-ranking.service';
+import { PreviousFourthController } from './previous-fourth.controller';
+import { PreviousFourthService } from './previous-fourth.service';
 import { DualLinearAnchorController } from './dual-linear-anchor.controller';
 import { DualLinearAnchorService } from './dual-linear-anchor.service';
 import { DualLinearLedgerService } from './dual-linear-ledger.service';
@@ -140,6 +142,7 @@ import { DualLinearLedgerService } from './dual-linear-ledger.service';
     SelectedAnchorSuiteController,
     AdaptiveAnchorSuiteController,
     OnlineRiskRankingController,
+    PreviousFourthController,
     DualLinearAnchorController,
   ],
   providers: [
@@ -187,6 +190,7 @@ import { DualLinearLedgerService } from './dual-linear-ledger.service';
     SelectedAnchorSuiteService,
     AdaptiveAnchorSuiteService,
     OnlineRiskRankingService,
+    PreviousFourthService,
     DualLinearAnchorService,
     DualLinearLedgerService,
   ],

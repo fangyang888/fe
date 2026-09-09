@@ -115,6 +115,7 @@ import SelectedAnchorSuite from './SelectedAnchorSuite.jsx';
 // @ts-ignore
 import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
 import OnlineRiskRanking from './OnlineRiskRanking.jsx';
+import PreviousFourth from './PreviousFourth.jsx';
 // @ts-ignore
 import DualLinearAnchor from './DualLinearAnchor.jsx';
 // @ts-ignore
@@ -401,6 +402,12 @@ const routes = [
     label: '动态号码排序',
     section: '杀码',
     element: <OnlineRiskRanking />,
+  },
+  {
+    path: '/kill/previous-fourth',
+    label: '上期第4位排除',
+    section: '杀码',
+    element: <PreviousFourth />,
   },
   {
     path: '/kill/dual-linear-anchor',

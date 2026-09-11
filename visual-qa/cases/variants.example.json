@@ -1,0 +1,9 @@
+{
+  "case": "./example.json",
+  "outputDir": "./artifacts/css-variants",
+  "concurrency": 4,
+  "variants": [
+    { "name": "title-up-1px", "css": "[data-visual='gift-title'] { transform: translateY(-1px); }" },
+    { "name": "title-down-1px", "css": "[data-visual='gift-title'] { transform: translateY(1px); }" }
+  ]
+}

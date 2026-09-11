@@ -9,11 +9,85 @@ import { normalizeVisualCase } from "../src/config.js";
 import { measureVisualCase } from "../src/measure-case.js";
 import { verifyVisualCase } from "../src/verify.js";
 import { inspectMeasurements } from "../src/measure.js";
+import { inspectCssRules } from "../src/css-rules.js";
 
 test("Chrome measures CSS coordinates, records iterations, and enforces contracts in verify", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "visual-contract-browser-"));
   const browser = await launchVisualQaBrowser("chrome");
   try {
+    const cssContext = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+    });
+    const cssPage = await cssContext.newPage();
+    const cssRules = {
+      preferFlex: true,
+      allowGap: false,
+      preferResponsivePage: true,
+      rejectSuspiciousCss: true,
+      failOnMismatch: true,
+      failOnSeverity: "error" as const,
+      scopeSelector: "#app",
+      pageShellSelector: ".page",
+      positionContextMaxDepth: 2,
+      ignoreSelectors: [],
+    };
+    await cssPage.setContent(`
+      <style>
+        * { box-sizing: border-box; }
+        html { font-size: 10px; background: #fff47e; }
+        .page { width: 100%; max-width: 37.5rem; min-height: 81.2rem; }
+      </style>
+      <div id="app"><main class="page">content</main></div>
+    `);
+    const invalidCss = await inspectCssRules(cssPage, cssRules);
+    assert.equal(invalidCss.passed, false);
+    assert.deepEqual(
+      invalidCss.violations
+        .filter((violation) => violation.rule === "responsive-page-size")
+        .map((violation) => violation.property)
+        .sort(),
+      ["max-width", "min-height"],
+    );
+    assert.equal(
+      invalidCss.violations.some(
+        (violation) =>
+          violation.rule === "global-style-leak" &&
+          violation.selector === "html" &&
+          violation.property === "font-size" &&
+          violation.severity === "error",
+      ),
+      true,
+    );
+    assert.equal(
+      invalidCss.violations.some(
+        (violation) =>
+          violation.rule === "global-style-leak" &&
+          violation.selector === "*" &&
+          violation.severity === "warning",
+      ),
+      true,
+    );
+
+    await cssPage.setContent(`
+      <style>
+        .page,
+        .page * { box-sizing: border-box; }
+        .page { width: 100%; min-height: 100vh; background: #fff47e; }
+      </style>
+      <div id="app"><main class="page">content</main></div>
+    `);
+    const validCss = await inspectCssRules(cssPage, cssRules);
+    assert.equal(validCss.passed, true);
+    assert.equal(
+      validCss.violations.some(
+        (violation) =>
+          violation.rule === "responsive-page-size" ||
+          violation.rule === "global-style-leak",
+      ),
+      false,
+    );
+    await cssContext.close();
+
     const html = path.join(directory, "page.html");
     await fs.writeFile(html, '<style>body{margin:0;height:1500px}#card{position:absolute;left:20px;top:20px;width:300px;height:100px;font-size:16px;color:red}#button{position:absolute;left:70px;top:144px;width:200px;height:40px}</style><div id="card">Card</div><div id="button">Button</div>');
     const visualCase = normalizeVisualCase({

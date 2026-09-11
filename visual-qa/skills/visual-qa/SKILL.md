@@ -1,6 +1,6 @@
 ---
 name: visual-qa
-description: 按 Pixso 设计或用户提供的参考图实现前端页面，并通过本地 CLI 截图、DOM 测量和视觉对比验收。用于用户要求 Visual QA、设计还原或页面与设计图对比；生成前可选搜索 internal-components，工具不可用时跳过。普通无设计参考的开发不使用此流程。
+description: 按 Pixso 设计或参考图实现 Web 或 HarmonyOS ArkUI 页面，通过本地 CLI 截图和视觉对比验收；也用于保持外观不变的 Web SCSS 变量抽取与样式重构，以修改前页面为基准。Web 支持 DOM 测量，Harmony 支持设备与导入截图。生成前可选搜索 internal-components，工具不可用时跳过。普通无视觉验收需求的开发不使用此流程。
 ---
 
 # Visual QA
@@ -13,15 +13,28 @@ description: 按 Pixso 设计或用户提供的参考图实现前端页面，并
 
 CLI 源码、锁文件和用例随插件携带，不提供 MCP Server。执行 `node "<插件根目录>/scripts/run.mjs" help` 检查 CLI。需要初始化时，在插件根目录运行 `npm ci` 和 `npm run build`；需要 Node.js 18+。不要在业务项目安装插件依赖。缺少运行时、依赖或写权限时明确说明限制，遵守环境授权，不宣称验收通过。
 
+首次接入、切换机器或遇到浏览器、设计图、输出目录、Harmony 设备问题时，先运行 `doctor`；它只做环境和用例预检，不执行页面验收。多个页面或多平台回归使用 `suite`，读取 suite JSON 并生成汇总 JSON、JUnit 与自包含 HTML 看板；批量结果不能替代各 case 的原始报告。
+
 命令从目标项目目录运行，case、截图、缓存和报告使用明确的项目输出路径；不要把业务数据写进插件目录。CLI 详细参数见 [README](../../README.md)，按需阅读。
+
+## 平台选择
+
+用户要求 Web SCSS 变量抽取或样式重构且保持外观不变时，读取 [SCSS 重构验收](references/scss-refactor.md)，使用修改前的真实页面作为基准，无需额外设计稿。该流程替代下面的设计读取和 Web 页面实现流程；不适用于 ArkUI 原生样式。纯样式变量替换无需搜索或更换组件。
+
+用户明确指定的平台优先。用例 `platform` 缺省为 `web`；原生 ArkUI 使用 `harmony`。根据目标模块的 `module.json5`、ArkTS `.ets` 页面及构建配置确认原生项目；混合工程以当前页面为准，Web 组件内的 H5 不按原生组件处理。
+
+- Web 页面读取 [Web 实现与验收](references/web.md)。
+- Harmony 原生页面读取 [Harmony 实现与验收](references/harmony.md)。该模式仅做截图视觉验收，不能声称 DOM/CSS 或原生组件测量通过。
+- 共用下面的设计与素材流程。不为原生项目创建替代 H5 页面。不要自动发布或安装其它插件。
 
 ## 读取设计与图片意图
 
-- 有 Pixso URL 时，提取 item-id，通过当前可用 Pixso MCP 读取设计结构、尺寸和截图。支持目标框架时优先 design_to_code；生成结果仅作为整合参考，按目标仓库约定落地。
+- 有 Pixso URL 时，先把用户指定的图片 item-id 与红框写入 intent 配置，并执行 `intent-plan --strict`。计划完成前不读取这些图片节点的内部结构。其余页面结构再通过当前可用 Pixso MCP 读取；支持目标框架时优先 design_to_code，生成结果仅作为整合参考。
 - Pixso MCP 不可用时，可使用用户已提供的参考图继续；没有可用视觉依据时只说明缺失内容，不猜测设计，也不伪造验收基准。
-- 用户指定为图片的节点、红框图片区域保持图片；不使用组件或 CSS 重画其内部文字和装饰。只导出实际会使用的图片，不递归下载位图容器的 vector/path/mask 碎片。
+- `single-image` 是不透明边界：对应 Pixso 节点只允许调用 `get_export_image`，禁止对它调用 `design_to_code`、`get_node_dsl` 或 `query_nodes`，也禁止检查或导出后代。页面根节点结果即使带出该子树，也必须忽略其内部文字、样式和图层。
+- 用户指定为图片的节点、红框图片区域保持一张图片；不使用组件或样式重画其内部文字和装饰。只导出实际会使用的图片，不递归下载位图容器的 vector/path/mask 碎片。
 - 节点默认导出 3x，保存本地资源；临时 URL 不进入业务代码。对带阴影扩边的导出核对尺寸，必要时按准确设计坐标使用同倍率画板裁切。记录来源节点、坐标及裁切方式，不能通过整体页面截图冒充页面实现。
-- 需要图片清单时使用 `intent-plan` 和 `export-manifest`；需要具体配置时参考 [用例](../../cases/intent-items.example.json)。最终只保留使用到的素材。
+- 图片意图必须提供页面 selector。用例通过 `intentPlan` 引用生成的计划，`verify` 会自动要求每个 `single-image` selector 只匹配一张图片且没有可见子元素；手写 `structure` 不能削弱这个规则。需要具体配置时参考 [用例](../../cases/intent-items.example.json)。最终只保留使用到的素材。
 
 ## 可选本地组件搜索
 
@@ -31,21 +44,3 @@ CLI 源码、锁文件和用例随插件携带，不提供 MCP Server。执行 `
 - 检查候选源码、Props、导出方式及依赖版本，功能和视觉适配时优先复用。无匹配或候选不适配则按项目规范实现，不虚构导入路径或 API。
 - **没有发现 MCP、连接/读取失败、工具不可调用、超时或权限不足时直接跳过**，继续生成和验收。简单记录原因，不要求安装或连接 MCP，不反复重试，不将其作为阻塞项。
 - 同一需求和源码没有变化时复用搜索结果。图片节点保持图片，不因组件命中改变用户的图片意图。
-
-## 实现与验收
-
-1. 明确设计有的结构、图片与交互，并按项目规范实现；不添加设计外控件。保留真实可用的交互，未提供领取、支付等业务协议时不编造成功状态，交付时说明未接入部分。
-2. 启动目标页面。先检查脚本内容，避免把上传、发布等副作用当作本地构建运行。
-3. 从 [基础用例](../../cases/example.json) 或 [设计契约用例](../../cases/contract.example.json) 复制到项目验收目录，替换 URL、节点 ID、设计图、viewport、选择器和等待条件。示例数值不是当前设计要求。设计图与浏览器截图必须使用一致的像素尺寸、DPR、裁切和状态。
-4. 有设计契约时用 `measure` 检查 DOM；用 `verify --mode quick` 迭代。接近完成执行 `verify --mode agent`，先读摘要，失败时看 diagnosticCrops 并修复；局部证据不足时再看完整截图。截图必须来自实际浏览器，构建通过不代表视觉通过。
-5. 标题整图、按钮底图与手指等明确图片意图用 case 的 `structure` 验证；保留 CSS 规则检查。不能为过关放宽阈值、替换基准或屏蔽业务区域。只复用确实未变化的设计和素材缓存。
-6. 最终执行 `verify --mode final`，检查图片加载、字体、布局稳定性、控制台、结构和视觉差异。通过后报告结果与路径；失败或工具不可用时明确未通过及原因。
-
-命令示例（将占位路径替换为实际绝对路径）：
-
-```bash
-node "<插件根目录>/scripts/run.mjs" verify --case "<项目>/visual-qa/case.json" --mode agent --cache "<项目>/visual-qa/cache.json"
-node "<插件根目录>/scripts/run.mjs" verify --case "<项目>/visual-qa/case.json" --mode final --cache "<项目>/visual-qa/cache.json"
-```
-
-默认使用本机 Chrome；用户指定其他受支持浏览器时遵从选择。浏览器无法启动时按环境要求处理权限，不用 HTTP 健康检查代替截图。交付包含预览地址、实现位置、验收指标和证据路径，以及跳过的 MCP 或未接入的业务功能。不要自动发布或安装其它插件。

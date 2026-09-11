@@ -5,6 +5,10 @@ import type { Browser } from "playwright";
 import { inspectCssRules } from "./css-rules.js";
 import { waitForVisualReadiness } from "./readiness.js";
 import { inspectVisualStructure } from "./structure.js";
+import {
+  loadIntentStructure,
+  mergeIntentStructure,
+} from "./intent-structure.js";
 import { inspectMeasurements } from "./measure.js";
 import type { CaptureResult, VisualCase } from "./types.js";
 
@@ -12,6 +16,19 @@ export interface CaptureOptions {
   skipScreenshot?: boolean;
   browser?: Browser;
   browserEndpoint?: string;
+}
+
+export function isIgnorableFavicon404(
+  message: string,
+  sourceUrl: string,
+): boolean {
+  if (!/(?:\b404\b|not found)/i.test(message) || !sourceUrl) return false;
+  try {
+    const filename = path.basename(new URL(sourceUrl).pathname).toLowerCase();
+    return filename === "favicon" || filename.startsWith("favicon.");
+  } catch {
+    return false;
+  }
 }
 
 export async function launchVisualQaBrowser(
@@ -29,6 +46,13 @@ export async function captureH5Screenshot(
   options: CaptureOptions = {},
 ): Promise<CaptureResult> {
   const totalStarted = Date.now();
+  const intentStructure = visualCase.intentPlan
+    ? await loadIntentStructure(visualCase.intentPlan)
+    : undefined;
+  const structureIntent = mergeIntentStructure(
+    visualCase.structure,
+    intentStructure,
+  );
   const timings: CaptureResult["timings"] = {
     browserMode: options.browser
       ? "shared"
@@ -73,7 +97,10 @@ export async function captureH5Screenshot(
     const page = await context.newPage();
     const consoleErrors: string[] = [];
     page.on("console", (message) => {
-      if (message.type() === "error") consoleErrors.push(message.text());
+      if (message.type() !== "error") return;
+      const text = message.text();
+      if (isIgnorableFavicon404(text, message.location().url)) return;
+      consoleErrors.push(text);
     });
     page.on("pageerror", (error) => consoleErrors.push(error.message));
 
@@ -95,12 +122,15 @@ export async function captureH5Screenshot(
         }
       `,
     });
+    if (visualCase.styleOverrides) {
+      await page.addStyleTag({ content: visualCase.styleOverrides });
+    }
     const readinessStarted = Date.now();
     const readiness = await waitForVisualReadiness(page, visualCase.wait);
     timings.readinessMs = Date.now() - readinessStarted;
     const structureStarted = Date.now();
-    const structure = visualCase.structure
-      ? await inspectVisualStructure(page, visualCase.structure)
+    const structure = structureIntent
+      ? await inspectVisualStructure(page, structureIntent)
       : undefined;
     timings.structureMs = Date.now() - structureStarted;
     const cssRulesStarted = Date.now();

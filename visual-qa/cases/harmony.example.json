@@ -1,0 +1,15 @@
+{
+  "name": "harmony-page",
+  "platform": "harmony",
+  "designImage": "./design.png",
+  "outputDir": "./artifacts/harmony-page",
+  "harmony": {
+    "deviceId": "auto",
+    "navigation": "manual",
+    "capture": { "scope": "screen" },
+    "timeoutMs": 15000,
+    "stableSamples": 2,
+    "sampleIntervalMs": 500
+  },
+  "thresholds": { "pixelThreshold": 0.1, "maxMismatchPercent": 1.5, "minSsim": 0.98 }
+}

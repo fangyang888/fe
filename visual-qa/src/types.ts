@@ -114,6 +114,13 @@ export interface IntentPlanInput {
   detection?: IntentDetectionConfig;
 }
 
+export interface OpaqueImageBoundary {
+  representation: "single-image";
+  pixsoAccess: "export-only";
+  descendantAccess: "forbidden";
+  requireNoVisibleChildren: true;
+}
+
 export interface IntentPlanRegion {
   id: string;
   order: number;
@@ -130,6 +137,7 @@ export interface IntentPlanRegion {
   format?: "png" | "jpeg" | "svg" | "webp";
   layers?: IntentLayer[];
   note?: string;
+  imageBoundary?: OpaqueImageBoundary;
 }
 
 export interface IntentPlan {
@@ -181,6 +189,7 @@ export interface ExportManifestAsset {
   file: string;
   format: "png" | "jpeg" | "svg" | "webp";
   operation: ExportOperation;
+  imageBoundary?: OpaqueImageBoundary;
   dimensionPolicy?: ExportDimensionPolicy;
   reuse?: {
     status: "export" | "reuse";
@@ -202,6 +211,7 @@ export interface ExportManifest {
     name: string;
     reason: "dom-text" | "ignore" | "review" | "not-used";
   }>;
+  structure?: VisualStructureIntent;
   reusedAssets?: string[];
   ambiguities: string[];
 }
@@ -241,10 +251,14 @@ export interface VisualStructureIntent {
 }
 
 export interface VisualCase {
+  /** Temporary experiment CSS, injected before visual readiness checks. */
+  styleOverrides?: string;
+  platform?: "web";
   contract?: DesignContract;
   name: string;
   pixsoNodeId?: string;
   pixsoNodeVersion?: string;
+  intentPlan?: string;
   designImage: string;
   url: string;
   outputDir?: string;
@@ -286,6 +300,7 @@ export interface CssRuleViolation {
     | "no-gap"
     | "responsive-page-size"
     | "page-shell"
+    | "global-style-leak"
     | "absolute-position-context"
     | "suspicious-css";
   severity: "error" | "warning" | "info";
@@ -431,8 +446,23 @@ export interface DifferenceRegion extends RectangleBounds {
   mismatchPercent: number;
 }
 
+export type VerificationMode = "quick" | "agent" | "final" | "adaptive";
+export type ResolvedVerificationMode = Exclude<VerificationMode, "adaptive">;
+
+export interface AdaptiveVerificationWorkflow {
+  requestedMode: "adaptive";
+  phase: "diagnostic" | "iteration" | "final";
+  effectiveMode: ResolvedVerificationMode;
+  autoFinalized: boolean;
+  pixelStagnantRounds: number;
+  nextAction: "fix-local-differences" | "inspect-diagnostic-crops" | "complete";
+  candidateMismatchPercent?: number;
+}
+
 export interface VerificationOptions {
-  mode?: "quick" | "agent" | "final";
+  /** Confirms manual/Computer Use navigation was completed for this capture. */
+  pageReady?: boolean;
+  mode?: VerificationMode;
   reuseVerification?: boolean;
   browser?: import("playwright").Browser;
   browserEndpoint?: string;
@@ -442,6 +472,10 @@ export interface VerificationOptions {
   noAiOnPass?: boolean;
   cachePath?: string;
   projectRoot?: string;
+  /** Internal prepared state used to avoid duplicate Git scans in one adaptive run. */
+  preparedCodeState?: VisualQaCache["code"];
+  /** Internal prepared hash used to avoid reading the design twice in one adaptive run. */
+  preparedDesignHash?: string;
 }
 
 export interface VerificationReport {
@@ -450,7 +484,8 @@ export interface VerificationReport {
   pixsoNodeId?: string;
   generatedAt: string;
   status: "passed" | "failed";
-  mode: "quick" | "agent" | "final";
+  mode: ResolvedVerificationMode;
+  workflow?: AdaptiveVerificationWorkflow;
   capture: CaptureResult;
   comparison: ComparisonResult;
   changedOnly?: {
@@ -524,8 +559,29 @@ export interface VisualQaCache {
       designHash: string;
       codeVersion: string;
       caseHash?: string;
-      mode?: "quick" | "agent" | "final";
+      mode?: ResolvedVerificationMode;
       report: string;
     }
   >;
 }
+
+/** Native cases do not require a browser URL or a synthetic viewport. */
+export interface HarmonyCase extends Omit<VisualCase, "platform" | "url" | "viewport"> {
+  platform: "harmony";
+  url?: never;
+  viewport?: never;
+  harmony: {
+    hdcPath?: string;
+    deviceId?: string;
+    /** Explicit import; never used as a silent fallback after device failure. */
+    screenshot?: string;
+    bundleName?: string;
+    abilityName?: string;
+    navigation?: "manual" | "configured" | "computer-use";
+    capture?: { scope: "screen" | "region"; region?: RectangleBounds };
+    timeoutMs?: number;
+    stableSamples?: number;
+    sampleIntervalMs?: number;
+  };
+}
+export type PlatformCase = VisualCase | HarmonyCase;

@@ -115,6 +115,9 @@ function assetFromRegion(
     role: "single-image",
     file: path.join(assetsDir, `${name}.${extension(format)}`),
     format,
+    ...(region.imageBoundary
+      ? { imageBoundary: region.imageBoundary }
+      : {}),
     operation: createOperation(
       sourceNodeId,
       format,
@@ -245,6 +248,19 @@ export function createExportManifest(input: ExportManifestInput): ExportManifest
   }
 
   const uniqueAmbiguities = [...new Set(ambiguities)];
+  const structureRegions = input.plan.regions
+    .filter(
+      (region) =>
+        region.mode === "single-image" &&
+        Boolean(region.selector) &&
+        region.export !== false,
+    )
+    .map((region) => ({
+      name: region.name,
+      type: "single-image" as const,
+      selector: region.selector!,
+      requireNoVisibleChildren: true,
+    }));
   return {
     schemaVersion: 1,
     kind: "visual-qa-export-manifest",
@@ -255,6 +271,14 @@ export function createExportManifest(input: ExportManifestInput): ExportManifest
     assetsDir,
     exports,
     skipped,
+    ...(structureRegions.length > 0
+      ? {
+          structure: {
+            failOnMismatch: true,
+            regions: structureRegions,
+          },
+        }
+      : {}),
     ambiguities: uniqueAmbiguities,
   };
 }

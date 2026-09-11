@@ -154,7 +154,8 @@ export async function inspectCssRules(
           message: `Page shell was not found inside ${scopeSelector}: ${pageShellSelector}`,
         });
       }
-      const fixedPixels = /^-?\d+(?:\.\d+)?px$/;
+      const fixedAbsoluteLength =
+        /^-?(?:\d+|\d*\.\d+)(?:px|r?em|cm|mm|in|pt|pc|q)$/i;
       const overPrecisePixels = /-?\d+\.\d{3,}px/;
       const dataImage = /url\(["']?data:image\//i;
       const inspectAuthoredStyle = (
@@ -184,15 +185,22 @@ export async function inspectCssRules(
         };
 
         if (preferResponsivePage && pageShells.has(element)) {
-          for (const property of ["width", "height", "min-width", "min-height"]) {
+          for (const property of [
+            "width",
+            "height",
+            "min-width",
+            "min-height",
+            "max-width",
+            "max-height",
+          ]) {
             const value = declaration.getPropertyValue(property).trim();
-            if (fixedPixels.test(value)) {
+            if (fixedAbsoluteLength.test(value)) {
               addViolation(
                 "responsive-page-size",
                 "error",
                 property,
                 value,
-                `${selector} fixes the page shell ${property} to ${value}; use percentage, viewport, min/max constraints, or content-driven sizing`,
+                `${selector} fixes the outer page shell ${property} to ${value}; keep the shell fluid (width: 100% or auto, min-height: 100vh/100dvh) and put intentional max-width constraints on an inner content container`,
               );
             }
           }
@@ -253,10 +261,99 @@ export async function inspectCssRules(
         }
       };
 
-      const inspectRule = (rule: CSSRule) => {
+      const addGlobalStyleViolation = (
+        selector: string,
+        severity: CssRuleViolation["severity"],
+        property: string,
+        value: string,
+        message: string,
+      ) => {
+        const computed = getComputedStyle(document.documentElement);
+        results.push({
+          rule: "global-style-leak",
+          severity,
+          selector,
+          display: computed.display,
+          rowGap: computed.rowGap,
+          columnGap: computed.columnGap,
+          property,
+          value,
+          message,
+        });
+      };
+      const selectorTargetsDocumentRoot = (selector: string) => {
+        try {
+          return document.documentElement.matches(selector);
+        } catch {
+          return false;
+        }
+      };
+      const isGlobalUniversalSelector = (selector: string) =>
+        /^\*(?:::(?:before|after))?$/i.test(selector);
+      const ruleListContainsPageShell = (
+        ruleList: CSSRuleList | readonly CSSRule[],
+      ): boolean => {
+        for (const rule of Array.from(ruleList)) {
+          if (rule instanceof CSSStyleRule) {
+            for (const selector of rule.selectorText.split(",")) {
+              const trimmed = selector.trim();
+              try {
+                if ([...pageShells].some((shell) => shell.matches(trimmed))) {
+                  return true;
+                }
+              } catch {
+                // Ignore unsupported selectors and keep inspecting the stylesheet.
+              }
+            }
+          }
+          const grouping = rule as CSSRule & { cssRules?: CSSRuleList };
+          if (
+            grouping.cssRules &&
+            ruleListContainsPageShell(grouping.cssRules)
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const inspectRule = (rule: CSSRule, pageOwnedStyleSheet: boolean) => {
         if (rule instanceof CSSStyleRule) {
-          for (const selector of rule.selectorText.split(",")) {
-            const trimmed = selector.trim();
+          const selectors = rule.selectorText
+            .split(",")
+            .map((selector) => selector.trim());
+          if (rejectSuspiciousCss && pageOwnedStyleSheet) {
+            if (selectors.some(isGlobalUniversalSelector)) {
+              const property = Array.from(rule.style)[0] ?? "selector";
+              addGlobalStyleViolation(
+                rule.selectorText,
+                "warning",
+                property,
+                rule.style.getPropertyValue(property).trim(),
+                `${rule.selectorText} applies an unscoped universal rule from the page stylesheet; reuse the project reset or scope box-sizing and resets under the page shell`,
+              );
+            }
+            for (const selector of selectors) {
+              if (!selectorTargetsDocumentRoot(selector)) continue;
+              for (const property of [
+                "font-size",
+                "background",
+                "background-color",
+              ]) {
+                const value = rule.style.getPropertyValue(property).trim();
+                if (!value) continue;
+                addGlobalStyleViolation(
+                  selector,
+                  "error",
+                  property,
+                  value,
+                  `${selector} changes ${property} from the page stylesheet; keep the project root sizing/theme unchanged and apply page visuals to the page shell`,
+                );
+              }
+            }
+          }
+
+          for (const trimmed of selectors) {
             let matched: Element | null = null;
             try {
               matched = scope.matches(trimmed) ? scope : scope.querySelector(trimmed);
@@ -270,13 +367,20 @@ export async function inspectCssRules(
         }
         const grouping = rule as CSSRule & { cssRules?: CSSRuleList };
         if (grouping.cssRules) {
-          for (const child of Array.from(grouping.cssRules)) inspectRule(child);
+          for (const child of Array.from(grouping.cssRules)) {
+            inspectRule(child, pageOwnedStyleSheet);
+          }
         }
       };
 
       for (const styleSheet of Array.from(document.styleSheets)) {
         try {
-          for (const rule of Array.from(styleSheet.cssRules)) inspectRule(rule);
+          const pageOwnedStyleSheet = ruleListContainsPageShell(
+            styleSheet.cssRules,
+          );
+          for (const rule of Array.from(styleSheet.cssRules)) {
+            inspectRule(rule, pageOwnedStyleSheet);
+          }
         } catch {
           // Cross-origin stylesheets cannot be inspected; computed layout checks still run.
         }

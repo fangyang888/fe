@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "name": "visual-regression",
+  "outputDir": "./artifacts/visual-regression",
+  "concurrency": 2,
+  "failFast": false,
+  "defaults": {
+    "mode": "agent",
+    "reuseDesign": true,
+    "noAiOnPass": true,
+    "topRegions": 3
+  },
+  "cases": [
+    "./example.json",
+    {
+      "case": "./contract.example.json",
+      "label": "contract-final",
+      "options": {
+        "mode": "final"
+      }
+    }
+  ]
+}

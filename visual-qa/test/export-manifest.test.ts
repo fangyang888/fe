@@ -132,6 +132,13 @@ test("exports PNG assets at 3x by default", () => {
         name: "member-card",
         mode: "single-image",
         nodeId: "138:97117",
+        selector: "#member-card",
+        imageBoundary: {
+          representation: "single-image",
+          pixsoAccess: "export-only",
+          descendantAccess: "forbidden",
+          requireNoVisibleChildren: true,
+        },
         bounds: { x: 38, y: 172, width: 300, height: 163 },
         annotationBounds: { x: 40, y: 150, width: 300, height: 164 },
         borderWidth: 3,
@@ -166,6 +173,26 @@ test("exports PNG assets at 3x by default", () => {
     },
     retain: "final-only",
   });
+  assert.deepEqual(manifest.structure, {
+    failOnMismatch: true,
+    regions: [
+      {
+        name: "member-card",
+        type: "single-image",
+        selector: "#member-card",
+        requireNoVisibleChildren: true,
+      },
+    ],
+  });
+  assert.deepEqual(
+    manifest.exports[0]?.imageBoundary,
+    {
+      representation: "single-image",
+      pixsoAccess: "export-only",
+      descendantAccess: "forbidden",
+      requireNoVisibleChildren: true,
+    },
+  );
 });
 
 test("trusts an explicit item id for direct export when design bounds are omitted", () => {

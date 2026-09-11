@@ -1,0 +1,5 @@
+interface:
+  display_name: "Visual QA"
+  short_description: "设计还原、页面截图与视觉差异验收"
+policy:
+  allow_implicit_invocation: false

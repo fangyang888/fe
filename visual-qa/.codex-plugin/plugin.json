@@ -1,6 +1,6 @@
 {
   "name": "visual-qa",
-  "version": "0.1.0",
+  "version": "0.6.1",
   "description": "从 Pixso 设计还原页面，优先复用本地组件，并使用确定性的浏览器截图和差异检查完成视觉验收。",
   "author": { "name": "yang" },
   "skills": "./skills/",

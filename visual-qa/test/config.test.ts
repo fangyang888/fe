@@ -175,6 +175,21 @@ test("normalizes visual structure intent defaults", () => {
   }
 });
 
+test("resolves an intent plan path relative to the case", () => {
+  const result = normalizeVisualCase(
+    {
+      name: "intent-plan",
+      designImage: "design.png",
+      intentPlan: "./intent-plan.json",
+      url: "http://127.0.0.1:3000",
+      viewport: { width: 375, height: 812 },
+    },
+    "/tmp/visual-qa/case.json",
+  );
+
+  assert.equal(result.intentPlan, "/tmp/visual-qa/intent-plan.json");
+});
+
 test("rejects a composite image without overlays", () => {
   assert.throws(
     () =>

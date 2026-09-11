@@ -37,6 +37,13 @@ const DEFAULT_DETECTION: Required<IntentDetectionConfig> = {
   minEdgeCoverage: 0.55,
 };
 
+const OPAQUE_IMAGE_BOUNDARY = {
+  representation: "single-image",
+  pixsoAccess: "export-only",
+  descendantAccess: "forbidden",
+  requireNoVisibleChildren: true,
+} as const;
+
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -584,6 +591,7 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
     borderWidth: 0,
     confidence: 1,
     nodeId: item.itemId,
+    imageBoundary: OPAQUE_IMAGE_BOUNDARY,
     ...(item.selector ? { selector: item.selector } : {}),
     ...(item.format ? { format: item.format } : {}),
     ...(item.note ? { note: item.note } : {}),
@@ -603,6 +611,11 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
     if (!hint) ambiguities.push(`region-${order} needs an implementation intent`);
     if (mode === "layers" && (!hint?.layers || hint.layers.length < 2)) {
       ambiguities.push(`region-${order} uses layers but needs at least two layer definitions`);
+    }
+    if (mode === "single-image" && hint?.layers?.length) {
+      ambiguities.push(
+        `region-${order} is a single-image boundary and cannot declare child layers`,
+      );
     }
     return [{
       id: `region-${order}`,
@@ -624,6 +637,9 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
       ...(hint?.format ? { format: hint.format } : {}),
       ...(hint?.layers ? { layers: hint.layers } : {}),
       ...(hint?.note ? { note: hint.note } : {}),
+      ...(mode === "single-image"
+        ? { imageBoundary: OPAQUE_IMAGE_BOUNDARY }
+        : {}),
     }];
   });
 

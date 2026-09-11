@@ -7,6 +7,8 @@ import type {
   ImageElementIntent,
   OverlayImageIntent,
   VisualCase,
+  HarmonyCase,
+  PlatformCase,
   VisualRegionIntent,
   VisualStructureIntent,
   VisualThresholds,
@@ -180,13 +182,18 @@ function normalizeChangeDetection(
   };
 }
 
-export function normalizeVisualCase(
-  input: VisualCase,
-  configPath: string,
-): VisualCase {
+export function normalizeVisualCase(input: VisualCase, configPath: string): VisualCase;
+export function normalizeVisualCase(input: HarmonyCase, configPath: string): HarmonyCase;
+export function normalizeVisualCase(input: PlatformCase, configPath: string): PlatformCase;
+export function normalizeVisualCase(input: PlatformCase, configPath: string): PlatformCase {
+  if (input.platform === "harmony") return normalizeHarmonyCase(input, configPath);
+  if (input.platform !== undefined && input.platform !== "web") throw new Error("platform must be web or harmony");
   if (!input.name?.trim()) throw new Error("case.name is required");
   if (!input.url?.trim()) throw new Error("case.url is required");
   if (!input.designImage?.trim()) throw new Error("case.designImage is required");
+  if (input.styleOverrides !== undefined && typeof input.styleOverrides !== "string") {
+    throw new Error("case.styleOverrides must be a string");
+  }
 
   const baseDirectory = path.dirname(path.resolve(configPath));
   const width = requirePositiveNumber(input.viewport?.width, "viewport.width");
@@ -198,6 +205,14 @@ export function normalizeVisualCase(
     ...input,
     name: input.name.trim(),
     ...(input.contract ? { contract: normalizeContract(input.contract) } : {}),
+    ...(input.intentPlan
+      ? {
+          intentPlan: path.resolve(
+            baseDirectory,
+            requireText(input.intentPlan, "case.intentPlan"),
+          ),
+        }
+      : {}),
     designImage: path.resolve(baseDirectory, input.designImage),
     outputDir: path.resolve(
       baseDirectory,
@@ -228,7 +243,58 @@ export function normalizeVisualCase(
   };
 }
 
-export async function readVisualCase(configPath: string): Promise<VisualCase> {
+export async function readVisualCase(configPath: string): Promise<PlatformCase> {
   const content = await fs.readFile(path.resolve(configPath), "utf8");
-  return normalizeVisualCase(JSON.parse(content) as VisualCase, configPath);
+  return normalizeVisualCase(JSON.parse(content) as PlatformCase, configPath);
+}
+
+function normalizeHarmonyCase(input: HarmonyCase, configPath: string): HarmonyCase {
+  const base = path.dirname(path.resolve(configPath));
+  const name = requireText(input.name, "case.name");
+  const designImage = path.resolve(base, requireText(input.designImage, "case.designImage"));
+  for (const field of ["url", "viewport", "contract", "structure", "intentPlan", "cssRules", "wait", "browserChannel", "fullPage", "changeDetection", "locale", "timezoneId", "colorScheme"] as const) {
+    if (input[field] !== undefined) throw new Error(`Harmony does not support case.${field}; use native screenshot configuration`);
+  }
+  const h = input.harmony;
+  if (!h || typeof h !== "object" || Array.isArray(h)) throw new Error("case.harmony is required");
+  const navigation = h.navigation ?? "manual";
+  if (!["manual", "configured", "computer-use"].includes(navigation)) throw new Error("Invalid harmony.navigation");
+  const deviceId = requireText(h.deviceId ?? "auto", "harmony.deviceId");
+  if (!/^[a-zA-Z0-9_.:[\]-]+$/.test(deviceId) || deviceId.startsWith("-")) throw new Error("Invalid harmony.deviceId");
+  const capture = h.capture ?? { scope: "screen" as const };
+  if (!["screen", "region"].includes(capture.scope)) throw new Error("Invalid harmony.capture.scope");
+  if (capture.scope === "region") {
+    const r = capture.region;
+    if (!r || ![r.x, r.y, r.width, r.height].every(Number.isInteger) || r.x < 0 || r.y < 0 || r.width <= 0 || r.height <= 0) throw new Error("Harmony capture.region requires nonnegative integer x/y and positive integer width/height in raw pixels");
+  } else if (capture.region !== undefined) throw new Error("capture.region requires scope=region");
+  for (const key of ["bundleName", "abilityName"] as const) {
+    if (h[key] !== undefined && !/^[a-zA-Z0-9_][a-zA-Z0-9_.]*$/.test(h[key]!)) throw new Error(`Invalid harmony.${key}`);
+  }
+  if (navigation === "configured" && (!h.bundleName || !h.abilityName)) throw new Error("configured navigation requires bundleName and abilityName");
+  if (h.screenshot && navigation !== "manual") throw new Error("Imported screenshots require navigation=manual; no navigation is executed");
+  const bounded = (value: number | undefined, fallback: number, min: number, max: number, field: string) => {
+    const n = value ?? fallback;
+    if (!Number.isInteger(n) || n < min || n > max) throw new Error(`${field} must be an integer between ${min} and ${max}`);
+    return n;
+  };
+  const thresholds = { ...DEFAULT_THRESHOLDS, ...input.thresholds };
+  for (const [key, max] of [["pixelThreshold", 1], ["maxMismatchPercent", 100], ["minSsim", 1]] as const) {
+    const n = thresholds[key];
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > max) throw new Error(`Invalid thresholds.${key}`);
+  }
+  return {
+    ...input, name, designImage, thresholds,
+    outputDir: path.resolve(base, input.outputDir ?? `./artifacts/${name}`),
+    harmony: {
+      ...h, deviceId, navigation, capture,
+      hdcPath: h.hdcPath === undefined ? "hdc" : (() => {
+        const executable = requireText(h.hdcPath, "harmony.hdcPath");
+        return /[\\/]/.test(executable) ? path.resolve(base, executable) : executable;
+      })(),
+      ...(h.screenshot !== undefined ? { screenshot: path.resolve(base, requireText(h.screenshot, "harmony.screenshot")) } : {}),
+      timeoutMs: bounded(h.timeoutMs, 15000, 100, 60000, "harmony.timeoutMs"),
+      stableSamples: bounded(h.stableSamples, 2, 2, 10, "harmony.stableSamples"),
+      sampleIntervalMs: bounded(h.sampleIntervalMs, 500, 50, 5000, "harmony.sampleIntervalMs"),
+    },
+  };
 }

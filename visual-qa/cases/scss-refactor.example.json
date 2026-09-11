@@ -1,0 +1,25 @@
+{
+  "name": "scss-refactor-default",
+  "platform": "web",
+  "url": "http://127.0.0.1:3000/example?visual_state=default",
+  "designImage": "./baseline/default.png",
+  "outputDir": "./after/default",
+  "viewport": {
+    "width": 375,
+    "height": 812,
+    "deviceScaleFactor": 1
+  },
+  "browserChannel": "chrome",
+  "fullPage": false,
+  "wait": {
+    "selector": ".example-page",
+    "networkIdle": true,
+    "timeoutMs": 15000,
+    "stableFrames": 3
+  },
+  "thresholds": {
+    "pixelThreshold": 0,
+    "maxMismatchPercent": 0,
+    "minSsim": 1
+  }
+}

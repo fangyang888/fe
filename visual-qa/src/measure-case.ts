@@ -2,13 +2,14 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { captureH5Screenshot, type CaptureOptions } from "./capture.js";
 import { recordMeasurement, summarizeMeasurement } from "./measure.js";
-import type { VisualCase } from "./types.js";
+import type { VisualCase, PlatformCase } from "./types.js";
 
 export function measurementIdentity(visualCase: VisualCase) {
   return { name: visualCase.name, url: visualCase.url, viewport: visualCase.viewport, contract: visualCase.contract, locale: visualCase.locale, timezoneId: visualCase.timezoneId, browserChannel: visualCase.browserChannel, colorScheme: visualCase.colorScheme };
 }
 
-export async function measureVisualCase(visualCase: VisualCase, options: CaptureOptions = {}) {
+export async function measureVisualCase(visualCase: PlatformCase, options: CaptureOptions = {}) {
+  if (visualCase.platform === "harmony") throw new Error("measure is not available for Harmony native pages; use verify for screenshot-only validation");
   if (!visualCase.contract) throw new Error("measure requires case.contract");
   const outputDirectory = path.resolve(visualCase.outputDir!);
   const reportPath = path.join(outputDirectory, "measurement.json");

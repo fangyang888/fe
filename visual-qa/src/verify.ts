@@ -1,3 +1,5 @@
+import { verifyHarmonyCase, type HarmonyReport } from "./platforms/harmony/verify.js";
+import type { HarmonyCase, PlatformCase } from "./types.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
@@ -12,16 +14,27 @@ import { captureH5Screenshot } from "./capture.js";
 import { compareScreenshots, writeComparisonCrops } from "./compare.js";
 import { recordMeasurement } from "./measure.js";
 import { measurementIdentity } from "./measure-case.js";
+import {
+  createAdaptiveWorkflow,
+  resolveAdaptiveMode,
+} from "./adaptive.js";
 import type {
   VerificationOptions,
   VerificationReport,
   VisualCase,
 } from "./types.js";
 
-export async function verifyVisualCase(
-  visualCase: VisualCase,
-  options: VerificationOptions = {},
-): Promise<VerificationReport> {
+export function verifyVisualCase(visualCase: VisualCase, options?: VerificationOptions): Promise<VerificationReport>;
+export function verifyVisualCase(visualCase: HarmonyCase, options?: VerificationOptions): Promise<HarmonyReport>;
+export function verifyVisualCase(visualCase: PlatformCase, options?: VerificationOptions): Promise<VerificationReport | HarmonyReport>;
+export async function verifyVisualCase(visualCase: PlatformCase, options: VerificationOptions = {}): Promise<VerificationReport | HarmonyReport> {
+  if (options.mode === "adaptive") {
+    if (visualCase.platform === "harmony") {
+      throw new Error("Adaptive verification is only supported for Web cases");
+    }
+    return verifyAdaptiveVisualCase(visualCase, options);
+  }
+  if (visualCase.platform === "harmony") return verifyHarmonyCase(visualCase, options);
   const totalStarted = Date.now();
   const mode = options.mode ?? "final";
   const outputDirectory = path.resolve(visualCase.outputDir!);
@@ -36,10 +49,12 @@ export async function verifyVisualCase(
       process.cwd(),
   );
   const codeStateStarted = Date.now();
-  const code = await collectCodeState(
-    projectRoot,
-    visualCase.changeDetection?.baseRef ?? "HEAD",
-  );
+  const code =
+    options.preparedCodeState ??
+    await collectCodeState(
+      projectRoot,
+      visualCase.changeDetection?.baseRef ?? "HEAD",
+    );
   const codeStateMs = Date.now() - codeStateStarted;
   const selectedRegions =
     options.changedOnly && visualCase.changeDetection
@@ -67,7 +82,8 @@ export async function verifyVisualCase(
     options.cachePath ?? path.join(projectRoot, "cache.json"),
   );
   const cache = await readCache(cachePath);
-  const designHash = await hashFile(visualCase.designImage);
+  const designHash =
+    options.preparedDesignHash ?? await hashFile(visualCase.designImage);
   const caseHash = hashValue({
     visualCase,
     mode,
@@ -154,8 +170,8 @@ export async function verifyVisualCase(
       ...visualCase.thresholds,
       topRegions: options.topRegions ?? (mode === "agent" ? 2 : 3),
       computeSsim: mode !== "quick",
-      analyzeDifferenceRegions: mode !== "quick",
-      differenceRegionsOnFailureOnly: mode === "agent",
+      analyzeDifferenceRegions: true,
+      differenceRegionsOnFailureOnly: mode !== "final",
       ...(selectedRegions.length > 0
         ? { includeRegions: selectedRegions.map((region) => region.bounds) }
         : {}),
@@ -270,4 +286,105 @@ export async function verifyVisualCase(
   report.timings.totalMs = Date.now() - totalStarted;
   await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   return report;
+}
+
+async function readPreviousVerification(
+  reportPath: string,
+): Promise<VerificationReport | undefined> {
+  try {
+    const report = JSON.parse(await fs.readFile(reportPath, "utf8")) as VerificationReport;
+    return report.schemaVersion === 1 ? report : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function persistAdaptiveReport(
+  report: VerificationReport,
+): Promise<VerificationReport> {
+  await fs.writeFile(
+    report.artifacts.report,
+    `${JSON.stringify(report, null, 2)}\n`,
+    "utf8",
+  );
+  return report;
+}
+
+async function verifyAdaptiveVisualCase(
+  visualCase: VisualCase,
+  options: VerificationOptions,
+): Promise<VerificationReport> {
+  const adaptiveStarted = Date.now();
+  const reportPath = path.join(path.resolve(visualCase.outputDir!), "report.json");
+  const previous = await readPreviousVerification(reportPath);
+  const designHash = await hashFile(visualCase.designImage);
+  const effectiveMode = resolveAdaptiveMode(previous, designHash);
+  const report = await verifyVisualCase(visualCase, {
+    ...options,
+    mode: effectiveMode,
+    reuseVerification:
+      effectiveMode === "quick"
+        ? options.reuseVerification ?? true
+        : false,
+    preparedDesignHash: designHash,
+  });
+
+  if (report.cache.verificationReused && report.workflow) return report;
+
+  if (report.status === "passed" && report.mode !== "final") {
+    const preparedCodeState = (await readCache(report.cache.path)).code;
+    const finalReport = await verifyVisualCase(visualCase, {
+      ...options,
+      mode: "final",
+      reuseVerification: false,
+      preparedCodeState,
+      preparedDesignHash: designHash,
+    });
+    const candidateTimings = report.timings;
+    finalReport.timings = {
+      codeStateMs: candidateTimings.codeStateMs + finalReport.timings.codeStateMs,
+      cacheLookupMs: candidateTimings.cacheLookupMs + finalReport.timings.cacheLookupMs,
+      captureMs: candidateTimings.captureMs + finalReport.timings.captureMs,
+      comparisonMs: candidateTimings.comparisonMs + finalReport.timings.comparisonMs,
+      diagnosticCropsMs:
+        candidateTimings.diagnosticCropsMs + finalReport.timings.diagnosticCropsMs,
+      persistMs: candidateTimings.persistMs + finalReport.timings.persistMs,
+      totalMs: Date.now() - adaptiveStarted,
+    };
+    finalReport.workflow = createAdaptiveWorkflow(previous, finalReport, {
+      autoFinalized: true,
+      candidateMismatchPercent: report.comparison.mismatchPercent,
+    });
+    return persistAdaptiveReport(finalReport);
+  }
+
+  let workflow = createAdaptiveWorkflow(previous, report);
+  const shouldCreateCrops =
+    report.mode === "quick" &&
+    report.status === "failed" &&
+    report.comparison.differenceRegions.length > 0;
+  if (shouldCreateCrops) {
+    const cropStarted = Date.now();
+    const diagnosticCrops = await writeComparisonCrops(
+      visualCase.designImage,
+      report.artifacts.actual,
+      report.comparison.differenceRegions,
+      path.join(path.resolve(visualCase.outputDir!), "diagnostics"),
+    );
+    report.timings.diagnosticCropsMs += Date.now() - cropStarted;
+    report.ai = {
+      shouldAnalyze: true,
+      skipped: false,
+      reason: "Pixel comparison failed; inspect the diagnostic crops and batch all local fixes before rerunning",
+      diagnosticCrops,
+      cropLayout: "expected-left-actual-right",
+    };
+    report.artifacts.diagnosticCrops = diagnosticCrops;
+    workflow = createAdaptiveWorkflow(previous, report, {
+      hasDiagnosticCrops: true,
+    });
+  }
+  report.workflow = workflow;
+  report.timings.totalMs = Date.now() - adaptiveStarted;
+  return persistAdaptiveReport(report);
 }

@@ -1,3 +1,4 @@
+import type { HarmonyReport } from "./platforms/harmony/verify.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { hashFile, hashValue } from "./cache.js";
@@ -38,7 +39,7 @@ export async function writeAgentContext(
     readVisualCase(casePath),
     readJson<IntentPlan>(options.planPath),
     readJson<ExportManifest>(options.manifestPath),
-    readJson<VerificationReport>(options.reportPath),
+    readJson<VerificationReport | HarmonyReport>(options.reportPath),
   ]);
   const designHash = await hashFile(visualCase.designImage);
   const sourceFingerprints = await Promise.all(
@@ -74,10 +75,15 @@ export async function writeAgentContext(
         ...(region.bounds ? { bounds: region.bounds } : {}),
         ...(region.selector ? { selector: region.selector } : {}),
         ...(asset ? { asset: asset.file } : {}),
+        ...(region.imageBoundary
+          ? { imageBoundary: region.imageBoundary }
+          : asset?.imageBoundary
+            ? { imageBoundary: asset.imageBoundary }
+            : {}),
       };
     });
   const differenceRegions: RectangleBounds[] =
-    report?.comparison.differenceRegions.slice(0, 2).map(
+    report?.comparison?.differenceRegions.slice(0, 2).map(
       ({ x, y, width, height }) => ({ x, y, width, height }),
     ) ?? [];
   const context = {
@@ -92,7 +98,8 @@ export async function writeAgentContext(
       designImage: visualCase.designImage,
       designHash,
     },
-    viewport: visualCase.viewport,
+    platform: visualCase.platform ?? "web",
+    ...(visualCase.platform === "harmony" ? { harmony: visualCase.harmony } : { viewport: visualCase.viewport }),
     contract: visualCase.contract,
     images,
     unresolvedIntentCount: plan?.ambiguities.length ?? 0,
@@ -106,12 +113,13 @@ export async function writeAgentContext(
       ? {
           verification: {
             status: report.status,
-            measurement: summarizeMeasurement(report.capture.measurement),
+            measurement: "scope" in report ? undefined : summarizeMeasurement(report.capture.measurement),
+            ...("scope" in report ? { scope: report.scope, checks: report.checks, failure: report.failure, source: report.capture?.source, device: report.capture?.device } : {}),
             mode: report.mode,
-            mismatchPercent: report.comparison.mismatchPercent,
-            ssim: report.comparison.ssim,
+            mismatchPercent: report.comparison?.mismatchPercent,
+            ssim: report.comparison?.ssim,
             differenceRegions,
-            css: report.capture.cssRules?.counts,
+            css: "scope" in report ? undefined : report.capture.cssRules?.counts,
             diagnosticCrops: report.artifacts.diagnosticCrops,
             timings: report.timings,
           },

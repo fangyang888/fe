@@ -1,6 +1,6 @@
 {
   "name": "@internal/visual-qa",
-  "version": "0.1.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Deterministic H5 screenshot capture and visual comparison CLI",
   "type": "module",
@@ -10,7 +10,9 @@
   "exports": {
     "./measure": "./dist/src/measure-case.js",
     "./capture": "./dist/src/capture.js",
-    "./verify": "./dist/src/verify.js"
+    "./verify": "./dist/src/verify.js",
+    "./doctor": "./dist/src/doctor.js",
+    "./suite": "./dist/src/suite.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

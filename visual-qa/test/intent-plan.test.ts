@@ -125,6 +125,41 @@ test("creates a ready intent plan with mapped Pixso coordinates", async () => {
     height: 46,
   });
   assert.deepEqual(plan.ambiguities, []);
+  assert.deepEqual(plan.regions[1]?.imageBoundary, {
+    representation: "single-image",
+    pixsoAccess: "export-only",
+    descendantAccess: "forbidden",
+    requireNoVisibleChildren: true,
+  });
+});
+
+test("rejects child layers inside an opaque single-image region", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "intent-plan-"));
+  const annotatedImage = path.join(directory, "annotated.png");
+  await fs.writeFile(annotatedImage, PNG.sync.write(fixtureImage()));
+
+  const plan = await createIntentPlan({
+    name: "opaque-card",
+    sourceNodeId: "138:97029",
+    annotatedImage,
+    viewport: { width: 100, height: 200 },
+    hints: [
+      {
+        order: 1,
+        name: "member-card",
+        mode: "single-image",
+        nodeId: "138:97117",
+        layers: [
+          { name: "background", role: "base-image", nodeId: "138:97118" },
+          { name: "copy", role: "overlay-image", nodeId: "138:97143" },
+        ],
+      },
+      { order: 2, name: "title", mode: "dom-text" },
+    ],
+  });
+
+  assert.equal(plan.status, "needs-review");
+  assert.match(plan.ambiguities.join("\n"), /cannot declare child layers/);
 });
 
 test("marks unclassified regions for review", async () => {

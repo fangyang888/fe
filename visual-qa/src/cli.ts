@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHdcRunner, detectHarmonyDevices } from "./platforms/harmony/device.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -6,6 +7,7 @@ import { writeAgentContext } from "./agent-context.js";
 import { captureH5Screenshot } from "./capture.js";
 import { compareScreenshots } from "./compare.js";
 import { normalizeVisualCase, readVisualCase } from "./config.js";
+import { runDoctor } from "./doctor.js";
 import {
   readIntentPlan,
   writeExportManifest,
@@ -20,6 +22,8 @@ import type {
 import { verifyVisualCase } from "./verify.js";
 import { measureVisualCase } from "./measure-case.js";
 import { summarizeMeasurement } from "./measure.js";
+import { runVisualSuite } from "./suite.js";
+import { runCssVariants } from "./variants.js";
 
 function parseFlags(args: string[]): Map<string, string> {
   const flags = new Map<string, string>();
@@ -59,10 +63,15 @@ function integerFlag(flags: Map<string, string>, name: string): number {
 
 function verificationMode(
   value: string | undefined,
-): "quick" | "agent" | "final" {
+): "quick" | "agent" | "final" | "adaptive" {
   const mode = value ?? "final";
-  if (mode === "quick" || mode === "agent" || mode === "final") return mode;
-  throw new Error("--mode must be quick, agent, or final");
+  if (
+    mode === "quick" ||
+    mode === "agent" ||
+    mode === "final" ||
+    mode === "adaptive"
+  ) return mode;
+  throw new Error("--mode must be quick, agent, final, or adaptive");
 }
 
 function browserChannel(
@@ -76,6 +85,30 @@ function browserChannel(
 }
 
 function compactResult(command: string, result: any): Record<string, unknown> {
+  if (command === "variants") return {
+    status: result.status, best: result.best, scope: result.scope,
+    ranking: result.ranking.map(({ name, eligible, mismatchPercent, improvementPercentagePoints }: any) =>
+      ({ name, eligible, mismatchPercent, improvementPercentagePoints })),
+    artifacts: result.artifacts, timings: result.timings,
+  };
+  if (command === "doctor") {
+    return {
+      status: result.status,
+      platform: result.platform,
+      failed: result.checks?.filter((check: any) => check.status === "failed"),
+      warnings: result.checks?.filter((check: any) => check.status === "warning"),
+    };
+  }
+  if (command === "suite") {
+    return {
+      status: result.status,
+      name: result.name,
+      summary: result.summary,
+      artifacts: result.artifacts,
+      timings: result.timings,
+    };
+  }
+  if (result.platform === "harmony") return nativeResult(result);
   if (command === "verify") {
     return {
       status: result.status,
@@ -125,11 +158,19 @@ function compactResult(command: string, result: any): Record<string, unknown> {
   };
 }
 
+function nativeResult(result: any): Record<string, unknown> {
+  return { platform: result.platform, scope: result.scope, status: result.status, name: result.name, mode: result.mode,
+    source: result.capture?.source, device: result.capture?.device, navigation: result.capture?.navigation,
+    checks: result.checks, failure: result.failure, mismatchPercent: result.comparison?.mismatchPercent,
+    ssim: result.comparison?.ssim, imageReview: result.ai?.shouldAnalyze, artifacts: result.artifacts, cache: result.cache };
+}
 function agentResult(result: any): Record<string, unknown> {
+  if (result.platform === "harmony") return nativeResult(result);
   return {
     status: result.status,
     name: result.name,
     mode: result.mode,
+    workflow: result.workflow,
     measurement: summarizeMeasurement(result.capture?.measurement),
     imageReview: result.ai?.shouldAnalyze,
     mismatchPercent: result.comparison?.mismatchPercent,
@@ -137,6 +178,9 @@ function agentResult(result: any): Record<string, unknown> {
       ? { ssim: result.comparison.ssim }
       : {}),
     differenceRegionCount: result.comparison?.differenceRegions?.length ?? 0,
+    ...(result.workflow?.phase === "iteration"
+      ? { differenceRegions: result.comparison?.differenceRegions }
+      : {}),
     css: result.capture?.cssRules?.counts,
     diagnosticCrops: result.artifacts?.diagnosticCrops,
     report: result.artifacts?.report,
@@ -158,12 +202,14 @@ function printResult(
       typeof mismatch === "number" && typeof ssim === "number"
         ? ` mismatch=${mismatch.toFixed(4)}% ssim=${ssim.toFixed(5)}`
         : "";
-    console.log(`PASS ${result.name ?? command}${metrics}`);
+    console.log(`PASS ${result.name ?? command}${metrics}${result.platform === "harmony" ? " scope=native-screenshot-visual-only" : ""}`);
     return;
   }
   if (
     command === "verify" &&
-    (result.mode === "quick" || result.mode === "agent")
+    (result.mode === "quick" ||
+      result.mode === "agent" ||
+      result.workflow?.requestedMode === "adaptive")
   ) {
     console.log(JSON.stringify(agentResult(result)));
     return;
@@ -249,10 +295,15 @@ function printHelp(): void {
   console.log(`visual-qa
 
 Usage:
+  visual-qa doctor [--case <case.json>] [--browser-channel chrome] [--hdc-path <executable>] [--skip-browser-launch] [--compact]
+  visual-qa suite --suite <suite.json> [--mode quick|agent|final|adaptive] [--concurrency 2] [--fail-fast] [--output suite-report.json] [--junit junit.xml] [--html index.html] [--compact] [--quiet]
+  visual-qa variants --variants <variants.json> [--concurrency 4] [--compact]
+  visual-qa harmony-devices [--hdc-path <executable>]
+  visual-qa verify --case <harmony.json> [--page-ready] [--mode quick|agent|final]
   visual-qa measure --case <case.json> [--browser-endpoint ws://...]
   visual-qa capture --url <url> --output <actual.png> --width 375 --height 812 [--browser-channel chrome] [--browser-endpoint ws://...] [--compact] [--quiet]
   visual-qa compare --expected <design.png> --actual <actual.png> --output <diff.png> [--top-regions 3] [--compact] [--quiet]
-  visual-qa verify --case <case.json> [--mode quick|agent|final] [--browser-endpoint ws://...] [--changed-only] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
+  visual-qa verify --case <case.json> [--mode quick|agent|final|adaptive] [--browser-endpoint ws://...] [--changed-only] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
   visual-qa browser-server [--browser-channel chrome]
   visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> --intent intent.json [--annotated marked.png --width 375 --height 812 --frame x,y,width,height]
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
@@ -266,6 +317,72 @@ async function main(): Promise<void> {
 
   if (!command || command === "help" || flags.has("help")) {
     printHelp();
+    return;
+  }
+
+  if (command === "doctor") {
+    const report = await runDoctor({
+      ...(flags.has("case") ? { casePath: flags.get("case") } : {}),
+      ...(flags.has("browser-channel")
+        ? { browserChannel: browserChannel(flags.get("browser-channel")) }
+        : {}),
+      ...(flags.has("hdc-path") ? { hdcPath: flags.get("hdc-path") } : {}),
+      skipBrowserLaunch: flags.has("skip-browser-launch"),
+    });
+    printResult(command, report, flags);
+    process.exitCode = report.status === "ready" ? 0 : 1;
+    return;
+  }
+
+  if (command === "suite") {
+    const verification = {
+      ...(flags.has("mode") ? { mode: verificationMode(flags.get("mode")) } : {}),
+      ...(flags.has("browser-endpoint")
+        ? { browserEndpoint: flags.get("browser-endpoint") }
+        : {}),
+      ...(flags.has("project-root")
+        ? { projectRoot: flags.get("project-root") }
+        : {}),
+      ...(flags.has("top-regions")
+        ? { topRegions: integerFlag(flags, "top-regions") }
+        : {}),
+      ...(flags.has("page-ready") ? { pageReady: true } : {}),
+      ...(flags.has("changed-only") ? { changedOnly: true } : {}),
+      ...(flags.has("reuse-design") ? { reuseDesign: true } : {}),
+      ...(flags.has("no-ai-on-pass") ? { noAiOnPass: true } : {}),
+      ...(flags.has("no-cache")
+        ? { reuseVerification: false }
+        : flags.has("reuse-verification")
+          ? { reuseVerification: true }
+          : {}),
+    };
+    const report = await runVisualSuite(required(flags, "suite"), {
+      ...(flags.has("concurrency")
+        ? { concurrency: integerFlag(flags, "concurrency") }
+        : {}),
+      ...(flags.has("fail-fast") ? { failFast: true } : {}),
+      ...(flags.has("output") ? { reportPath: flags.get("output") } : {}),
+      ...(flags.has("junit") ? { junitPath: flags.get("junit") } : {}),
+      ...(flags.has("html") ? { htmlPath: flags.get("html") } : {}),
+      verification,
+    });
+    printResult(command, report, flags);
+    process.exitCode = report.status === "passed" ? 0 : 1;
+    return;
+  }
+
+  if (command === "variants") {
+    const result = await runCssVariants(required(flags, "variants"),
+      flags.has("concurrency") ? integerFlag(flags, "concurrency") : undefined);
+    printResult(command, result, flags);
+    process.exitCode = result.status === "passed" ? 0 : 1;
+    return;
+  }
+
+  if (command === "harmony-devices") {
+    const devices = await detectHarmonyDevices(createHdcRunner(flags.get("hdc-path")));
+    console.log(JSON.stringify({ platform: "harmony", status: devices.some(d => d.reachable) ? "ready" : "unavailable", devices, computerUse: "checked-by-agent" }, null, 2));
+    process.exitCode = devices.some(d => d.reachable) ? 0 : 1;
     return;
   }
 
@@ -345,6 +462,7 @@ async function main(): Promise<void> {
     const visualCase = await readVisualCase(required(flags, "case"));
     const report = await verifyVisualCase(visualCase, {
       mode: verificationMode(flags.get("mode")),
+      pageReady: flags.has("page-ready"),
       reuseVerification: flags.has("no-cache") ? false : flags.has("reuse-verification") ? true : undefined,
       changedOnly: flags.has("changed-only"),
       topRegions: flags.has("top-regions")

@@ -1,0 +1,11 @@
+{
+  "name": "harmony-import",
+  "platform": "harmony",
+  "designImage": "./design.png",
+  "outputDir": "./artifacts/harmony-import",
+  "harmony": {
+    "screenshot": "./device-screenshot.png",
+    "navigation": "manual",
+    "capture": { "scope": "screen" }
+  }
+}

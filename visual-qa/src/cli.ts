@@ -184,6 +184,7 @@ function agentResult(result: any): Record<string, unknown> {
     css: result.capture?.cssRules?.counts,
     diagnosticCrops: result.artifacts?.diagnosticCrops,
     report: result.artifacts?.report,
+    html: result.artifacts?.html,
     cacheHit: result.cache?.verificationReused,
     timings: result.timings,
   };
@@ -303,7 +304,7 @@ Usage:
   visual-qa measure --case <case.json> [--browser-endpoint ws://...]
   visual-qa capture --url <url> --output <actual.png> --width 375 --height 812 [--browser-channel chrome] [--browser-endpoint ws://...] [--compact] [--quiet]
   visual-qa compare --expected <design.png> --actual <actual.png> --output <diff.png> [--top-regions 3] [--compact] [--quiet]
-  visual-qa verify --case <case.json> [--mode quick|agent|final|adaptive] [--browser-endpoint ws://...] [--changed-only] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
+  visual-qa verify --case <case.json> [--mode quick|agent|final|adaptive] [--browser-endpoint ws://...] [--changed-only|--skip-code-scan] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
   visual-qa browser-server [--browser-channel chrome]
   visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> --intent intent.json [--annotated marked.png --width 375 --height 812 --frame x,y,width,height]
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
@@ -465,6 +466,7 @@ async function main(): Promise<void> {
       pageReady: flags.has("page-ready"),
       reuseVerification: flags.has("no-cache") ? false : flags.has("reuse-verification") ? true : undefined,
       changedOnly: flags.has("changed-only"),
+      skipCodeScan: flags.has("skip-code-scan"),
       topRegions: flags.has("top-regions")
         ? integerFlag(flags, "top-regions")
         : undefined,

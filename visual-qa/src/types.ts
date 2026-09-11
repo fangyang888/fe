@@ -472,6 +472,8 @@ export interface VerificationOptions {
   noAiOnPass?: boolean;
   cachePath?: string;
   projectRoot?: string;
+  /** Skip source scanning and disable verification reuse; incompatible with changedOnly. */
+  skipCodeScan?: boolean;
   /** Internal prepared state used to avoid duplicate Git scans in one adaptive run. */
   preparedCodeState?: VisualQaCache["code"];
   /** Internal prepared hash used to avoid reading the design twice in one adaptive run. */
@@ -515,6 +517,7 @@ export interface VerificationReport {
     diff: string;
     report: string;
     diagnosticCrops?: string[];
+    html?: string;
   };
   timings: {
     codeStateMs: number;

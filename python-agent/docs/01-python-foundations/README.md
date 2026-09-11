@@ -2,6 +2,8 @@
 
 目标：不依赖FastAPI和LangChain，独立编写清晰、有类型、有测试的Python代码。
 
+先动手：[5 个可运行例子与断点调试教程](../../examples/README.md)，适合从 JS / Node 过渡。
+
 1. [变量、对象和基础类型](./01-variables-objects-types.md)
 2. [列表、元组、字典和集合](./02-containers.md)
 3. [条件、循环和推导式](./03-control-flow.md)

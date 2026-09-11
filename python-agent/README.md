@@ -12,6 +12,8 @@
 
 学习入口：[docs/README.md](./docs/README.md)
 
+想先看懂语法并运行代码：从 [5 个入门例子与断点调试](./examples/README.md) 开始。
+
 第一次启动和目录说明：[脚手架使用与目录结构](./docs/00-overview/05-scaffold-usage-and-structure.md)
 
 ## 计划中的架构
@@ -32,7 +34,7 @@ Python FastAPI Agent
 
 ## 安装命令
 
-电脑目前还没有安装 `uv`。安装完成后，在本目录执行：
+先用 `uv --version` 检查工具是否可用，然后在本目录执行：
 
 ```bash
 uv sync

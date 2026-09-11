@@ -1,5 +1,19 @@
 # Visual QA
 
+## 页面生成快速路径
+
+Web `verify` 现在直接生成 `outputDir/comparison.html`，与 report.json 一起提供设计、实现、差异图及原始状态、模式、指标和耗时。首版失败也有对比；只有 `final` 且 `passed` 才显示最终验收通过。无需另外生成对比 HTML。摘要包含 `html` 路径；报告仍是验收依据，旧报告不代表当前源码或执行失败的新一轮。
+
+```bash
+node scripts/run.mjs verify --case /absolute/project/visual-qa/case.json --mode adaptive --skip-code-scan --cache /absolute/project/visual-qa/cache.json --compact
+```
+
+`--skip-code-scan` 仅支持 Web：完全跳过 Git/源码指纹扫描，同时禁用验收结果缓存，每轮重新截图。它适合单页快速生成或禁止读取其它页面的任务；不跳过视觉、结构、CSS 或最终验收，不能与 `--changed-only`、`--reuse-verification` 组合。设计/素材缓存仍可使用。需要变化区域或代码身份缓存的任务保留原有行为。
+
+未传 browser/endpoint 时，同一次 adaptive 的候选和自动 final 共用一个浏览器、分别创建隔离上下文，结束后关闭自有浏览器；用户传入的浏览器不关闭。多轮 CLI 调用仍推荐一次启动 browser-server 并复用 endpoint。首版直接看对比，集中修正；多组 CSS 假设使用 variants；adaptive 返回 complete 后无需再跑一次 final。
+
+业务预览的 Node 版本以项目配置为准，与 QA 的 Node 18+ 分别预检。图片立即核对尺寸和边界，禁止把兄弟节点裁进指定图片或通过降低阈值提速。逐阶段耗时已在报告 timings 中；整体页面提速需要同类任务计时验证，不由单次 CLI 耗时推算。
+
 ## 批量 CSS 微调
 
 `node <插件根目录>/scripts/run.mjs variants --variants <项目>/variants.json --compact`

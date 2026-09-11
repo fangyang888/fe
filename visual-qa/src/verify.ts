@@ -10,7 +10,8 @@ import {
   readCache,
   writeCache,
 } from "./cache.js";
-import { captureH5Screenshot } from "./capture.js";
+import { captureH5Screenshot, launchVisualQaBrowser } from "./capture.js";
+import { writeVerificationReport } from "./report.js";
 import { compareScreenshots, writeComparisonCrops } from "./compare.js";
 import { recordMeasurement } from "./measure.js";
 import { measurementIdentity } from "./measure-case.js";
@@ -28,6 +29,12 @@ export function verifyVisualCase(visualCase: VisualCase, options?: VerificationO
 export function verifyVisualCase(visualCase: HarmonyCase, options?: VerificationOptions): Promise<HarmonyReport>;
 export function verifyVisualCase(visualCase: PlatformCase, options?: VerificationOptions): Promise<VerificationReport | HarmonyReport>;
 export async function verifyVisualCase(visualCase: PlatformCase, options: VerificationOptions = {}): Promise<VerificationReport | HarmonyReport> {
+  if (options.skipCodeScan && (options.changedOnly || options.reuseVerification)) {
+    throw new Error("--skip-code-scan cannot be combined with --changed-only or --reuse-verification");
+  }
+  if (options.skipCodeScan && visualCase.platform === "harmony") {
+    throw new Error("--skip-code-scan is only supported for Web cases");
+  }
   if (options.mode === "adaptive") {
     if (visualCase.platform === "harmony") {
       throw new Error("Adaptive verification is only supported for Web cases");
@@ -50,6 +57,9 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
   );
   const codeStateStarted = Date.now();
   const code =
+    options.skipCodeScan
+      ? { revision: "not-scanned", version: "not-scanned", changedFiles: [] }
+      :
     options.preparedCodeState ??
     await collectCodeState(
       projectRoot,
@@ -100,7 +110,8 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
   );
   const cachedVerification = cache.verifications[visualCase.name];
   const mayReuseVerification =
-    options.reuseVerification ?? (!visualCase.contract && (mode === "quick" || mode === "agent"));
+    !options.skipCodeScan &&
+    (options.reuseVerification ?? (!visualCase.contract && (mode === "quick" || mode === "agent")));
   let cacheLookupMs = Date.now() - cacheStarted;
   if (
     mayReuseVerification &&
@@ -263,7 +274,6 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
     },
   };
   const persistStarted = Date.now();
-  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   cache.designs[designKey] = {
     ...(visualCase.pixsoNodeId ? { nodeId: visualCase.pixsoNodeId } : {}),
     ...(visualCase.pixsoNodeVersion
@@ -284,7 +294,7 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
   await writeCache(cachePath, cache);
   report.timings.persistMs = Date.now() - persistStarted;
   report.timings.totalMs = Date.now() - totalStarted;
-  await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  await writeVerificationReport(report);
   return report;
 }
 
@@ -302,15 +312,31 @@ async function readPreviousVerification(
 async function persistAdaptiveReport(
   report: VerificationReport,
 ): Promise<VerificationReport> {
-  await fs.writeFile(
-    report.artifacts.report,
-    `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
+  await writeVerificationReport(report);
   return report;
 }
 
 async function verifyAdaptiveVisualCase(
+  visualCase: VisualCase,
+  options: VerificationOptions,
+): Promise<VerificationReport> {
+  // Share one owned browser across candidate and final; each capture still gets
+  // a fresh context and executes its own readiness/structure/CSS checks.
+  if (!options.browser && !options.browserEndpoint) {
+    const started = Date.now();
+    const browser = await launchVisualQaBrowser(visualCase.browserChannel);
+    try {
+      const report = await runAdaptiveVisualCase(visualCase, { ...options, browser });
+      report.timings.totalMs = Date.now() - started;
+      return await persistAdaptiveReport(report);
+    } finally {
+      await browser.close();
+    }
+  }
+  return runAdaptiveVisualCase(visualCase, options);
+}
+
+async function runAdaptiveVisualCase(
   visualCase: VisualCase,
   options: VerificationOptions,
 ): Promise<VerificationReport> {
@@ -323,7 +349,7 @@ async function verifyAdaptiveVisualCase(
     ...options,
     mode: effectiveMode,
     reuseVerification:
-      effectiveMode === "quick"
+      effectiveMode === "quick" && !options.skipCodeScan
         ? options.reuseVerification ?? true
         : false,
     preparedDesignHash: designHash,

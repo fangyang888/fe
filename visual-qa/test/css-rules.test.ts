@@ -13,6 +13,7 @@ function fakePage(violations: CssRuleViolation[]): Page {
 const rules = {
   preferFlex: true,
   allowGap: false,
+  preferRem: true,
   preferResponsivePage: true,
   rejectSuspiciousCss: true,
   failOnMismatch: true,

@@ -123,6 +123,7 @@ function normalizeCssRules(
   return {
     preferFlex: input?.preferFlex ?? true,
     allowGap: input?.allowGap ?? false,
+    preferRem: input?.preferRem ?? false,
     preferResponsivePage: input?.preferResponsivePage ?? true,
     rejectSuspiciousCss: input?.rejectSuspiciousCss ?? true,
     failOnMismatch: input?.failOnMismatch ?? true,

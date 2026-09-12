@@ -21,6 +21,7 @@ export interface VisualThresholds {
 export interface CssRulesConfig {
   preferFlex?: boolean;
   allowGap?: boolean;
+  preferRem?: boolean;
   preferResponsivePage?: boolean;
   rejectSuspiciousCss?: boolean;
   failOnMismatch?: boolean;
@@ -298,6 +299,7 @@ export interface CssRuleViolation {
   rule:
     | "prefer-flex"
     | "no-gap"
+    | "prefer-rem"
     | "responsive-page-size"
     | "page-shell"
     | "global-style-leak"
@@ -319,6 +321,7 @@ export interface CssRulesInspectionResult {
   failOnSeverity: "error" | "warning";
   preferFlex: boolean;
   allowGap: boolean;
+  preferRem: boolean;
   preferResponsivePage: boolean;
   rejectSuspiciousCss: boolean;
   scopeSelector: string;

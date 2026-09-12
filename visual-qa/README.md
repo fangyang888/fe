@@ -264,6 +264,7 @@ npm run visual-qa -- verify \
 
 - 发现 `display: grid` 或 `inline-grid` 时失败，要求优先改为 Flex。
 - Flex/Grid 容器存在非零 `gap`、`row-gap` 或 `column-gap` 时失败，要求使用子元素 `margin`。
+- 先读取目标项目的 `AGENTS.md`、页面创建 skill 和构建配置确认单位策略。项目明确要求局部固定尺寸使用 rem 时，在 case 中开启 `preferRem: true`；页面自有样式中大于 `1px` 的 px 长度会作为错误，`1px` 及更细的发丝线可保留。项目没有明确单位约定时保持关闭，不猜测策略。
 - 只对 `pageShellSelector` 明确指定的最外层页面壳检查自适应，禁止使用 `px/rem/em` 等绝对长度固定 `width`、`height`、`min/max-width` 或 `min/max-height`。页面壳应使用 `width: 100%`/`auto` 与内容驱动高度；需要铺满首屏时使用 `min-height: 100vh`/`100dvh`。确有桌面限宽需求时，把 `max-width` 放到内部内容容器。内部组件、图片和绝对定位元素仍可保留设计尺寸。
 - 如果包含页面壳规则的同一页面样式表修改 `html` 的根字号或背景，检查会失败；未作用域的 `*` reset 会给出 warning。页面局部样式应复用项目全局 reset，背景写到页面壳，`box-sizing` 缺失时约束在页面壳及其后代。
 - `position: absolute` 必须以当前页面检查范围内的定位祖先为基准。定位祖先超过 `positionContextMaxDepth` 层时给出警告，没有定位祖先时判为错误；通常应在最近的业务容器上设置 `position: relative`。
@@ -278,6 +279,7 @@ npm run visual-qa -- verify \
   "cssRules": {
     "preferFlex": true,
     "allowGap": false,
+    "preferRem": true,
     "preferResponsivePage": true,
     "rejectSuspiciousCss": true,
     "failOnMismatch": true,
@@ -444,6 +446,23 @@ Hints 按红框从上到下、从左到右的顺序匹配，支持以下 `mode`�
 - SVG 保持矢量导出；照片、复杂插画和卡片使用 PNG。
 
 不传 `--hints` 时，所有红框都会安全地标为 `review`。使用 `--strict` 可在仍有歧义时返回退出码 `1`。
+
+## 生成前图片边界检查
+
+在第一次 `design_to_code` 和编写页面前执行，不需要启动浏览器或准备 case：
+
+```bash
+node scripts/run.mjs generation-context \
+  --plan /absolute/path/intent-plan.json \
+  --nodes /absolute/path/pixso-nodes.json \
+  --output /absolute/path/generation-context.json
+```
+
+先锁定用户图片意图，再读取浅层布局；输入是单个 Pixso 根节点、`[根节点]` 或 `{ "nodes": [根节点] }`，使用真实 `guid` / `childNode` 结构，不是 JSX 或 MCP 文本外壳。命中用户图片 ID 后直接裁掉后代，只保留图片身份、selector 和外框；GROUP/FRAME 类型不会覆盖用户的图片声明。祖先的生成代码字符串也不会进入上下文。
+
+输出含精简树、图片契约和 `codeGeneration.allowedNodeIds`。`tree` 保留父子容器与源同级顺序，每张图片的 `hierarchy` 记录父节点、祖先链和原始同级索引；`images` 仅是资产索引，不能据此把图片铺平成同级元素。外部叠放与遮挡关系继续由布局树实现。只对允许的非图片子树调用代码生成，包含图片的祖先由外部布局数据实现；不向图片节点或后代读取 DSL。节点缺失、画板不匹配、selector 缺失或意图未明确时返回退出码 1、清空允许列表；格式错误返回 2，均不能开始生成。成功返回 0。不带图片意图的页面仍可整页生成。
+
+CLI 不拦截外部 MCP 调用，也不验证资源下载或实际页面；必须按 [Skill 前置流程](skills/visual-qa/references/generation-context.md) 消费裁剪后的上下文，随后沿用素材导出与 `verify` 检查。它避免先生成图片内部代码再返工，不替代最终视觉验收。
 
 ## 生成 Pixso 导出清单
 

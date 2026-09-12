@@ -108,6 +108,7 @@ export async function writeAgentContext(
       pageShellSelector: visualCase.cssRules?.pageShellSelector,
       positionContextMaxDepth: visualCase.cssRules?.positionContextMaxDepth,
       preferResponsivePage: visualCase.cssRules?.preferResponsivePage,
+      preferRem: visualCase.cssRules?.preferRem,
     },
     ...(report
       ? {

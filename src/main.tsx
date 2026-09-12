@@ -114,6 +114,9 @@ import EliteFourKill from './EliteFourKill.jsx';
 import SelectedAnchorSuite from './SelectedAnchorSuite.jsx';
 // @ts-ignore
 import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
+import PeakShapeObservation from './PeakShapeObservation';
+import ThreePathObservation from './ThreePathObservation';
+import AdaptiveZodiacObservation from './AdaptiveZodiacObservation';
 import OnlineRiskRanking from './OnlineRiskRanking.jsx';
 import PreviousFourth from './PreviousFourth.jsx';
 // @ts-ignore
@@ -396,6 +399,24 @@ const routes = [
     label: 'K/R50/R20/50/M10/A100',
     section: '杀码',
     element: <AdaptiveAnchorSuite />,
+  },
+  {
+    path: '/kill/peak-shape-observation',
+    label: 'N6山峰 · 排除28',
+    section: '杀码',
+    element: <PeakShapeObservation />,
+  },
+  {
+    path: '/kill/three-path-observation',
+    label: '三路径 · 05/28/20',
+    section: '杀码',
+    element: <ThreePathObservation />,
+  },
+  {
+    path: '/kill/adaptive-zodiac-observation',
+    label: '15期自适应生肖',
+    section: '杀码',
+    element: <AdaptiveZodiacObservation />,
   },
   {
     path: '/kill/online-risk-ranking',

@@ -22,6 +22,7 @@ test("normalizes paths and visual defaults", () => {
   assert.equal(result.browserChannel, "chrome");
   assert.equal(result.cssRules?.preferFlex, true);
   assert.equal(result.cssRules?.allowGap, false);
+  assert.equal(result.cssRules?.preferRem, false);
   assert.equal(result.cssRules?.preferResponsivePage, true);
   assert.equal(result.cssRules?.rejectSuspiciousCss, true);
   assert.equal(result.cssRules?.failOnMismatch, true);
@@ -41,6 +42,7 @@ test("normalizes CSS compatibility rule overrides", () => {
       cssRules: {
         preferFlex: false,
         allowGap: true,
+        preferRem: true,
         preferResponsivePage: false,
         rejectSuspiciousCss: false,
         failOnMismatch: false,
@@ -57,6 +59,7 @@ test("normalizes CSS compatibility rule overrides", () => {
   assert.deepEqual(result.cssRules, {
     preferFlex: false,
     allowGap: true,
+    preferRem: true,
     preferResponsivePage: false,
     rejectSuspiciousCss: false,
     failOnMismatch: false,

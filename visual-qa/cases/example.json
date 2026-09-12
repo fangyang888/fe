@@ -14,6 +14,7 @@
   "cssRules": {
     "preferFlex": true,
     "allowGap": false,
+    "preferRem": false,
     "preferResponsivePage": true,
     "rejectSuspiciousCss": true,
     "failOnMismatch": true,

@@ -5,6 +5,7 @@
 同一页面需要尝试多组局部 CSS 微调时，优先使用 `variants --variants <项目>/variants.json --compact`（配置见 `cases/variants.example.json`，相对插件根目录）。一次提交有依据的 4–8 组候选，共享浏览器并隔离注入样式，避免逐候选改源码、构建、截图。查看 `ranking.json` 与差异裁片；baseline 最佳时不要写入更差候选，best 为 null 时先排查非视觉检查失败。仅把确认有效的候选写回源码，再做 final；保持 single-image 不透明边界，不通过候选 CSS 重画内部内容。
 
 1. 明确设计有的结构、图片与交互，并按项目规范实现；不添加设计外控件。保留真实可用的交互，未提供领取、支付等业务协议时不编造成功状态，交付时说明未接入部分。
+   - 从目标项目的 `AGENTS.md`、页面创建 skill 和构建配置提取 CSS 长度单位策略。若明确要求局部固定尺寸使用 rem，case 设置 `cssRules.preferRem: true`，并在首版验收前消除页面自有样式中大于 `1px` 的 px 长度；`1px` 及更细的发丝线可以保留。项目没有明确要求时不要开启或猜测转换比例。
    - 最外层页面壳必须流式自适应：使用 `width: 100%` 或块级元素默认的 `auto`，高度由内容撑开。需要至少铺满首屏时使用 `min-height: 100vh`，可追加 `min-height: 100dvh`；不要把设计稿画板宽高换算成页面壳的固定 `max-width`、`height` 或 `min-height`。确有桌面限宽需求时，把 `max-width` 放到页面壳内部的内容容器。
    - `height: 100%` 不是内容页默认方案。只有 `html/body/#app` 的祖先高度链已由项目建立，并确认不会截断长内容或滚动时才能使用；其余情况使用内容高度或 `min-height`。
    - 页面局部 SCSS 不得新增 `html`、`:root`、`body` 或未作用域的 `*` reset，不得为了 rem 换算设置根字号。先复用项目现有全局样式；确需 `box-sizing` 时限定到页面壳及其后代。页面背景、主题色和设计稿尺寸只写在页面壳或业务组件上。
@@ -18,7 +19,7 @@
 5. 页面生成默认重复执行 `verify --mode adaptive`：首轮完整诊断，后续像素失败立即生成最新局部裁片，候选通过后自动执行 final。收到 `nextAction=inspect-diagnostic-crops` 后一次处理全部差异区域再复验；禁止无修改重跑，也不要把单个 CSS 属性拆成多轮串行试错。不重复读取完整设计图、实际图或 diff。
    - 每轮 Web verify 自动输出 `outputDir/comparison.html`，摘要通过 `html` 给出路径，展示设计 / 实现 / 差异、状态、模式与耗时，无需手写对比页。失败结果照常展示，只有 final + passed 标记最终验收通过；旧文件不能充当新一轮执行失败后的证据。
    - 用户限制源码范围或单页无需代码缓存时加 `--skip-code-scan`，并把 `--cache` 指向 case 专属目录；这会禁用验证结果复用，设计/素材缓存不受影响。需要 changed-only 时不使用此选项，且先确认其扫描范围获准。
-6. case 使用 `intentPlan` 引用 `intent-plan --strict` 的输出；明确图片意图由计划自动生成并强制执行 `single-image` 结构校验，不手写一套可能冲突的图片规则。标题整图、卡片整图等 selector 必须只匹配一张图片且没有可见子元素；保留 CSS 规则检查。`preferResponsivePage` 会拒绝页面壳上的固定绝对长度（包括 `px/rem/em`）宽高与最小/最大宽高；页面样式表修改 `html` 根字号或背景也会失败，未作用域 `*` 会报告 warning。不能为过关放宽阈值、替换基准或屏蔽业务区域。只复用确实未变化的设计和素材缓存。
+6. case 使用 `intentPlan` 引用 `intent-plan --strict` 的输出；明确图片意图由计划自动生成并强制执行 `single-image` 结构校验，不手写一套可能冲突的图片规则。标题整图、卡片整图等 selector 必须只匹配一张图片且没有可见子元素；保留 CSS 规则检查。`preferRem` 开启时会拒绝页面自有样式中大于 `1px` 的 px 长度；`preferResponsivePage` 会拒绝页面壳上的固定绝对长度（包括 `px/rem/em`）宽高与最小/最大宽高；页面样式表修改 `html` 根字号或背景也会失败，未作用域 `*` 会报告 warning。不能为过关放宽阈值、替换基准或屏蔽业务区域。只复用确实未变化的设计和素材缓存。
 7. `adaptive` 只有自动 final 通过才返回 `nextAction=complete`。手工选择模式时仍须最终执行 `verify --mode final`，检查图片加载、字体、布局稳定性、控制台、结构和视觉差异。通过后报告结果与路径；失败或工具不可用时明确未通过及原因。
 
 命令示例（将占位路径替换为实际绝对路径）：

@@ -4,6 +4,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
 import { writeAgentContext } from "./agent-context.js";
+import { writeGenerationContext } from "./generation-context.js";
 import { captureH5Screenshot } from "./capture.js";
 import { compareScreenshots } from "./compare.js";
 import { normalizeVisualCase, readVisualCase } from "./config.js";
@@ -309,6 +310,7 @@ Usage:
   visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> --intent intent.json [--annotated marked.png --width 375 --height 812 --frame x,y,width,height]
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
   visual-qa agent-context --case <case.json> --output <agent-context.json> [--plan intent-plan.json] [--manifest export-manifest.json] [--report report.json]
+  visual-qa generation-context --plan <intent-plan.json> --nodes <pixso-nodes.json> --output <generation-context.json>
 `);
 }
 
@@ -553,6 +555,16 @@ async function main(): Promise<void> {
     );
     printResult(command, manifest, flags);
     if (flags.has("strict") && manifest.status !== "ready") process.exitCode = 1;
+    return;
+  }
+
+  if (command === "generation-context") {
+    const result = await writeGenerationContext(
+      await readIntentPlan(required(flags, "plan")),
+      required(flags, "nodes"), required(flags, "output"),
+    );
+    console.log(JSON.stringify(result));
+    if (result.status !== "ready") process.exitCode = 1;
     return;
   }
 

@@ -18,6 +18,7 @@ export async function inspectCssRules(
       pageShellSelector,
       positionContextMaxDepth,
       preferFlex,
+      preferRem,
       preferResponsivePage,
       rejectSuspiciousCss,
       scopeSelector,
@@ -158,10 +159,18 @@ export async function inspectCssRules(
         /^-?(?:\d+|\d*\.\d+)(?:px|r?em|cm|mm|in|pt|pc|q)$/i;
       const overPrecisePixels = /-?\d+\.\d{3,}px/;
       const dataImage = /url\(["']?data:image\//i;
+      const pxLengthsRequiringRem = (property: string, value: string) => {
+        if (property === "content") return [];
+        const withoutUrls = value.replace(/url\([^)]*\)/gi, "");
+        return Array.from(
+          withoutUrls.matchAll(/(-?(?:\d+|\d*\.\d+))px\b/gi),
+        ).filter((match) => Math.abs(Number(match[1])) > 1);
+      };
       const inspectAuthoredStyle = (
         element: Element,
         selector: string,
         declaration: CSSStyleDeclaration,
+        pageOwnedStyle: boolean,
       ) => {
         const computed = getComputedStyle(element as HTMLElement);
         const addViolation = (
@@ -203,6 +212,20 @@ export async function inspectCssRules(
                 `${selector} fixes the outer page shell ${property} to ${value}; keep the shell fluid (width: 100% or auto, min-height: 100vh/100dvh) and put intentional max-width constraints on an inner content container`,
               );
             }
+          }
+        }
+
+        if (preferRem && pageOwnedStyle) {
+          for (const property of Array.from(declaration)) {
+            const value = declaration.getPropertyValue(property).trim();
+            if (pxLengthsRequiringRem(property, value).length === 0) continue;
+            addViolation(
+              "prefer-rem",
+              "error",
+              property,
+              value,
+              `${selector} uses ${value} in ${property}; the target project requires rem for local fixed lengths (keep only intentional 1px-or-thinner hairlines in px)`,
+            );
           }
         }
 
@@ -361,7 +384,12 @@ export async function inspectCssRules(
               continue;
             }
             if (!matched || isIgnored(matched) || !isVisible(matched)) continue;
-            inspectAuthoredStyle(matched, trimmed, rule.style);
+            inspectAuthoredStyle(
+              matched,
+              trimmed,
+              rule.style,
+              pageOwnedStyleSheet,
+            );
           }
           return;
         }
@@ -389,7 +417,12 @@ export async function inspectCssRules(
         if (isIgnored(element) || !isVisible(element)) continue;
         const inlineStyle = (element as HTMLElement).style;
         if (inlineStyle.length > 0) {
-          inspectAuthoredStyle(element, selectorFor(element), inlineStyle);
+          inspectAuthoredStyle(
+            element,
+            selectorFor(element),
+            inlineStyle,
+            true,
+          );
         }
       }
 
@@ -472,6 +505,7 @@ export async function inspectCssRules(
     failOnSeverity: rules.failOnSeverity,
     preferFlex: rules.preferFlex,
     allowGap: rules.allowGap,
+    preferRem: rules.preferRem,
     preferResponsivePage: rules.preferResponsivePage,
     rejectSuspiciousCss: rules.rejectSuspiciousCss,
     scopeSelector: rules.scopeSelector,

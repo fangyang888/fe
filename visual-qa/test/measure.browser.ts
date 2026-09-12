@@ -22,6 +22,7 @@ test("Chrome measures CSS coordinates, records iterations, and enforces contract
     const cssRules = {
       preferFlex: true,
       allowGap: false,
+      preferRem: true,
       preferResponsivePage: true,
       rejectSuspiciousCss: true,
       failOnMismatch: true,
@@ -35,7 +36,7 @@ test("Chrome measures CSS coordinates, records iterations, and enforces contract
       <style>
         * { box-sizing: border-box; }
         html { font-size: 10px; background: #fff47e; }
-        .page { width: 100%; max-width: 37.5rem; min-height: 81.2rem; }
+        .page { width: 100%; max-width: 37.5rem; min-height: 81.2rem; padding: 12px; border: 1px solid transparent; }
       </style>
       <div id="app"><main class="page">content</main></div>
     `);
@@ -57,6 +58,27 @@ test("Chrome measures CSS coordinates, records iterations, and enforces contract
           violation.severity === "error",
       ),
       true,
+      JSON.stringify(invalidCss.violations, null, 2),
+    );
+    assert.equal(
+      invalidCss.violations.some(
+        (violation) =>
+          violation.rule === "prefer-rem" &&
+          violation.property?.startsWith("padding-") &&
+          violation.value === "12px" &&
+          violation.severity === "error",
+      ),
+      true,
+      JSON.stringify(invalidCss.violations, null, 2),
+    );
+    assert.equal(
+      invalidCss.violations.some(
+        (violation) =>
+          violation.rule === "prefer-rem" &&
+          violation.property?.startsWith("border") &&
+          violation.value?.includes("1px"),
+      ),
+      false,
     );
     assert.equal(
       invalidCss.violations.some(
@@ -72,7 +94,7 @@ test("Chrome measures CSS coordinates, records iterations, and enforces contract
       <style>
         .page,
         .page * { box-sizing: border-box; }
-        .page { width: 100%; min-height: 100vh; background: #fff47e; }
+        .page { width: 100%; min-height: 100vh; padding: 1.2rem; border: 1px solid transparent; background: #fff47e; }
       </style>
       <div id="app"><main class="page">content</main></div>
     `);

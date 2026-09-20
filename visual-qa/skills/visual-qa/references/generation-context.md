@@ -3,8 +3,8 @@
 这是设计输入处理，不依赖页面、开发服务、case 或截图。`verify` 的图片结构检查仍是最后一道防线，不能代替这里的前置流程。
 
 1. 从用户原文锁定图片 item-id 与 selector，生成 `intent-plan --strict`。红框没有 item-id 时，只通过浅层外部布局确认边界并绑定节点；不能进入图片内部寻找替代图层。节点不在目标画板、父子图片声明重叠等问题应先澄清，不能自行更换设计页面。
-2. 读取目标画板的浅层布局：`query_nodes` 使用最小 `readDepth` 和按需 `fields`，从非图片容器逐层补齐必要结构。对图片节点不直接 query、不展开。独立图片导出可与布局读取并行。保存结构化数据，不先调用整页 `design_to_code`。
-3. 执行：
+2. 读取目标画板的浅层布局：新建 Web 页面优先使用 [design-batch](generation-performance.md) 合并同层请求、记录已读状态并生成后续批次。`query_nodes` 使用最小 `readDepth` 和按需 `fields`，从非图片容器逐层补齐必要结构。对图片节点不直接 query、不展开。独立图片导出可与布局读取并行。保存结构化数据，不先调用整页 `design_to_code`。
+3. design-batch 已返回 ready context 时直接复用；手头已有完整结构化节点数据时执行：
 
    ```sh
    node "<插件根目录>/scripts/run.mjs" generation-context --plan intent-plan.json --nodes pixso-nodes.json --output generation-context.json

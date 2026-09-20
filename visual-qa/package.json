@@ -1,6 +1,6 @@
 {
   "name": "@internal/visual-qa",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "private": true,
   "description": "Deterministic H5 screenshot capture and visual comparison CLI",
   "type": "module",

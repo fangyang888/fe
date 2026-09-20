@@ -1,5 +1,11 @@
 # Visual QA
 
+## 生成链路优化
+
+新增 `generation-timing`（跨模型/MCP/预览/修正的阶段计时）、`design-batch`（有状态浅层批量读取计划及响应合并）、`generate-scaffold`（保留图片边界和层级的 HTML/CSS 草稿）。工作命令可用 `--trace-log <timing.jsonl>` 自动计时，验收 report 的细分 timings 继续保留。
+
+新建 Pixso Web 页面时由 Skill 接入；完整参数、状态流转与配置示例见 [生成提速流程](skills/visual-qa/references/generation-performance.md)。批量计划仍由编排端调用现有 Pixso MCP；草稿需合入目标框架并完成视觉验收，不代表整页生成完成。实际提速以同类任务的首版与最终完成计时为准。
+
 ## 页面生成快速路径
 
 Web `verify` 现在直接生成 `outputDir/comparison.html`，与 report.json 一起提供设计、实现、差异图及原始状态、模式、指标和耗时。首版失败也有对比；只有 `final` 且 `passed` 才显示最终验收通过。无需另外生成对比 HTML。摘要包含 `html` 路径；报告仍是验收依据，旧报告不代表当前源码或执行失败的新一轮。

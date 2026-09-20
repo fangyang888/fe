@@ -6,7 +6,7 @@ type NodeData = Record<string, unknown>;
 
 // Only node-local design properties may enter the generation context. In
 // particular, ancestor JSX/CSS/DSL strings can contain opaque descendants.
-const DESIGN_FIELDS = [
+export const DESIGN_FIELDS = [
   "x", "y", "width", "height", "size", "transform", "absoluteBoundingBox",
   "fillPaints", "strokePaints", "strokeWeight", "cornerRadius", "opacity",
   "nodeText", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing",
@@ -19,7 +19,7 @@ const BOUNDARY_FIELDS = [
   "constraints", "layoutPositioning", "zIndex", "isMask", "blendMode", "visible",
 ] as const;
 
-interface NodeHierarchy {
+export interface NodeHierarchy {
   parentNodeId: string | null;
   ancestorNodeIds: string[];
   sourceSiblingIndex: number;

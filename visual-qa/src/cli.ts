@@ -5,6 +5,10 @@ import path from "node:path";
 import { chromium } from "playwright";
 import { writeAgentContext } from "./agent-context.js";
 import { writeGenerationContext } from "./generation-context.js";
+import { planDesignBatch, type DesignReadState } from "./design-batch.js";
+import { generationTiming } from "./generation-timing.js";
+import { writeScaffold } from "./generate-scaffold.js";
+import { randomUUID } from "node:crypto";
 import { captureH5Screenshot } from "./capture.js";
 import { compareScreenshots } from "./compare.js";
 import { normalizeVisualCase, readVisualCase } from "./config.js";
@@ -311,6 +315,10 @@ Usage:
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
   visual-qa agent-context --case <case.json> --output <agent-context.json> [--plan intent-plan.json] [--manifest export-manifest.json] [--report report.json]
   visual-qa generation-context --plan <intent-plan.json> --nodes <pixso-nodes.json> --output <generation-context.json>
+  visual-qa design-batch --plan <intent-plan.json> --revision <design-version> --state <read-state.json> --output <batch.json> [--responses responses.json] [--batch-size 16]
+  visual-qa generate-scaffold --context <generation-context.json> --config <scaffold-options.json> --output <new-directory>
+  visual-qa generation-timing --log <timing.jsonl> --action <start|end|mark|summary> [--id span-id] [--stage design-read] [--status ok|failed]
+  Any work command: --trace-log <timing.jsonl> records its CLI duration, including failures.
 `);
 }
 
@@ -320,6 +328,53 @@ async function main(): Promise<void> {
 
   if (!command || command === "help" || flags.has("help")) {
     printHelp();
+    return;
+  }
+
+  if (command === "generation-timing") {
+    const action = required(flags, "action");
+    if (!["start", "end", "mark", "summary"].includes(action)) throw new Error("Unknown timing action");
+    const status = flags.get("status") ?? "ok";
+    if (status !== "ok" && status !== "failed") throw new Error("--status must be ok or failed");
+    const result = await generationTiming(required(flags, "log"), action === "summary" ? undefined : {
+      kind: action as "start" | "end" | "mark", id: required(flags, "id"),
+      ...(action === "start" ? { stage: required(flags, "stage") } : {}),
+      ...(action === "end" ? { status } : {}),
+    });
+    console.log(JSON.stringify(action === "summary" ? result : { status: "recorded", elapsedMs: result.elapsedMs, openSpans: result.openSpans.length }));
+    return;
+  }
+
+  if (command === "design-batch") {
+    const statePath = required(flags, "state");
+    const output = required(flags, "output");
+    const paths = [statePath, output, required(flags, "plan"), flags.get("responses")].filter((p): p is string => Boolean(p)).map((p) => path.resolve(p));
+    if (new Set(paths).size !== paths.length) throw new Error("State, plan, responses and output must be separate files");
+    const state: DesignReadState | undefined = await fs.readFile(statePath, "utf8").then(JSON.parse).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    const responses = flags.has("responses") ? JSON.parse(await fs.readFile(required(flags, "responses"), "utf8")) : [];
+    if (!Array.isArray(responses)) throw new Error("--responses must contain an array of shallow nodes");
+    const result = planDesignBatch(await readIntentPlan(required(flags, "plan")), required(flags, "revision"), state, responses,
+      flags.has("batch-size") ? integerFlag(flags, "batch-size") : 16);
+    for (const [file, data] of [[output, result], [statePath, result.state]] as const) {
+      await fs.mkdir(path.dirname(path.resolve(file)), { recursive: true });
+      const temporary = `${file}.${randomUUID()}.tmp`;
+      await fs.writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`);
+      await fs.rename(temporary, file);
+    }
+    console.log(JSON.stringify({ status: result.status, output: path.resolve(output), stats: result.stats, issues: result.issues }));
+    if (result.status === "needs-review") process.exitCode = 1;
+    return;
+  }
+
+  if (command === "generate-scaffold") {
+    const result = await writeScaffold(
+      JSON.parse(await fs.readFile(required(flags, "context"), "utf8")),
+      JSON.parse(await fs.readFile(required(flags, "config"), "utf8")), required(flags, "output"),
+    );
+    console.log(JSON.stringify(result));
     return;
   }
 
@@ -585,7 +640,23 @@ async function main(): Promise<void> {
   throw new Error(`Unknown command: ${command}`);
 }
 
-main().catch((error: unknown) => {
+async function tracedMain() {
+  const [command, ...rest] = process.argv.slice(2);
+  const flags = parseFlags(rest);
+  const log = flags.get("trace-log");
+  if (!log || !command || command === "generation-timing" || command === "help") return main();
+  const id = `${command}-${randomUUID()}`;
+  await generationTiming(log, { kind: "start", id, stage: `cli:${command}` });
+  let status: "ok" | "failed" = "failed";
+  try {
+    await main();
+    status = process.exitCode ? "failed" : "ok";
+  } finally {
+    await generationTiming(log, { kind: "end", id, status });
+  }
+}
+
+tracedMain().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 2;
 });

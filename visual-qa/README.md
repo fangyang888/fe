@@ -1,5 +1,31 @@
 # Visual QA
 
+## 区域诊断与关键区域验收
+
+Web `verify` 现在在同一次截图的浏览器页面上关联差异区域与 DOM，返回最多三个候选 selector、元素与父容器边界及关键 computed styles。候选按几何交集排序，不是根因结论，也不证明遮挡关系；不读取页面文本、iframe 或 shadow root 内部。最多检查主文档前 5000 个元素，截断或读取失败会显式标记。坐标为截图物理像素，样式值为 CSS 单位；支持 DPR、viewport 截图及 fullPage 文档坐标。
+
+- 精简 stdout 给出候选 selector 和区域变化；完整样式在 `report.json` 的 `comparison.differenceRegions[].domCandidates`，对比 HTML 也提供诊断折叠区。通过时无须读图。
+- `comparison.regionIteration` 与 `outputDir/region-history.json` 跟踪最多 12 个固定截图区域，记录新增、改善、恶化、解决、未变化及像素数量差。即使旧区域不在最新 top-N 中，也从本轮 diff 重新统计，不把“未上榜”当成解决。这是有限区域观察，不是组件身份追踪或整页缺陷总数；区域移动/扩大可能产生新观察，区域可以重叠。“未变化”仅指差异像素数相同，不证明图案或原因未变。
+- 设计、URL、viewport/DPR、比较范围、阈值、契约或环境配置改变时重置区域历史。缓存命中不推进历史；adaptive 的通过候选不覆盖上一轮记录，自动 final 仍能报告本次修改解决了哪些区域。各 case 使用独立输出目录，避免并发覆盖。
+- 裁片在合适时包含完整的候选父容器：只有父容器包住差异且面积不超过差异框四倍时才扩展，再加原有 16 像素边距；否则保持局部裁片，避免扩大到整页。
+- 连续两轮 quick 像素差无显著改善时，workflow 给出 `diagnosticStrategy=parent-layout-and-fonts`，建议检查父容器与字体，下一轮切回 agent 完整诊断。CLI 不自动改源码，不降低通过标准。
+
+可选 `criticalRegions` 为按钮、图标等添加独立验收。坐标必须是设计 PNG 内的整数物理像素，最多 16 项、名称唯一。阈值未指定时继承整页阈值；整页与每个关键区域都要通过，即使 changed-only 未覆盖该关键区域也仍检查。quick 跳过 SSIM，最终验收仍计算；小区域使用适配尺寸的奇数 SSIM 窗口。
+
+```json
+{
+  "criticalRegions": [
+    {
+      "name": "primary-button",
+      "bounds": { "x": 24, "y": 640, "width": 327, "height": 48 },
+      "thresholds": { "maxMismatchPercent": 0.5, "minSsim": 0.99 }
+    }
+  ]
+}
+```
+
+上述配置是示例，必须替换为真实设计坐标。未配置时保持原有整页验收。独立结果见 `comparison.criticalRegions`；失败的关键区域会进入诊断裁片候选，即使整页像素阈值未标出差异。区域历史仍只统计整页阈值产生的 diff 像素，关键区域的独立指标应读取各自结果。报告新增 `timings.domDiagnosticsMs` 和 `timings.regionHistoryMs`，分别记录 DOM 关联与区域历史的开销。本轮改动不承诺具体提速比例，需以真实任务的修正轮次、总耗时和模型输入量验证。
+
 ## 生成链路优化
 
 新增 `generation-timing`（跨模型/MCP/预览/修正的阶段计时）、`design-batch`（有状态浅层批量读取计划及响应合并）、`generate-scaffold`（保留图片边界和层级的 HTML/CSS 草稿）。工作命令可用 `--trace-log <timing.jsonl>` 自动计时，验收 report 的细分 timings 继续保留。

@@ -219,3 +219,12 @@ test("rejects a composite image without overlays", () => {
     /overlays must contain at least one overlay/,
   );
 });
+
+test("critical regions reject ambiguous names, invalid bounds and thresholds", () => {
+  const base = { name: "critical", url: "http://localhost:3000", designImage: "design.png", viewport: { width: 100, height: 100 } };
+  const region = { name: "icon", bounds: { x: 0, y: 0, width: 10, height: 10 }, thresholds: { minSsim: 0.99 } };
+  assert.equal(normalizeVisualCase({ ...base, criticalRegions: [region] }, "case.json").criticalRegions![0]!.name, "icon");
+  assert.throws(() => normalizeVisualCase({ ...base, criticalRegions: [region, region] }, "case.json"), /Duplicate/);
+  assert.throws(() => normalizeVisualCase({ ...base, criticalRegions: [{ ...region, bounds: { ...region.bounds, x: -1 } }] }, "case.json"), /bounds/);
+  assert.throws(() => normalizeVisualCase({ ...base, criticalRegions: [{ ...region, thresholds: { minSsim: 2 } }] }, "case.json"), /minSsim/);
+});

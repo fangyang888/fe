@@ -41,3 +41,14 @@ test("report writer persists HTML path and replaces stale passing presentation o
   assert.equal(stored.status, "failed");
   assert.ok((await fs.readFile(stored.artifacts.html, "utf8")).includes("未通过最终验收"));
 });
+
+test("regional DOM evidence is escaped inside diagnostic details", () => {
+  const report = fixture("/tmp/evidence");
+  report.comparison.domDiagnosticsWarning = '</pre><img src=x onerror="alert(1)">';
+  report.comparison.differenceRegions = [{ x: 1, y: 2, width: 3, height: 4, mismatchPixels: 1, mismatchPercent: 10,
+    domCandidates: [{ selector: '<script>unsafe</script>', bounds: { x: 1, y: 2, width: 3, height: 4 }, styles: {}, overlap: 1 }] }];
+  const html = verificationReportToHtml(report, "/tmp/evidence/comparison.html");
+  assert.ok(html.includes("候选关联，不代表根因"));
+  assert.ok(html.includes("&lt;script&gt;unsafe&lt;/script&gt;"));
+  assert.ok(!html.includes("<img src=x"));
+});

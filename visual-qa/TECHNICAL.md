@@ -83,6 +83,52 @@ Web 可以访问浏览器 DOM、计算样式和控制台，因此支持结构化
 
 两个平台共用图片对比模块，但使用不同的采集结果和报告类型。这样可以保留平台差异，避免把 Harmony 不支持的检查误写成“通过”。
 
+### 3.4 从设计输入到页面交付的流程
+
+下面的流程描述 Agent、外部设计工具与本地 CLI 如何协作。它不是一个 CLI 命令内部的调用链；其中读取 Pixso、导出素材、修改业务代码和操作设备由 Agent 完成，CLI 负责生成计划、整理上下文和执行可重复的验收。
+
+```mermaid
+flowchart TD
+    A([收到页面需求]) --> B[读取项目规范、入口与构建配置]
+    B --> C[锁定平台、设计版本、参考图和图片边界]
+    C --> D[intent-plan --strict<br/>生成图片意图计划]
+    D --> E{计划是否 ready}
+    E -- 否 --> F[补充 item ID、selector<br/>或澄清重叠与边界]
+    F --> D
+
+    E -- 是 --> G[design-batch<br/>浅层批量读取外部布局]
+    E -- 是 --> H[export-manifest<br/>生成素材导出清单]
+    G --> I[generation-context<br/>裁剪图片内部并生成代码白名单]
+    H --> J[Agent 导出本地素材<br/>核对尺寸、倍率、扩边与坐标]
+    I --> K[合并布局上下文、素材绑定<br/>及可选组件搜索结果]
+    J --> K
+
+    K --> L{目标平台}
+    L -- Web --> M[generate-scaffold 生成可选草稿<br/>并按目标框架集成业务代码]
+    L -- Harmony --> N[按 ArkUI 规范实现页面<br/>构建、安装并准备目标状态]
+
+    M --> O[启动预览并配置 Web case]
+    O --> P[verify --mode adaptive]
+    P --> Q{nextAction}
+    Q -- inspect-diagnostic-crops --> R[读取测量、区域裁片和 DOM 候选<br/>集中修正页面]
+    R --> P
+    Q -- complete --> V[保留 final 报告与对比证据]
+
+    N --> S[选择设备采集或导入 PNG<br/>配置 Harmony case]
+    S --> T[verify --mode agent]
+    T --> U{视觉检查是否通过}
+    U -- 否 --> W[读取 failure 与差异裁片<br/>修正、重建并重新准备页面]
+    W --> T
+    U -- 是 --> X[verify --mode final]
+    X --> Y{最终检查是否通过}
+    Y -- 否 --> W
+    Y -- 是 --> V
+
+    V --> Z([交付实现、指标和证据路径])
+```
+
+流程中的关键闸门是：图片意图未达到 `ready` 前不进入代码生成；图片节点只作为完整素材消费；Web 的 `adaptive` 只有自动完成 final 验收后才返回 `complete`；Harmony 必须在同一目标状态下重新采集并完成 final 验收。任何失败都回到实现或页面准备阶段，不能通过替换设计基准、放宽阈值或复用旧报告绕过。
+
 ## 4. 主要源码与职责
 
 | 文件 | 职责 |

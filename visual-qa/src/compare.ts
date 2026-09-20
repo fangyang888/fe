@@ -9,9 +9,11 @@ import type {
   DifferenceRegion,
   RectangleBounds,
   VisualThresholds,
+  CriticalRegion,
 } from "./types.js";
 
 export interface ComparisonOptions extends VisualThresholds {
+  criticalRegions?: CriticalRegion[];
   includeRegions?: RectangleBounds[];
   topRegions?: number;
   computeSsim?: boolean;
@@ -85,8 +87,14 @@ export async function writeComparisonCrops(
   await fs.mkdir(outputDirectory, { recursive: true });
   const files: string[] = [];
   for (const [index, region] of regions.entries()) {
+    const candidate = (region as DifferenceRegion).domCandidates?.[0];
+    const context = candidate?.parent?.bounds;
+    // Include a nearby container only when it adds bounded, relevant layout context.
+    const contextBounds = context && context.x <= region.x && context.y <= region.y &&
+      context.x + context.width >= region.x + region.width && context.y + context.height >= region.y + region.height &&
+      context.width * context.height <= region.width * region.height * 4 ? context : region;
     const bounds = paddedBounds(
-      region,
+      contextBounds,
       expected.width,
       expected.height,
       Math.max(0, padding),
@@ -310,7 +318,7 @@ export async function compareScreenshots(
               width: region.width,
               height: region.height,
             },
-            { ssim: "fast" },
+            { ssim: "fast", windowSize: 2 * Math.floor((Math.min(11, region.width, region.height) - 1) / 2) + 1 },
           ).mssim
         : computeSsim
           ? 1 - regionMismatch / regionPixels
@@ -320,19 +328,49 @@ export async function compareScreenshots(
     weightedSimilarity += regionSimilarity * regionPixels;
     copyCropToImage(diffCrop, diff.data, diff.width, region);
   }
-  const compareMs = Date.now() - compareStarted;
   const mismatchPercent = (mismatchPixels / totalPixels) * 100;
   const similarity = computeSsim ? weightedSimilarity / totalPixels : null;
+  const criticalRegions = options.criticalRegions?.map(region => {
+    const box = region.bounds;
+    if (![box.x, box.y, box.width, box.height].every(Number.isInteger) || box.x < 0 || box.y < 0 ||
+      box.width <= 0 || box.height <= 0 || box.x + box.width > expected.width || box.y + box.height > expected.height) {
+      throw new Error(`Critical region ${region.name} must be inside the screenshot with integer pixel bounds`);
+    }
+    const local = { ...thresholds, ...region.thresholds };
+    for (const [key, max] of [["pixelThreshold", 1], ["maxMismatchPercent", 100], ["minSsim", 1]] as const) {
+      if (!Number.isFinite(local[key]) || local[key] < 0 || local[key] > max) throw new Error(`Invalid critical region ${region.name} ${key}`);
+    }
+    const a = crop(expected, box), b = crop(actual, box);
+    const pixels = box.width * box.height;
+    const mismatchPercent = pixelmatch(a, b, undefined, box.width, box.height, { threshold: local.pixelThreshold }) / pixels * 100;
+    const similarity = !computeSsim ? null : box.width > 1 && box.height > 1
+      ? ssim({ data: new Uint8ClampedArray(a), width: box.width, height: box.height },
+        { data: new Uint8ClampedArray(b), width: box.width, height: box.height }, { ssim: "fast", windowSize: 2 * Math.floor((Math.min(11, box.width, box.height) - 1) / 2) + 1 }).mssim
+      : 1 - mismatchPercent / 100;
+    return { ...region, thresholds: local, mismatchPercent, ssim: similarity,
+      passed: mismatchPercent <= local.maxMismatchPercent && (similarity === null || similarity >= local.minSsim) };
+  });
   const passed =
     mismatchPercent <= thresholds.maxMismatchPercent &&
-    (similarity === null || similarity >= thresholds.minSsim);
+    (similarity === null || similarity >= thresholds.minSsim) &&
+    (criticalRegions?.every(region => region.passed) ?? true);
 
+  const compareMs = Date.now() - compareStarted;
   const differenceRegionsStarted = Date.now();
   const differenceRegions =
     options.analyzeDifferenceRegions === false ||
     (options.differenceRegionsOnFailureOnly && passed)
       ? []
       : findDifferenceRegions(diff, options.topRegions ?? 3);
+  if (options.analyzeDifferenceRegions !== false) {
+    for (const region of criticalRegions ?? []) {
+      if (region.passed) continue;
+      const box = region.bounds;
+      if (differenceRegions.some(r => r.x <= box.x && r.y <= box.y && r.x + r.width >= box.x + box.width && r.y + r.height >= box.y + box.height)) continue;
+      differenceRegions.push({ ...box, mismatchPixels: Math.round(region.mismatchPercent * box.width * box.height / 100),
+        mismatchPercent: region.mismatchPercent });
+    }
+  }
   const differenceRegionsMs = Date.now() - differenceRegionsStarted;
   const writeStarted = Date.now();
   await fs.mkdir(path.dirname(diffPath), { recursive: true });
@@ -352,6 +390,7 @@ export async function compareScreenshots(
     thresholds,
     ...(options.includeRegions?.length ? { comparedRegions } : {}),
     differenceRegions,
+    ...(criticalRegions ? { criticalRegions } : {}),
     timings: {
       readMs,
       compareMs,

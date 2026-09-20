@@ -18,6 +18,7 @@ export function resolveAdaptiveMode(
   if (previous.mode === "final") {
     return previous.status === "passed" ? "final" : "agent";
   }
+  if (previous.workflow.pixelStagnantRounds >= 2) return "agent";
   return "quick";
 }
 
@@ -65,6 +66,9 @@ export function createAdaptiveWorkflow(
     effectiveMode: report.mode,
     autoFinalized: options.autoFinalized ?? false,
     pixelStagnantRounds,
+    diagnosticStrategy: pixelStagnantRounds >= 2 ? "parent-layout-and-fonts" : "local",
+    ...(pixelStagnantRounds >= 2 ? { recommendation:
+      "Inspect candidate parent bounds, spacing and font styles; next run uses full agent diagnostics. Do not repeat unchanged CSS guesses." } : {}),
     nextAction:
       report.status === "passed" && report.mode === "final"
         ? "complete"

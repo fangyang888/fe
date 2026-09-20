@@ -170,3 +170,42 @@ test("writes compact side-by-side diagnostic crops", async () => {
   assert.equal(image.width, 26);
   assert.equal(image.height, 12);
 });
+
+test("critical regions catch small defects despite a passing page average and support tiny SSIM windows", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "critical-regions-"));
+  try {
+    const a = path.join(dir, "a.png"), b = path.join(dir, "b.png"), diff = path.join(dir, "diff.png");
+    await writeBlocks(a, []);
+    await writeBlocks(b, [{ x: 4, y: 4, width: 2, height: 2 }]);
+    const options = { maxMismatchPercent: 100, minSsim: 0, criticalRegions: [
+      { name: "icon", bounds: { x: 4, y: 4, width: 2, height: 2 }, thresholds: { maxMismatchPercent: 0, minSsim: 1 } },
+    ] };
+    assert.equal((await compareScreenshots(a, b, diff, { maxMismatchPercent: 100, minSsim: 0 })).passed, true);
+    const failed = await compareScreenshots(a, b, diff, options);
+    assert.equal(failed.passed, false);
+    assert.ok(Number.isFinite(failed.criticalRegions![0]!.ssim));
+    const restored = await compareScreenshots(a, a, diff, options);
+    assert.equal(restored.passed, true);
+    assert.equal(restored.criticalRegions![0]!.ssim, 1);
+    await assert.rejects(compareScreenshots(a, b, diff, { criticalRegions: [{ name: "outside", bounds: { x: 31, y: 31, width: 2, height: 2 } }] }), /inside the screenshot/);
+    const quick = await compareScreenshots(a, b, diff, { ...options, computeSsim: false });
+    assert.equal(quick.criticalRegions![0]!.ssim, null);
+    assert.equal(quick.passed, false);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("diagnostic crops add bounded parent context but never expand to a huge page", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "context-crops-"));
+  try {
+    const a = path.join(dir, "a.png");
+    await writeImage(a, [255, 255, 255]);
+    const region = { x: 10, y: 10, width: 4, height: 4, mismatchPixels: 16, mismatchPercent: 100,
+      domCandidates: [{ selector: "#child", bounds: { x: 10, y: 10, width: 4, height: 4 }, styles: {}, overlap: 1,
+        parent: { selector: "#parent", bounds: { x: 8, y: 8, width: 8, height: 8 }, styles: {} } }] };
+    const [file] = await writeComparisonCrops(a, a, [region], dir, 0);
+    assert.equal(PNG.sync.read(await fs.readFile(file!)).width, 18);
+    region.domCandidates[0]!.parent.bounds = { x: 0, y: 0, width: 32, height: 32 };
+    const [limited] = await writeComparisonCrops(a, a, [region], dir, 0);
+    assert.equal(PNG.sync.read(await fs.readFile(limited!)).width, 10);
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});

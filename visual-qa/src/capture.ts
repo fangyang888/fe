@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
-import type { Browser } from "playwright";
+import type { Browser, Page } from "playwright";
 import { inspectCssRules } from "./css-rules.js";
 import { waitForVisualReadiness } from "./readiness.js";
 import { inspectVisualStructure } from "./structure.js";
@@ -16,6 +16,8 @@ export interface CaptureOptions {
   skipScreenshot?: boolean;
   browser?: Browser;
   browserEndpoint?: string;
+  /** Runs before closing this page, so diagnostics use the captured DOM. */
+  afterScreenshot?: (page: Page) => Promise<void>;
 }
 
 export function isIgnorableFavicon404(
@@ -150,6 +152,11 @@ export async function captureH5Screenshot(
       animations: "disabled",
     });
     timings.screenshotMs = Date.now() - screenshotStarted;
+    if (!options.skipScreenshot && options.afterScreenshot) {
+      const diagnosticStarted = Date.now();
+      await options.afterScreenshot(page);
+      timings.diagnosticsMs = Date.now() - diagnosticStarted;
+    }
 
     return {
       url: page.url(),

@@ -3,6 +3,7 @@ import path from "node:path";
 import { normalizeContract } from "./measure.js";
 import type {
   ChangeDetectionConfig,
+  CriticalRegion,
   CssRulesConfig,
   ImageElementIntent,
   OverlayImageIntent,
@@ -183,6 +184,25 @@ function normalizeChangeDetection(
   };
 }
 
+function normalizeCriticalRegions(input: CriticalRegion[] | undefined): CriticalRegion[] | undefined {
+  if (input === undefined) return undefined;
+  if (!Array.isArray(input) || input.length > 16) throw new Error("criticalRegions must be an array of at most 16 regions");
+  const names = new Set<string>();
+  return input.map((region, index) => {
+    const name = requireText(region?.name, `criticalRegions[${index}].name`);
+    if (names.has(name)) throw new Error(`Duplicate critical region: ${name}`);
+    names.add(name);
+    const bounds = region.bounds;
+    if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isInteger) ||
+      bounds.x < 0 || bounds.y < 0 || bounds.width <= 0 || bounds.height <= 0) throw new Error(`Invalid critical region ${name} bounds`);
+    for (const [key, max] of [["pixelThreshold", 1], ["maxMismatchPercent", 100], ["minSsim", 1]] as const) {
+      const value = region.thresholds?.[key];
+      if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > max)) throw new Error(`Invalid critical region ${name} ${key}`);
+    }
+    return { name, bounds: { ...bounds }, ...(region.thresholds ? { thresholds: { ...region.thresholds } } : {}) };
+  });
+}
+
 export function normalizeVisualCase(input: VisualCase, configPath: string): VisualCase;
 export function normalizeVisualCase(input: HarmonyCase, configPath: string): HarmonyCase;
 export function normalizeVisualCase(input: PlatformCase, configPath: string): PlatformCase;
@@ -205,6 +225,7 @@ export function normalizeVisualCase(input: PlatformCase, configPath: string): Pl
   return {
     ...input,
     name: input.name.trim(),
+    criticalRegions: normalizeCriticalRegions(input.criticalRegions),
     ...(input.contract ? { contract: normalizeContract(input.contract) } : {}),
     ...(input.intentPlan
       ? {

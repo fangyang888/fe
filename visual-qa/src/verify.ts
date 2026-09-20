@@ -13,6 +13,8 @@ import {
 import { captureH5Screenshot, launchVisualQaBrowser } from "./capture.js";
 import { writeVerificationReport } from "./report.js";
 import { compareScreenshots, writeComparisonCrops } from "./compare.js";
+import { associateDifferenceRegions } from "./region-diagnostics.js";
+import { recordRegionHistory } from "./region-history.js";
 import { recordMeasurement } from "./measure.js";
 import { measurementIdentity } from "./measure-case.js";
 import {
@@ -95,6 +97,7 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
   const designHash =
     options.preparedDesignHash ?? await hashFile(visualCase.designImage);
   const caseHash = hashValue({
+    diagnosticsVersion: 1,
     visualCase,
     mode,
     changedOnly: options.changedOnly ?? false,
@@ -136,6 +139,8 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
           cacheLookupMs,
           captureMs: 0,
           comparisonMs: 0,
+          domDiagnosticsMs: 0,
+          regionHistoryMs: 0,
           diagnosticCropsMs: 0,
           persistMs: 0,
           totalMs: Date.now() - totalStarted,
@@ -161,34 +166,44 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
           cssRules: undefined,
         }
       : visualCase;
+  let comparison!: import("./types.js").ComparisonResult;
+  let comparisonMs = 0;
+  let domDiagnosticsMs = 0;
   const captureStarted = Date.now();
   const capture = await captureH5Screenshot(captureCase, actualPath, {
+    afterScreenshot: async (page) => {
+      const comparisonStarted = Date.now();
+      comparison = await compareScreenshots(
+        visualCase.designImage,
+        actualPath,
+        diffPath,
+        {
+          ...visualCase.thresholds,
+          criticalRegions: visualCase.criticalRegions,
+          topRegions: options.topRegions ?? (mode === "agent" ? 2 : 3),
+          computeSsim: mode !== "quick",
+          analyzeDifferenceRegions: true,
+          differenceRegionsOnFailureOnly: mode !== "final",
+          ...(selectedRegions.length > 0
+            ? { includeRegions: selectedRegions.map((region) => region.bounds) }
+            : {}),
+        },
+      );
+      comparisonMs = Date.now() - comparisonStarted;
+      const domStarted = Date.now();
+      comparison.domDiagnosticsWarning = await associateDifferenceRegions(page, comparison.differenceRegions, visualCase.fullPage ?? false)
+        .catch(error => `DOM candidates unavailable: ${String(error)}`);
+      domDiagnosticsMs = Date.now() - domStarted;
+    },
     ...(options.browser ? { browser: options.browser } : {}),
     ...(options.browserEndpoint
       ? { browserEndpoint: options.browserEndpoint }
       : {}),
   });
-  const captureMs = Date.now() - captureStarted;
+  const captureMs = Date.now() - captureStarted - comparisonMs - domDiagnosticsMs;
   if (capture.measurement) {
     await recordMeasurement(capture.measurement, path.join(outputDirectory, "measurement-history.json"), measurementIdentity(visualCase));
   }
-  const comparisonStarted = Date.now();
-  const comparison = await compareScreenshots(
-    visualCase.designImage,
-    actualPath,
-    diffPath,
-    {
-      ...visualCase.thresholds,
-      topRegions: options.topRegions ?? (mode === "agent" ? 2 : 3),
-      computeSsim: mode !== "quick",
-      analyzeDifferenceRegions: true,
-      differenceRegionsOnFailureOnly: mode !== "final",
-      ...(selectedRegions.length > 0
-        ? { includeRegions: selectedRegions.map((region) => region.bounds) }
-        : {}),
-    },
-  );
-  const comparisonMs = Date.now() - comparisonStarted;
   const passed =
     comparison.passed &&
     (!capture.measurement || !capture.measurement.failOnMismatch || capture.measurement.passed) &&
@@ -203,6 +218,15 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
       !capture.cssRules.failOnMismatch ||
       capture.cssRules.passed);
 
+  const historyStarted = Date.now();
+  comparison.regionIteration = await recordRegionHistory(
+    diffPath, comparison.differenceRegions, path.join(outputDirectory, "region-history.json"),
+    hashValue({ designHash, ...measurementIdentity(visualCase), fullPage: visualCase.fullPage ?? false,
+      thresholds: comparison.thresholds, criticalRegions: visualCase.criticalRegions, comparedRegions: comparison.comparedRegions ?? null }),
+    !(options.deferPassedRegionHistory && passed),
+  );
+
+  const regionHistoryMs = Date.now() - historyStarted;
   const diagnosticCropsStarted = Date.now();
   const shouldReviewImages = mode !== "quick" && !comparison.passed &&
     (!capture.measurement || capture.measurement.passed || Boolean(capture.measurement.iteration?.recommendImageReview));
@@ -268,6 +292,8 @@ export async function verifyVisualCase(visualCase: PlatformCase, options: Verifi
       cacheLookupMs,
       captureMs,
       comparisonMs,
+      domDiagnosticsMs,
+      regionHistoryMs,
       diagnosticCropsMs,
       persistMs: 0,
       totalMs: Date.now() - totalStarted,
@@ -348,6 +374,7 @@ async function runAdaptiveVisualCase(
   const report = await verifyVisualCase(visualCase, {
     ...options,
     mode: effectiveMode,
+    deferPassedRegionHistory: true,
     reuseVerification:
       effectiveMode === "quick" && !options.skipCodeScan
         ? options.reuseVerification ?? true
@@ -362,6 +389,7 @@ async function runAdaptiveVisualCase(
     const finalReport = await verifyVisualCase(visualCase, {
       ...options,
       mode: "final",
+      deferPassedRegionHistory: false,
       reuseVerification: false,
       preparedCodeState,
       preparedDesignHash: designHash,
@@ -372,6 +400,8 @@ async function runAdaptiveVisualCase(
       cacheLookupMs: candidateTimings.cacheLookupMs + finalReport.timings.cacheLookupMs,
       captureMs: candidateTimings.captureMs + finalReport.timings.captureMs,
       comparisonMs: candidateTimings.comparisonMs + finalReport.timings.comparisonMs,
+      domDiagnosticsMs: (candidateTimings.domDiagnosticsMs ?? 0) + (finalReport.timings.domDiagnosticsMs ?? 0),
+      regionHistoryMs: (candidateTimings.regionHistoryMs ?? 0) + (finalReport.timings.regionHistoryMs ?? 0),
       diagnosticCropsMs:
         candidateTimings.diagnosticCropsMs + finalReport.timings.diagnosticCropsMs,
       persistMs: candidateTimings.persistMs + finalReport.timings.persistMs,

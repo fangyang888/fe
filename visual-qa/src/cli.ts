@@ -120,7 +120,9 @@ function compactResult(command: string, result: any): Record<string, unknown> {
       name: result.name,
       mismatchPercent: result.comparison?.mismatchPercent,
       ssim: result.comparison?.ssim,
-      differenceRegions: result.comparison?.differenceRegions,
+      differenceRegions: result.comparison?.differenceRegions?.map(({ domCandidates, ...region }: any) => region),
+      regionIteration: result.comparison?.regionIteration,
+      criticalRegions: result.comparison?.criticalRegions,
       changedOnly: result.changedOnly,
       designReused: result.cache?.designReused,
       verificationReused: result.cache?.verificationReused,
@@ -183,8 +185,16 @@ function agentResult(result: any): Record<string, unknown> {
       ? { ssim: result.comparison.ssim }
       : {}),
     differenceRegionCount: result.comparison?.differenceRegions?.length ?? 0,
+    regionIteration: result.comparison?.regionIteration,
+    criticalRegions: result.comparison?.criticalRegions,
+    domCandidates: result.comparison?.differenceRegions?.map((region: any) => ({
+      x: region.x, y: region.y, width: region.width, height: region.height,
+      candidates: region.domCandidates?.map((candidate: any) => ({ selector: candidate.selector,
+        parent: candidate.parent?.selector, overlap: candidate.overlap })),
+    })),
+    domDiagnosticsWarning: result.comparison?.domDiagnosticsWarning,
     ...(result.workflow?.phase === "iteration"
-      ? { differenceRegions: result.comparison?.differenceRegions }
+      ? { differenceRegions: result.comparison?.differenceRegions?.map(({ domCandidates, ...region }: any) => region) }
       : {}),
     css: result.capture?.cssRules?.counts,
     diagnosticCrops: result.artifacts?.diagnosticCrops,

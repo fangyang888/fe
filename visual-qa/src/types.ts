@@ -18,6 +18,13 @@ export interface VisualThresholds {
   minSsim?: number;
 }
 
+export interface CriticalRegion {
+  name: string;
+  /** Physical screenshot pixels, matching design PNG coordinates. */
+  bounds: RectangleBounds;
+  thresholds?: VisualThresholds;
+}
+
 export interface CssRulesConfig {
   preferFlex?: boolean;
   allowGap?: boolean;
@@ -252,6 +259,7 @@ export interface VisualStructureIntent {
 }
 
 export interface VisualCase {
+  criticalRegions?: CriticalRegion[];
   /** Temporary experiment CSS, injected before visual readiness checks. */
   styleOverrides?: string;
   platform?: "web";
@@ -362,6 +370,7 @@ export interface CaptureResult {
     structureMs: number;
     cssRulesMs: number;
     screenshotMs: number;
+    diagnosticsMs?: number;
     measurementMs?: number;
     totalMs: number;
   };
@@ -423,6 +432,9 @@ export interface MeasurementResult {
 }
 
 export interface ComparisonResult {
+  criticalRegions?: Array<CriticalRegion & { mismatchPercent: number; ssim: number | null; passed: boolean }>;
+  regionIteration?: RegionIteration;
+  domDiagnosticsWarning?: string;
   expectedPath: string;
   actualPath: string;
   diffPath: string;
@@ -447,6 +459,30 @@ export interface ComparisonResult {
 export interface DifferenceRegion extends RectangleBounds {
   mismatchPixels: number;
   mismatchPercent: number;
+  /** Geometric candidates, not proven causes. Bounds use screenshot pixels. */
+  domCandidates?: DomRegionCandidate[];
+}
+
+export interface DomRegionCandidate {
+  selector: string;
+  bounds: RectangleBounds;
+  styles: Record<string, string>;
+  overlap: number;
+  parent?: { selector: string; bounds: RectangleBounds; styles: Record<string, string> };
+}
+
+export interface RegionIteration {
+  baselineReset: boolean;
+  scope: "tracked-screenshot-regions";
+  counts: Record<"new" | "improved" | "worsened" | "resolved" | "unchanged", number>;
+  regions: Array<RectangleBounds & {
+    id: string;
+    state: "new" | "improved" | "worsened" | "resolved" | "unchanged";
+    previousPixels: number | null;
+    currentPixels: number;
+    delta: number | null;
+  }>;
+  truncated: boolean;
 }
 
 export type VerificationMode = "quick" | "agent" | "final" | "adaptive";
@@ -460,6 +496,8 @@ export interface AdaptiveVerificationWorkflow {
   pixelStagnantRounds: number;
   nextAction: "fix-local-differences" | "inspect-diagnostic-crops" | "complete";
   candidateMismatchPercent?: number;
+  diagnosticStrategy?: "local" | "parent-layout-and-fonts";
+  recommendation?: string;
 }
 
 export interface VerificationOptions {
@@ -481,6 +519,8 @@ export interface VerificationOptions {
   preparedCodeState?: VisualQaCache["code"];
   /** Internal prepared hash used to avoid reading the design twice in one adaptive run. */
   preparedDesignHash?: string;
+  /** Adaptive candidates must not replace the previous round before auto-final. */
+  deferPassedRegionHistory?: boolean;
 }
 
 export interface VerificationReport {
@@ -527,6 +567,8 @@ export interface VerificationReport {
     cacheLookupMs: number;
     captureMs: number;
     comparisonMs: number;
+    domDiagnosticsMs?: number;
+    regionHistoryMs?: number;
     diagnosticCropsMs: number;
     persistMs: number;
     totalMs: number;

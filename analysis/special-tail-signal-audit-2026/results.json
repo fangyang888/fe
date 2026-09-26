@@ -1,0 +1,459 @@
+{
+  "protocol": {
+    "createdAt": "2026-09-26T07:20:24.491Z",
+    "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+    "hashes": {
+      "tail-signal-audit.mjs": "879ff43153e10f06c58ebb4d0b5e01c3919a16cba4ee5b89d0deab45ea5cb253",
+      "run-tail-signal-audit.mjs": "dfe3b634f6498550dd08c23bd79d133f371535d98cf0222efe820a4d98472fcb",
+      "tail-two.mjs": "d5064653a05e25c3029d195aa3d61d3a129949b14ceb7c9402e17bfc73c02c99",
+      "tail-optimize.mjs": "84be902723befcdba00ffd22a5379a9d8f5116cbca16295c026430e424048171",
+      "model.mjs": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0"
+    },
+    "simulations": 2000,
+    "seed": 2026092601,
+    "permutationSeed": 2026092602,
+    "lags": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "driftBoundaries": [
+      0,
+      88,
+      177,
+      266
+    ],
+    "modelFamily": "Original8 tail rules plus5 gap variants (excluding duplicate original gap and consensus).13 fixed designs; this does not reproduce the full historical adaptive research process.",
+    "selection": "Validation successes, then worst20-draw validation block, then declaration order. Evaluation207–266 untouched by selection.",
+    "uniformNull": "Independently sample each special number uniformly1..49; tail0 mass4/49 and others5/49. Construct valid ordinary numbers deterministically because this limited model family never uses ordinary numbers. Retrain and evaluate all13 fixed models on each synthetic266-draw history; do not simply shuffle already-fixed forecasts.",
+    "permutationNull": "Shuffle observed266 tails preserving marginal counts. Recompute maximum mutual information over fixed lags1..5 and three-block homogeneity statistic. Maximum-lag test includes search over these five lags; no other searched diagnostics are multiplicity-adjusted.",
+    "interpretation": "Monte Carlo p=(exceedances+1)/(B+1); these are null exceedance estimates, not probabilities that randomness is true. Failure to reject is not proof of independence.13-rule family is only a partial illustration of selection effects, not full correction for every prior experiment or analyst adaptation."
+  },
+  "audit": {
+    "year": 2026,
+    "selected": 266,
+    "valid": 266,
+    "ignoredOtherYears": 0,
+    "identicalDuplicatesRemoved": 0,
+    "first": 1,
+    "last": 266,
+    "gaps": 0
+  },
+  "observed": {
+    "frequency": {
+      "counts": [
+        18,
+        39,
+        21,
+        26,
+        18,
+        22,
+        37,
+        27,
+        23,
+        35
+      ],
+      "statistic": 17.794736842105262
+    },
+    "serial": {
+      "lags": [
+        {
+          "lag": 1,
+          "mutualInformation": 0.1738728282866483
+        },
+        {
+          "lag": 2,
+          "mutualInformation": 0.1601546412158735
+        },
+        {
+          "lag": 3,
+          "mutualInformation": 0.20203370301074047
+        },
+        {
+          "lag": 4,
+          "mutualInformation": 0.20269922913420768
+        },
+        {
+          "lag": 5,
+          "mutualInformation": 0.17973846614350733
+        }
+      ],
+      "statistic": 0.20269922913420768
+    },
+    "drift": {
+      "blocks": [
+        {
+          "start": 1,
+          "end": 88,
+          "count": 88,
+          "counts": [
+            2,
+            14,
+            7,
+            12,
+            5,
+            8,
+            11,
+            8,
+            10,
+            11
+          ]
+        },
+        {
+          "start": 89,
+          "end": 177,
+          "count": 89,
+          "counts": [
+            8,
+            13,
+            7,
+            8,
+            7,
+            6,
+            13,
+            10,
+            6,
+            11
+          ]
+        },
+        {
+          "start": 178,
+          "end": 266,
+          "count": 89,
+          "counts": [
+            8,
+            12,
+            7,
+            6,
+            6,
+            8,
+            13,
+            9,
+            7,
+            13
+          ]
+        }
+      ],
+      "statistic": 8.82110078610389
+    },
+    "family": {
+      "results": [
+        {
+          "id": "fixed-01",
+          "label": "固定杀0、1尾（对照）",
+          "validation": {
+            "successes": 47
+          },
+          "validationBlocks": [
+            14,
+            15,
+            18
+          ],
+          "validationMinimum": 14,
+          "evaluation": 45,
+          "evaluationBlocks": [
+            16,
+            16,
+            13
+          ]
+        },
+        {
+          "id": "cold-30",
+          "label": "近30期冷尾",
+          "validation": {
+            "successes": 47
+          },
+          "validationBlocks": [
+            17,
+            14,
+            16
+          ],
+          "validationMinimum": 14,
+          "evaluation": 48,
+          "evaluationBlocks": [
+            16,
+            16,
+            16
+          ]
+        },
+        {
+          "id": "cold-100",
+          "label": "近100期冷尾",
+          "validation": {
+            "successes": 49
+          },
+          "validationBlocks": [
+            19,
+            14,
+            16
+          ],
+          "validationMinimum": 14,
+          "evaluation": 46,
+          "evaluationBlocks": [
+            20,
+            15,
+            11
+          ]
+        },
+        {
+          "id": "hot-30",
+          "label": "近30期热尾反向排除",
+          "validation": {
+            "successes": 45
+          },
+          "validationBlocks": [
+            16,
+            14,
+            15
+          ],
+          "validationMinimum": 14,
+          "evaluation": 51,
+          "evaluationBlocks": [
+            17,
+            16,
+            18
+          ]
+        },
+        {
+          "id": "longest-gap",
+          "label": "遗漏最长的两个尾",
+          "validation": {
+            "successes": 46
+          },
+          "validationBlocks": [
+            14,
+            16,
+            16
+          ],
+          "validationMinimum": 14,
+          "evaluation": 47,
+          "evaluationBlocks": [
+            16,
+            17,
+            14
+          ]
+        },
+        {
+          "id": "gap-conditional",
+          "label": "遗漏分组条件统计",
+          "validation": {
+            "successes": 52
+          },
+          "validationBlocks": [
+            16,
+            19,
+            17
+          ],
+          "validationMinimum": 16,
+          "evaluation": 53,
+          "evaluationBlocks": [
+            20,
+            18,
+            15
+          ]
+        },
+        {
+          "id": "transition",
+          "label": "上一期特别码尾数转移",
+          "validation": {
+            "successes": 52
+          },
+          "validationBlocks": [
+            19,
+            17,
+            16
+          ],
+          "validationMinimum": 16,
+          "evaluation": 45,
+          "evaluationBlocks": [
+            16,
+            16,
+            13
+          ]
+        },
+        {
+          "id": "consensus",
+          "label": "冷尾、遗漏、转移综合",
+          "validation": {
+            "successes": 53
+          },
+          "validationBlocks": [
+            19,
+            19,
+            15
+          ],
+          "validationMinimum": 15,
+          "evaluation": 47,
+          "evaluationBlocks": [
+            19,
+            17,
+            11
+          ]
+        },
+        {
+          "id": "gap-prior20",
+          "label": "减弱平滑",
+          "validation": {
+            "successes": 53
+          },
+          "validationBlocks": [
+            17,
+            19,
+            17
+          ],
+          "validationMinimum": 17,
+          "evaluation": 53,
+          "evaluationBlocks": [
+            19,
+            18,
+            16
+          ]
+        },
+        {
+          "id": "gap-prior100",
+          "label": "增强平滑",
+          "validation": {
+            "successes": 53
+          },
+          "validationBlocks": [
+            17,
+            19,
+            17
+          ],
+          "validationMinimum": 17,
+          "evaluation": 51,
+          "evaluationBlocks": [
+            20,
+            18,
+            13
+          ]
+        },
+        {
+          "id": "gap-coarse",
+          "label": "合并短遗漏分组",
+          "validation": {
+            "successes": 53
+          },
+          "validationBlocks": [
+            16,
+            20,
+            17
+          ],
+          "validationMinimum": 16,
+          "evaluation": 51,
+          "evaluationBlocks": [
+            19,
+            19,
+            13
+          ]
+        },
+        {
+          "id": "gap-fine",
+          "label": "细分遗漏分组",
+          "validation": {
+            "successes": 52
+          },
+          "validationBlocks": [
+            18,
+            18,
+            16
+          ],
+          "validationMinimum": 16,
+          "evaluation": 51,
+          "evaluationBlocks": [
+            20,
+            17,
+            14
+          ]
+        },
+        {
+          "id": "gap-recent",
+          "label": "近期加权遗漏",
+          "validation": {
+            "successes": 49
+          },
+          "validationBlocks": [
+            16,
+            17,
+            16
+          ],
+          "validationMinimum": 16,
+          "evaluation": 49,
+          "evaluationBlocks": [
+            18,
+            17,
+            14
+          ]
+        }
+      ],
+      "selectedId": "gap-prior20",
+      "selectedSuccesses": 53,
+      "incumbentSuccesses": 53,
+      "bestEvaluationSuccesses": 53
+    }
+  },
+  "findings": {
+    "frequency": {
+      "exceedances": 63,
+      "simulations": 2000,
+      "probability": 0.031984007996002
+    },
+    "serial": {
+      "exceedances": 1145,
+      "simulations": 2000,
+      "probability": 0.5727136431784108
+    },
+    "drift": {
+      "exceedances": 1944,
+      "simulations": 2000,
+      "probability": 0.9720139930034982
+    },
+    "incumbentAtLeastObserved": {
+      "exceedances": 163,
+      "simulations": 2000,
+      "probability": 0.08195902048975512
+    },
+    "bestOf13AtLeastObserved": {
+      "exceedances": 991,
+      "simulations": 2000,
+      "probability": 0.495752123938031
+    },
+    "selectedAtLeastObserved": {
+      "exceedances": 172,
+      "simulations": 2000,
+      "probability": 0.0864567716141929
+    },
+    "selectedAtLeast95": {
+      "exceedances": 6,
+      "simulations": 2000,
+      "probability": 0.0034982508745627187
+    },
+    "bestOf13AtLeast95": {
+      "exceedances": 45,
+      "simulations": 2000,
+      "probability": 0.022988505747126436
+    },
+    "nullQuantiles": {
+      "incumbent": {
+        "0.05": 43,
+        "0.5": 48,
+        "0.95": 53,
+        "0.99": 55
+      },
+      "selected": {
+        "0.05": 43,
+        "0.5": 48,
+        "0.95": 53,
+        "0.99": 55
+      },
+      "bestOf13": {
+        "0.05": 50,
+        "0.5": 52,
+        "0.95": 56,
+        "0.99": 57
+      }
+    }
+  }
+}

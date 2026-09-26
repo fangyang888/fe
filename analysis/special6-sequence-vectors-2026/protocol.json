@@ -1,0 +1,48 @@
+{
+  "createdAt": "2026-09-25T07:53:34.136Z",
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "moduleSha256": "c67079cf320dc72b0b321833e90986445392febd6bb5d1298851dd38995ed51d",
+  "runnerSha256": "f7edc1248f88670d9cc85eb41c77e282374184058c019d9d8e9f53211688ccb1",
+  "configs": [
+    {
+      "id": "sequence-3-knn10",
+      "length": 3,
+      "neighbors": 10,
+      "decay": 0.8,
+      "temperature": 8,
+      "prior": 20
+    },
+    {
+      "id": "sequence-3-knn20",
+      "length": 3,
+      "neighbors": 20,
+      "decay": 0.8,
+      "temperature": 8,
+      "prior": 20
+    },
+    {
+      "id": "sequence-5-knn10",
+      "length": 5,
+      "neighbors": 10,
+      "decay": 0.8,
+      "temperature": 8,
+      "prior": 20
+    },
+    {
+      "id": "sequence-5-knn20",
+      "length": 5,
+      "neighbors": 20,
+      "decay": 0.8,
+      "temperature": 8,
+      "prior": 20
+    }
+  ],
+  "representation": "98 dimensions per chronological draw: unit-norm 49-dimensional ordinary multi-hot block and 49-dimensional special one-hot block, equal group weights, recency decay 0.8. Normal positions are pooled; draw order and special position are preserved.",
+  "similarity": "Cosine on 294- or 490-dimensional vectors; score is not next-outcome probability.",
+  "retrieval": "All neighbour windows AND their next-draw labels must be strictly before the query window. Greedy non-overlap among historical window-plus-outcome spans. Fewer than K neighbours are allowed and reported if necessary.",
+  "prediction": "Similarity weights exp(8*cosine), normalized to actual neighbour count. Mix next-special votes with a 20-sample prior from smoothed past-100 frequencies; exclude bottom 20 then bottom 6.",
+  "validation": "2026/147–206",
+  "evaluation": "2026/207–266",
+  "selection": "Choose among the four sequence variants by validation exclude-6 successes only, ties follow configuration order. Existing frequency/KNN results are comparison controls, not refitted here.",
+  "caveat": "Exploratory re-use of previously examined data. Similar histories are not proof that future draws share an outcome distribution."
+}

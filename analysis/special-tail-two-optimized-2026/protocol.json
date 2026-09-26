@@ -1,0 +1,108 @@
+{
+  "createdAt": "2026-09-26T06:57:23.061Z",
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "hashes": {
+    "tail-optimize.mjs": "84be902723befcdba00ffd22a5379a9d8f5116cbca16295c026430e424048171",
+    "run-tail-optimize.mjs": "19de9d9365c1f99a0e078891369ae5a8f6a8646c293ea5eef14177daeef55c7d",
+    "tail-two.mjs": "d5064653a05e25c3029d195aa3d61d3a129949b14ceb7c9402e17bfc73c02c99",
+    "model.mjs": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0"
+  },
+  "configs": [
+    {
+      "id": "incumbent-consensus",
+      "label": "原综合规则",
+      "type": "control"
+    },
+    {
+      "id": "gap-original",
+      "label": "原遗漏条件",
+      "prior": 50,
+      "decay": 1,
+      "bounds": [
+        0,
+        1,
+        3,
+        7,
+        15,
+        "Infinity"
+      ]
+    },
+    {
+      "id": "gap-prior20",
+      "label": "减弱平滑",
+      "prior": 20,
+      "decay": 1,
+      "bounds": [
+        0,
+        1,
+        3,
+        7,
+        15,
+        "Infinity"
+      ]
+    },
+    {
+      "id": "gap-prior100",
+      "label": "增强平滑",
+      "prior": 100,
+      "decay": 1,
+      "bounds": [
+        0,
+        1,
+        3,
+        7,
+        15,
+        "Infinity"
+      ]
+    },
+    {
+      "id": "gap-coarse",
+      "label": "合并短遗漏分组",
+      "prior": 50,
+      "decay": 1,
+      "bounds": [
+        1,
+        3,
+        7,
+        15,
+        "Infinity"
+      ]
+    },
+    {
+      "id": "gap-fine",
+      "label": "细分遗漏分组",
+      "prior": 50,
+      "decay": 1,
+      "bounds": [
+        0,
+        1,
+        2,
+        3,
+        5,
+        9,
+        15,
+        "Infinity"
+      ]
+    },
+    {
+      "id": "gap-recent",
+      "label": "近期加权遗漏",
+      "prior": 50,
+      "decay": 0.98,
+      "bounds": [
+        0,
+        1,
+        3,
+        7,
+        15,
+        "Infinity"
+      ]
+    }
+  ],
+  "trainEnd": 146,
+  "validationEnd": 206,
+  "evaluationEnd": 266,
+  "selection": "Maximize validation147–206 successes, then minimum success count over its three chronological20-draw blocks, then declaration order. Keep original consensus as eligible incumbent control. Never reselect by evaluation207–266.",
+  "design": "One-factor variants of the existing per-tail gap-condition model: prior20/100 versus50; coarser/finer gap boundaries; exponential decay0.98 versus1. Prior centers retain4/49 for tail0 and5/49 for others. Unknown gaps have their own bin. Predict first, update after outcome. No skipping draws.",
+  "caveat": "The gap model was chosen for optimization after inspecting its previous evaluation success53/60. This is explicitly post-hoc exploratory optimization on reused2026 data; the old60-draw evaluation is not an independent holdout."
+}

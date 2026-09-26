@@ -140,8 +140,15 @@ import SpecialCodeTracker from './SpecialCodeTracker.jsx';
 // @ts-ignore
 import AStockAnalyzer from './AStockAnalyzer.jsx';
 import AgentChat from './AgentChat';
+import TemaRecommendations from './TemaRecommendations';
 
 const routes = [
+  {
+    path: '/tema-recommendations',
+    label: '什么是特码 · 推荐特肖',
+    section: '预测',
+    element: <TemaRecommendations />,
+  },
   {
     path: '/agent',
     label: 'AI 智能助手',

@@ -1,0 +1,99 @@
+{
+  "createdAt": "2026-09-25T05:02:20.074Z",
+  "year": 2026,
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "modelSha256": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0",
+  "exclusionSha256": "c39a84a4088fb0f0819f6487acfd68135a20a23e8190b1140f4974e2a205f8e6",
+  "runnerSha256": "73464dae232477c6a7f3fa126f97f4a8fe9a5c3468728a0fb1a655af70d13b6c",
+  "dataThrough": 266,
+  "sourceExperiment": "/Users/yang/fe/fe/analysis/special15-2026",
+  "evaluation": "Exploratory reuse of already inspected 2026 data; not a fresh holdout or prospective test.",
+  "selection": "Lowest-scoring 20, then lowest-scoring 10 within those 20. Same score for both stages: exactly equivalent to bottom-10 directly.",
+  "successDefinition": "All 10 excluded numbers miss the single n7 special number; do not average per-number success.",
+  "baselines": {
+    "exclude20": 0.5918367346938775,
+    "exclude10": 0.7959183673469388,
+    "individualNumber": 0.9795918367346939
+  },
+  "configSelection": "Highest validation exclude-10 group success count, ties follow original config declaration order. No test-based selection.",
+  "originalSplits": {
+    "version": 1,
+    "year": 2026,
+    "topK": 15,
+    "warmup": 30,
+    "training": {
+      "startIndex": 0,
+      "endIndexExclusive": 146,
+      "from": 1,
+      "to": 146,
+      "count": 146
+    },
+    "trainingLabels": {
+      "startIndex": 30,
+      "endIndexExclusive": 146,
+      "from": 31,
+      "to": 146,
+      "count": 116
+    },
+    "validation": {
+      "startIndex": 146,
+      "endIndexExclusive": 206,
+      "from": 147,
+      "to": 206,
+      "count": 60
+    },
+    "test": {
+      "startIndex": 206,
+      "endIndexExclusive": 266,
+      "from": 207,
+      "to": 266,
+      "count": 60
+    },
+    "configs": [
+      {
+        "id": "frequency-30",
+        "family": "frequency",
+        "window": 30,
+        "prior": 49
+      },
+      {
+        "id": "frequency-100",
+        "family": "frequency",
+        "window": 100,
+        "prior": 49
+      },
+      {
+        "id": "logistic-l2-0.01",
+        "family": "logistic",
+        "l2": 0.01,
+        "epochs": 40,
+        "learningRate": 0.3
+      },
+      {
+        "id": "logistic-l2-0.1",
+        "family": "logistic",
+        "l2": 0.1,
+        "epochs": 40,
+        "learningRate": 0.3
+      },
+      {
+        "id": "knn-15",
+        "family": "knn",
+        "neighbors": 15,
+        "prior": 10
+      },
+      {
+        "id": "knn-30",
+        "family": "knn",
+        "neighbors": 30,
+        "prior": 10
+      }
+    ],
+    "selection": "Highest validation Top-15 hit count; ties follow configuration declaration order. No test-based reselection.",
+    "updatePolicy": "Predict first, then learn the revealed outcome. Logistic: one SGD update per new draw; KNN: append one labeled past state.",
+    "trainingPolicy": "Logistic: 40 chronological SGD passes over training labels only. Hyperparameters fixed before final test.",
+    "features": "12 candidate features; analytical scaling only. KNN: 98-dimensional past-30 special/normal frequency state.",
+    "caveat": "Retrospective holdout for this script; these draws may have been inspected by other project experiments. Prospective evidence is still required."
+  },
+  "originalSelectedId": "frequency-30"
+}

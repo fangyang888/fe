@@ -1,0 +1,70 @@
+{
+  "createdAt": "2026-09-26T07:10:40.442Z",
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "hashes": {
+    "tail-pairs.mjs": "3a75fcb1efaf4b878b6bac26d1afd4fad61b115d92f3d9a644490ebd4ef025aa",
+    "run-tail-pairs.mjs": "61917a274d15451a6c8619780f5ea251c27b48e8e1873360dde231754a67ecf0",
+    "tail-optimize.mjs": "84be902723befcdba00ffd22a5379a9d8f5116cbca16295c026430e424048171",
+    "tail-two.mjs": "d5064653a05e25c3029d195aa3d61d3a129949b14ceb7c9402e17bfc73c02c99",
+    "model.mjs": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0"
+  },
+  "configs": [
+    {
+      "id": "incumbent-gap20",
+      "label": "原优化遗漏模型",
+      "type": "incumbent",
+      "cells": 70
+    },
+    {
+      "id": "pair-frequency",
+      "label": "两尾组合频率",
+      "type": "frequency",
+      "window": 100,
+      "cells": 10
+    },
+    {
+      "id": "pair-binary",
+      "label": "组合遗漏二分组",
+      "type": "shared",
+      "bounds": [
+        0,
+        "Infinity"
+      ],
+      "prior": 50,
+      "cells": 6
+    },
+    {
+      "id": "pair-coarse",
+      "label": "组合遗漏三分组",
+      "type": "shared",
+      "bounds": [
+        0,
+        3,
+        "Infinity"
+      ],
+      "prior": 50,
+      "cells": 8
+    },
+    {
+      "id": "pair-coarse-frequency",
+      "label": "组合三分组＋频率",
+      "type": "blend",
+      "bounds": [
+        0,
+        3,
+        "Infinity"
+      ],
+      "prior": 50,
+      "window": 100,
+      "cells": 18
+    }
+  ],
+  "year": 2026,
+  "trainEnd": 146,
+  "validationEnd": 206,
+  "evaluationEnd": 266,
+  "design": "Enumerate45 unordered pairs. Frequency control equals sum of smoothed100-draw marginal tail frequencies (prior49), so carries no new pair interaction. Shared pair-gap models use time since either tail last occurred: bins0/1+ or0/1–3/4+, plus never observed. Separate zero-containing pairs(base9/49) from nonzero pairs(base10/49). Pool all pairs in each of6/8 groups; one observed draw contributes the average hit fraction of pairs currently in that group, with total weight1 per occupied group. Shrink toward theoretical mass with prior50 group-draw weights. Blend variant averages shared score and frequency50/50. Each forecast ranks45 pair scores and excludes one pair.",
+  "interpretation": "Overlapping pairs are correlated; no claim of45 independent samples per draw. Scores are risk rankings, not calibrated probabilities and need not form a coherent45-category distribution. Same-score ties use fixed label-independent hash; incumbent retains original single-tail tie rule.",
+  "selection": "Validation147–206 success count, then minimum success count over three20-draw blocks, then declaration order preferring incumbent. Do not reselect using207–266. No skipped draws.",
+  "caveat": "Exploratory reuse of known2026 history. Reduced statistical cells are a model-size description, not proof of generalization.95% target means at least57/60 but does not establish a future guarantee."
+}

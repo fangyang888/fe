@@ -1,0 +1,164 @@
+{
+  "generatedAt": "2026-09-25T07:38:21.374Z",
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "hashes": {
+    "single-year-six.mjs": "74c370e142d36c501a3c1f9a589879becc7746fb2b6f4e082550a9efd1fc3c61",
+    "run-single-year-six.mjs": "5bc938380b36c0bd727977fa92b506f928b3469cfe29a51067ed45d7daafb639",
+    "model.mjs": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0",
+    "exclusion.mjs": "c39a84a4088fb0f0819f6487acfd68135a20a23e8190b1140f4974e2a205f8e6",
+    "expanded-models.mjs": "ac13dcf4e44e7543a280d93df411612d4f5cabda7473308e2eadf0b3f89fa00e",
+    "target-six.mjs": "0ac6e5256d9da16021a8f4749a33f410932c92fa62ec17bc919746b4c99c7b58"
+  },
+  "audit": {
+    "year": 2026,
+    "selected": 266,
+    "valid": 266,
+    "ignoredOtherYears": 0,
+    "identicalDuplicatesRemoved": 0,
+    "first": 1,
+    "last": 266,
+    "gaps": 0
+  },
+  "modelData": "Only normalized 2026 draws. Prior-year comparison files are not passed to model training or selection.",
+  "year": 2026,
+  "warmup": 30,
+  "trainEnd": 146,
+  "validationEnd": 206,
+  "training": {
+    "from": 1,
+    "to": 146,
+    "count": 146,
+    "labelCount": 116
+  },
+  "validation": {
+    "from": 147,
+    "to": 206,
+    "count": 60
+  },
+  "evaluation": {
+    "from": 207,
+    "to": 266,
+    "count": 60
+  },
+  "baseConfigs": [
+    {
+      "id": "frequency-30",
+      "family": "frequency",
+      "window": 30,
+      "prior": 49
+    },
+    {
+      "id": "frequency-100",
+      "family": "frequency",
+      "window": 100,
+      "prior": 49
+    },
+    {
+      "id": "logistic-l2-0.01",
+      "family": "logistic",
+      "l2": 0.01,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "logistic-l2-0.1",
+      "family": "logistic",
+      "l2": 0.1,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "knn-15",
+      "family": "knn",
+      "neighbors": 15,
+      "prior": 10
+    },
+    {
+      "id": "knn-30",
+      "family": "knn",
+      "neighbors": 30,
+      "prior": 10
+    },
+    {
+      "id": "markov-shrink-50",
+      "family": "markov",
+      "prior": 50
+    },
+    {
+      "id": "gap-hazard-100",
+      "family": "hazard",
+      "prior": 100,
+      "pooledPrior": 98
+    },
+    {
+      "id": "boosted-stumps-32",
+      "family": "boosting",
+      "rounds": 32,
+      "learningRate": 0.15,
+      "l2": 10,
+      "minLeaf": 100,
+      "refitEvery": 20,
+      "window": 365,
+      "thresholds": [
+        -0.75,
+        -0.5,
+        -0.25,
+        0,
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    {
+      "id": "consensus-two-stage",
+      "family": "ensemble",
+      "members": [
+        "frequency-100",
+        "logistic-l2-0.01",
+        "knn-30",
+        "markov-shrink-50",
+        "gap-hazard-100",
+        "boosted-stumps-32"
+      ]
+    }
+  ],
+  "targetConfigs": [
+    {
+      "id": "direct-rank-c0.05",
+      "family": "rank",
+      "cap": 0.05,
+      "margin": 0.1,
+      "decay": 0.001,
+      "epochs": 20
+    },
+    {
+      "id": "direct-rank-c0.2",
+      "family": "rank",
+      "cap": 0.2,
+      "margin": 0.1,
+      "decay": 0.001,
+      "epochs": 20
+    },
+    {
+      "id": "listwise-mlp-8",
+      "family": "mlp",
+      "hidden": 8,
+      "seed": 42,
+      "learningRate": 0.03,
+      "l2": 0.01,
+      "epochs": 30
+    },
+    {
+      "id": "listwise-mlp-16",
+      "family": "mlp",
+      "hidden": 16,
+      "seed": 42,
+      "learningRate": 0.03,
+      "l2": 0.01,
+      "epochs": 30
+    }
+  ],
+  "selection": "Highest 2026 validation group success count for six exclusions. Ties follow original configuration declaration order; no evaluation-based reselection.",
+  "updatePolicy": "Same fixed hyperparameters as previous experiments. Predict before consuming each result. All warmup, initialization, training, features and online updates use 2026 only.",
+  "caveat": "Exploratory re-use of already examined 2026 outcomes; not a fresh independent test."
+}

@@ -1,0 +1,95 @@
+{
+  "source": "http://47.106.103.79/api/history",
+  "audit": {
+    "year": 2026,
+    "selected": 266,
+    "valid": 266,
+    "ignoredOtherYears": 0,
+    "identicalDuplicatesRemoved": 0,
+    "first": 1,
+    "last": 266,
+    "gaps": 0
+  },
+  "retrievedAt": "2026-09-25T04:54:13.672Z",
+  "outputDirectory": "analysis/special15-2026",
+  "dataSha256": "394e6b00e9d939417c7881802e90fd2bfc50251c342a620287db8cff05ea0bda",
+  "modelSha256": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0",
+  "runnerSha256": "f8617ba07986bf2793686e71123222652d52b4c3c0474b41a96d731888b2e945",
+  "version": 1,
+  "year": 2026,
+  "topK": 15,
+  "warmup": 30,
+  "training": {
+    "startIndex": 0,
+    "endIndexExclusive": 146,
+    "from": 1,
+    "to": 146,
+    "count": 146
+  },
+  "trainingLabels": {
+    "startIndex": 30,
+    "endIndexExclusive": 146,
+    "from": 31,
+    "to": 146,
+    "count": 116
+  },
+  "validation": {
+    "startIndex": 146,
+    "endIndexExclusive": 206,
+    "from": 147,
+    "to": 206,
+    "count": 60
+  },
+  "test": {
+    "startIndex": 206,
+    "endIndexExclusive": 266,
+    "from": 207,
+    "to": 266,
+    "count": 60
+  },
+  "configs": [
+    {
+      "id": "frequency-30",
+      "family": "frequency",
+      "window": 30,
+      "prior": 49
+    },
+    {
+      "id": "frequency-100",
+      "family": "frequency",
+      "window": 100,
+      "prior": 49
+    },
+    {
+      "id": "logistic-l2-0.01",
+      "family": "logistic",
+      "l2": 0.01,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "logistic-l2-0.1",
+      "family": "logistic",
+      "l2": 0.1,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "knn-15",
+      "family": "knn",
+      "neighbors": 15,
+      "prior": 10
+    },
+    {
+      "id": "knn-30",
+      "family": "knn",
+      "neighbors": 30,
+      "prior": 10
+    }
+  ],
+  "selection": "Highest validation Top-15 hit count; ties follow configuration declaration order. No test-based reselection.",
+  "updatePolicy": "Predict first, then learn the revealed outcome. Logistic: one SGD update per new draw; KNN: append one labeled past state.",
+  "trainingPolicy": "Logistic: 40 chronological SGD passes over training labels only. Hyperparameters fixed before final test.",
+  "features": "12 candidate features; analytical scaling only. KNN: 98-dimensional past-30 special/normal frequency state.",
+  "caveat": "Retrospective holdout for this script; these draws may have been inspected by other project experiments. Prospective evidence is still required."
+}

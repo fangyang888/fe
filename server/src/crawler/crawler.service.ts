@@ -6,6 +6,7 @@ export class CrawlerService {
   async fetchUrl(url: string): Promise<string> {
     try {
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(20000),
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -17,7 +18,11 @@ export class CrawlerService {
       if (!response.ok) {
         throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
       }
-      return await response.text();
+      const buffer = await response.arrayBuffer();
+      const headerCharset = response.headers.get('content-type')?.match(/charset\s*=\s*["']?([\w-]+)/i)?.[1];
+      const prefix = new TextDecoder('ascii').decode(buffer.slice(0, 4096));
+      const metaCharset = prefix.match(/<meta\b[^>]*charset\s*=\s*["']?([\w-]+)/i)?.[1];
+      return new TextDecoder(headerCharset || metaCharset || 'utf-8').decode(buffer);
     } catch (error) {
       throw new HttpException(
         `Crawler failed to fetch ${url}: ${(error as Error).message}`,

@@ -1,0 +1,134 @@
+{
+  "createdAt": "2026-09-25T07:06:49.742Z",
+  "dataSha256": "9b785d0161d53cc26125d192a84b602d631d212850ab07321da3fb66018117c3",
+  "hashes": {
+    "model.mjs": "38a90c72bbf1bc7390a409467943e19ec261eee00faf0b37687d8b047ac1dcd0",
+    "exclusion.mjs": "c39a84a4088fb0f0819f6487acfd68135a20a23e8190b1140f4974e2a205f8e6",
+    "expanded-models.mjs": "ac13dcf4e44e7543a280d93df411612d4f5cabda7473308e2eadf0b3f89fa00e",
+    "run-expanded.mjs": "491286efa68aca02f04c717a708ae42592908217d250b632133aa77e9c3e6301"
+  },
+  "audit": {
+    "years": [
+      {
+        "year": 2025,
+        "selected": 365,
+        "valid": 365,
+        "ignoredOtherYears": 266,
+        "identicalDuplicatesRemoved": 0,
+        "first": 1,
+        "last": 365,
+        "gaps": 0
+      },
+      {
+        "year": 2026,
+        "selected": 266,
+        "valid": 266,
+        "ignoredOtherYears": 365,
+        "identicalDuplicatesRemoved": 0,
+        "first": 1,
+        "last": 266,
+        "gaps": 0
+      }
+    ],
+    "ignoredOtherYears": 0
+  },
+  "sourceFiles": [
+    "/tmp/fe-special10-2025.json",
+    "/tmp/fe-special10-2026.json"
+  ],
+  "sourceApi": "http://47.106.103.79/api/history",
+  "version": 1,
+  "warmup": 30,
+  "trainEnd": 245,
+  "validationEnd": 365,
+  "training": "2025/001–245（前30期仅特征预热；215期逻辑回归标签）",
+  "validation": "2025/246–365（120期）",
+  "evaluation": "2026/001–266（266期）",
+  "configs": [
+    {
+      "id": "frequency-30",
+      "family": "frequency",
+      "window": 30,
+      "prior": 49
+    },
+    {
+      "id": "frequency-100",
+      "family": "frequency",
+      "window": 100,
+      "prior": 49
+    },
+    {
+      "id": "logistic-l2-0.01",
+      "family": "logistic",
+      "l2": 0.01,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "logistic-l2-0.1",
+      "family": "logistic",
+      "l2": 0.1,
+      "epochs": 40,
+      "learningRate": 0.3
+    },
+    {
+      "id": "knn-15",
+      "family": "knn",
+      "neighbors": 15,
+      "prior": 10
+    },
+    {
+      "id": "knn-30",
+      "family": "knn",
+      "neighbors": 30,
+      "prior": 10
+    },
+    {
+      "id": "markov-shrink-50",
+      "family": "markov",
+      "prior": 50
+    },
+    {
+      "id": "gap-hazard-100",
+      "family": "hazard",
+      "prior": 100,
+      "pooledPrior": 98
+    },
+    {
+      "id": "boosted-stumps-32",
+      "family": "boosting",
+      "rounds": 32,
+      "learningRate": 0.15,
+      "l2": 10,
+      "minLeaf": 100,
+      "refitEvery": 20,
+      "window": 365,
+      "thresholds": [
+        -0.75,
+        -0.5,
+        -0.25,
+        0,
+        0.25,
+        0.5,
+        0.75
+      ]
+    },
+    {
+      "id": "consensus-two-stage",
+      "family": "ensemble",
+      "members": [
+        "frequency-100",
+        "logistic-l2-0.01",
+        "knn-30",
+        "markov-shrink-50",
+        "gap-hazard-100",
+        "boosted-stumps-32"
+      ]
+    }
+  ],
+  "selection": "Highest 2025 validation exclude-10 group success count. Ties follow configuration order. No 2026-based reselection.",
+  "trainingPolicy": "Initial logistic training uses 40 passes, then one update per revealed draw. KNN/Markov/hazard update after each outcome. Boosted stumps refit every 20 draws using at most 365 past labeled draws.",
+  "ensemblePolicy": "Lowest 20 by mean percentile rank across six predeclared models, then lowest 10 within that pool by maximum (most risky) member percentile rank.",
+  "otherPolicy": "Single-model methods use bottom 20 then bottom 10 of the same score. Exactly 10 exclusions every draw; no skipped draws.",
+  "limitations": "2026 draws were already examined during previous experiments. This is exploratory year-forward evaluation, not a never-inspected holdout. All parameters are fixed before this run; future draws are still required."
+}

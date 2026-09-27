@@ -7,6 +7,7 @@ import {
   apiRemoveAddress,
   Address,
 } from '../../api/address'
+import { PageHeading, EmptyState } from '../../components/ui'
 import './index.scss'
 
 export default function AddressList() {
@@ -45,11 +46,9 @@ export default function AddressList() {
 
   return (
     <View className='address-list-page'>
+      <PageHeading title='收货地址' subtitle='让每一份喜欢，准确送达' />
       {list.length === 0 ? (
-        <View className='empty'>
-          <Text className='empty-icon'>📍</Text>
-          <Text className='empty-text'>还没有收货地址</Text>
-        </View>
+        <EmptyState icon='pin' title='还没有收货地址' description='添加一个地址，准备迎接心仪好物' />
       ) : (
         <View className='list'>
           {list.map((addr) => (
@@ -75,7 +74,7 @@ export default function AddressList() {
                   className='action-btn'
                   onClick={() => setDefault(addr.id)}
                 >
-                  {addr.isDefault === 1 ? '✅ 默认' : '设为默认'}
+                  {addr.isDefault === 1 ? '默认地址' : '设为默认'}
                 </Text>
                 <Text className='action-btn' onClick={() => goEdit(addr.id)}>
                   编辑

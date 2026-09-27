@@ -10,7 +10,7 @@ const config = {
     baseUrl: 'http://127.0.0.1:3000',
   },
   production: {
-    baseUrl: 'http://47.106.103.79', // TODO: 换成线上后端地址
+    baseUrl: 'https://fzmall.xyz',
   },
 };
 

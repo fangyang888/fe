@@ -1,6 +1,7 @@
 import { View, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
 import { logout, login } from '../../store/userStore'
+import { PageHeading, Icon } from '../../components/ui'
 import './index.scss'
 
 export default function Settings() {
@@ -28,20 +29,21 @@ export default function Settings() {
   const showAbout = () => {
     Taro.showModal({
       title: '关于',
-      content: '商城小程序 v1.0.0\n基于 Taro + NestJS',
+      content: 'FZ 商城 v1.0.0\n发现日常里的好东西',
       showCancel: false,
     })
   }
 
   return (
     <View className='settings-page'>
+      <PageHeading title='按你的习惯' subtitle='管理账户与本地数据' />
       <View className='group'>
         <View className='cell' onClick={clearCache}>
-          <Text className='cell-text'>清除缓存</Text>
+          <Icon name='trash' /><Text className='cell-text'>清除缓存</Text>
           <Text className='cell-arrow'>›</Text>
         </View>
         <View className='cell' onClick={showAbout}>
-          <Text className='cell-text'>关于我们</Text>
+          <Icon name='help' /><Text className='cell-text'>关于我们</Text>
           <Text className='cell-arrow'>›</Text>
         </View>
       </View>
@@ -49,6 +51,7 @@ export default function Settings() {
       <View className='logout-btn' onClick={handleLogout}>
         <Text className='logout-text'>退出登录</Text>
       </View>
+      <Text className='settings-version'>FZ 商城 · v1.0.0</Text>
     </View>
   )
 }

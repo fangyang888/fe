@@ -1,0 +1,11 @@
+@import '../../styles/variables.scss';
+.ui-icon { display: inline-block; width: 44px; height: 44px; flex-shrink: 0; vertical-align: middle; }
+.page-heading { padding: 40px 8px 36px; }
+.page-heading-title { display: block; font-size: 52px; line-height: 1.35; letter-spacing: -1px; font-weight: 600; color: $ink; }
+.page-heading-subtitle { display: block; margin-top: 12px; font-size: 26px; line-height: 1.6; color: $text-2; }
+.ui-empty { display: flex; flex-direction: column; align-items: center; padding: 100px 24px; text-align: center; }
+.ui-empty-symbol { display: flex; align-items: center; justify-content: center; width: 144px; height: 144px; background: $primary-soft; border-radius: 50%; margin-bottom: 32px; .ui-icon { width: 64px; height: 64px; opacity: .65; } }
+.ui-empty-title { font-size: 30px; color: $ink; font-weight: 500; }
+.ui-empty-description { margin-top: 16px; color: $text-2; font-size: 24px; line-height: 1.8; }
+.ui-empty-action { @include btn-ghost; margin-top: 36px; font-size: 26px; }
+.ui-image-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: $line-2; color: $text-3; font-size: 20px; .ui-icon { opacity: .35; } }

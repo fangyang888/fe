@@ -1,0 +1,17 @@
+@import './variables.scss';
+@mixin goods-list {
+ .goods-item { display: flex; gap: 24px; padding: 24px 0; border-bottom: 1px solid $line; &:last-child { border: 0; padding-bottom: 0; } }
+ .goods-image { width: 160px; height: 160px; border-radius: 16px; flex-shrink: 0; background: $line-2; }
+ .goods-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; }
+ .goods-name { @include clamp(2); font-size: 28px; font-weight: 500; line-height: 1.55; }
+ .goods-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; }
+ .goods-price { @include price(30px); }
+ .goods-qty { font-size: 24px; color: $text-3; }
+}
+@mixin address-info {
+ .addr-info { flex: 1; min-width: 0; }
+ .addr-line1 { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; margin-bottom: 16px; }
+ .addr-name { font-size: 30px; font-weight: 600; color: $ink; }
+ .addr-phone { font-size: 26px; color: $text-2; }
+ .addr-detail { display: block; font-size: 26px; color: $text-2; line-height: 1.7; word-break: break-word; }
+}

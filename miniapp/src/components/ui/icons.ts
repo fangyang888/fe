@@ -1,0 +1,21 @@
+import home from '../../assets/icons/home.png'
+import bag from '../../assets/icons/bag.png'
+import user from '../../assets/icons/user.png'
+import heart from '../../assets/icons/heart.png'
+import pin from '../../assets/icons/pin.png'
+import ticket from '../../assets/icons/ticket.png'
+import packageIcon from '../../assets/icons/package.png'
+import wallet from '../../assets/icons/wallet.png'
+import truck from '../../assets/icons/truck.png'
+import message from '../../assets/icons/message.png'
+import help from '../../assets/icons/help.png'
+import settings from '../../assets/icons/settings.png'
+import search from '../../assets/icons/search.png'
+import chevron from '../../assets/icons/chevron.png'
+import trash from '../../assets/icons/trash.png'
+import refresh from '../../assets/icons/refresh.png'
+import plus from '../../assets/icons/plus.png'
+import check from '../../assets/icons/check.png'
+
+export const icons = { home, bag, user, heart, pin, ticket, package: packageIcon, wallet, truck, message, help, settings, search, chevron, trash, refresh, plus, check }
+export type IconName = keyof typeof icons

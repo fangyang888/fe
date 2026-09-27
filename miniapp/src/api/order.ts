@@ -63,12 +63,10 @@ export const apiGetOrders = (params?: {
   page?: number
   pageSize?: number
 }) => {
-  const qs = new URLSearchParams(
-    Object.entries(params || {}).reduce((acc, [k, v]) => {
-      if (v !== undefined && v !== null) acc[k] = String(v)
-      return acc
-    }, {} as Record<string, string>),
-  ).toString()
+  const qs = Object.entries(params || {})
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
   return http.get<OrderPage>(`/api/order${qs ? `?${qs}` : ''}`)
 }
 

@@ -1,3 +1,6 @@
+const path = require('path')
+const outputRoot = process.env.TARO_OUTPUT_ROOT || 'dist'
+
 const config = {
   projectName: 'micro-app',
   date: '2026-1-28',
@@ -8,13 +11,15 @@ const config = {
     828: 1.81 / 2
   },
   sourceRoot: 'src',
-  outputRoot: 'dist',
+  outputRoot,
   plugins: [],
   defineConstants: {
   },
   copy: {
     patterns: [
-      { from: 'src/assets/', to: 'dist/assets/' }
+      // tabBar 图标由 app.config.ts 按路径引用，需要单独复制。
+      // 页面资源通过 import 引入，避免把未使用的素材打进主包。
+      { from: 'src/assets/tabbar/', to: path.join(outputRoot, 'assets/tabbar/'), ignore: ['**/*.svg'] }
     ],
     options: {
     }

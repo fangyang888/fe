@@ -1,146 +1,21 @@
 @import '../../styles/variables.scss';
+.product-detail-page { min-height: 100vh; background: $bg; padding-bottom: calc(160px + env(safe-area-inset-bottom)); }
+.main-image { width: 100%; height: 720px; background: $line-2; }
+.info-card { background: $surface; padding: 36px 40px; margin-bottom: 24px; }
+.price-row { display: flex; align-items: baseline; gap: 20px; margin-bottom: 20px; }
+.price { @include price(52px); }
+.original { color: $text-3; text-decoration: line-through; font-size: 26px; }
+.name { display: block; color: $ink; font-size: 36px; font-weight: 600; line-height: 1.55; }
+.meta-row { display: flex; gap: 32px; margin-top: 20px; }
+.meta { font-size: 24px; color: $text-2; }
+.desc-card { padding: 32px 40px; background: $surface; }
+.desc-title { display: block; font-size: 30px; font-weight: 600; color: $ink; margin-bottom: 24px; }
+.desc-text { display: block; font-size: 28px; color: $text-2; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+.action-bar { @include bottom-bar; }
+.icon-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 88px; gap: 6px; }
+.icon-label { color: $text-2; font-size: 22px; }
+.is-favorite { background: $primary-soft; border-radius: 50%; }
+.detail-add-cart-btn { @include btn-primary; flex: 1; margin-left: 12px; }
+.add-cart-text { font-size: 28px; }
 
-.product-detail-page {
-  min-height: 100vh;
-  background: $bg;
-  padding-bottom: 160px;
-
-  .loading {
-    text-align: center;
-    padding-top: 200px;
-    color: $text-3;
-    font-size: $fs-md;
-  }
-}
-
-.main-image {
-  width: 100%;
-  height: 750px;
-  background: $line-2;
-}
-
-.info-card {
-  background: $surface;
-  border-radius: $r-xl;
-  margin: -36px $sp-sm 0;
-  position: relative;
-  padding: $sp-lg $sp-md;
-  box-shadow: $shadow;
-
-  .price-row {
-    display: flex;
-    align-items: baseline;
-
-    .price {
-      @include price(56px);
-      margin-right: 12px;
-    }
-    .original {
-      font-size: $fs-md;
-      color: $text-3;
-      text-decoration: line-through;
-    }
-  }
-
-  .name {
-    display: block;
-    font-size: $fs-lg;
-    color: $ink;
-    font-weight: 700;
-    line-height: 1.4;
-    margin: 16px 0;
-  }
-
-  .meta-row {
-    display: flex;
-    justify-content: space-between;
-    padding-top: $sp-sm;
-    border-top: 1px solid $line;
-
-    .meta {
-      font-size: $fs-sm;
-      color: $text-3;
-    }
-  }
-}
-
-.desc-card {
-  background: $surface;
-  border-radius: $r-xl;
-  margin: $sp-sm;
-  padding: $sp-lg $sp-md;
-  box-shadow: $shadow;
-
-  .desc-title {
-    display: flex;
-    align-items: center;
-    font-size: $fs-md;
-    font-weight: 700;
-    color: $ink;
-    margin-bottom: $sp-md;
-    padding-left: 16px;
-    position: relative;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 6px;
-      height: 26px;
-      border-radius: $r-pill;
-      background: $primary-grad;
-    }
-  }
-  .desc-text {
-    font-size: $fs-sm;
-    color: $text-2;
-    line-height: 1.75;
-  }
-}
-
-.action-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 120px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px);
-  display: flex;
-  align-items: center;
-  padding: 0 $sp-md;
-  padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: 0 -4px 24px rgba(17, 24, 39, 0.06);
-
-  .icon-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-right: 36px;
-    @include tap;
-
-    .icon {
-      font-size: 40px;
-    }
-    .icon-label {
-      font-size: $fs-xs;
-      color: $text-2;
-      margin-top: 2px;
-    }
-  }
-
-  .add-cart-btn {
-    flex: 1;
-    height: 88px;
-    border-radius: $r-pill;
-    @include btn-primary;
-
-    .add-cart-text {
-      font-size: $fs-md;
-      color: #fff;
-      font-weight: 600;
-    }
-  }
-}
+.detail-add-cart-btn.is-disabled { background: $text-3; }

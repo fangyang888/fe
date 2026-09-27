@@ -1,4 +1,4 @@
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
 import { apiGetProduct, Product } from '../../api/home'
@@ -9,20 +9,22 @@ import {
 } from '../../api/favorite'
 import { addToCart } from '../../store/cartStore'
 import { track } from '../../utils/tracker'
+import { Icon, ProductImage, EmptyState } from '../../components/ui'
 import './index.scss'
 
 export default function ProductDetail() {
   const router = useRouter()
   const [product, setProduct] = useState<Product | null>(null)
   const [faved, setFaved] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   useLoad(() => {
     const id = Number(router.params.id)
-    if (!id) return
+    if (!id) { setFailed(true); return }
     track('product_detail_view', { productId: id }, 'pageview')
     apiGetProduct(id)
       .then(setProduct)
-      .catch(() => {})
+      .catch(() => setFailed(true))
     apiCheckFavorite(id)
       .then((r) => setFaved(r.favorite))
       .catch(() => {})
@@ -44,7 +46,7 @@ export default function ProductDetail() {
   }
 
   const addCart = async () => {
-    if (!product) return
+    if (!product || product.stock === 0) return
     await addToCart(product.id)
   }
 
@@ -55,17 +57,16 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <View className='product-detail-page'>
-        <View className='loading'>加载中...</View>
+        {failed ? <EmptyState title='暂时无法查看商品' description='商品可能已下架，请返回首页看看其他好物' action='返回首页' onAction={() => Taro.switchTab({ url: '/pages/index/index' })} /> : <View className='loading'>正在加载商品…</View>}
       </View>
     )
   }
 
   return (
     <View className='product-detail-page'>
-      <Image
+      <ProductImage
         className='main-image'
         src={product.image || ''}
-        mode='aspectFill'
       />
 
       <View className='info-card'>
@@ -92,15 +93,15 @@ export default function ProductDetail() {
       {/* 底部操作栏 */}
       <View className='action-bar'>
         <View className='icon-btn' onClick={toggleFav}>
-          <Text className='icon'>{faved ? '❤️' : '🤍'}</Text>
-          <Text className='icon-label'>收藏</Text>
+          <Icon name='heart' className={faved ? 'is-favorite' : ''} />
+          <Text className='icon-label'>{faved ? '已收藏' : '收藏'}</Text>
         </View>
         <View className='icon-btn' onClick={goCart}>
-          <Text className='icon'>🛒</Text>
+          <Icon name='bag' />
           <Text className='icon-label'>购物车</Text>
         </View>
-        <View className='add-cart-btn' onClick={addCart}>
-          <Text className='add-cart-text'>加入购物车</Text>
+        <View className={`detail-add-cart-btn ${product.stock === 0 ? 'is-disabled' : ''}`} onClick={addCart}>
+          <Text className='add-cart-text'>{product.stock === 0 ? '暂时缺货' : '加入购物车'}</Text>
         </View>
       </View>
     </View>

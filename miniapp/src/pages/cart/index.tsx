@@ -1,5 +1,5 @@
-import { View, Text, Image, ScrollView } from '@tarojs/components'
-import Taro, { useLoad, useDidShow } from '@tarojs/taro'
+import { View, Text, ScrollView } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import {
   getCart,
@@ -9,6 +9,7 @@ import {
   setAllChecked,
   CartItem,
 } from '../../store/cartStore'
+import { PageHeading, EmptyState, ProductImage } from '../../components/ui'
 import './index.scss'
 
 export default function Cart() {
@@ -24,10 +25,6 @@ export default function Cart() {
       // 错误已由 request 层统一提示
     }
   }
-
-  useLoad(() => {
-    loadCartData()
-  })
 
   useDidShow(() => {
     loadCartData()
@@ -72,40 +69,18 @@ export default function Cart() {
 
   // 去结算
   const handleCheckout = () => {
-    if (cartItems.length === 0) {
-      Taro.showToast({ title: '购物车是空的', icon: 'none' })
+    if (!cartItems.some(item => item.checked)) {
+      Taro.showToast({ title: '请先选择要结算的商品', icon: 'none' })
       return
     }
     Taro.navigateTo({ url: '/pages/checkout/index' })
   }
 
-  // 返回上一页。购物车是 tabBar 页，从 tab 进入时导航栈只有自己一页，
-  // navigateBack 无效，此时回退到首页 tab。
-  const handleBack = () => {
-    const pages = Taro.getCurrentPages()
-    if (pages.length > 1) {
-      Taro.navigateBack({ delta: 1 })
-    } else {
-      Taro.switchTab({ url: '/pages/index/index' })
-    }
-  }
-
   return (
     <View className='cart-page'>
-      {/* Header */}
-      <View className='cart-header'>
-        <View className='back-btn' onClick={handleBack}>
-          <Text className='back-icon'>‹</Text>
-        </View>
-        <Text className='header-title'>购物车</Text>
-        <View className='header-placeholder' />
-      </View>
+      <PageHeading title='购物袋' subtitle='把心意，一起带回家' />
       {cartItems.length === 0 ? (
-        <View className='empty-cart'>
-          <Text className='empty-icon'>🛒</Text>
-          <Text className='empty-text'>购物车还是空的</Text>
-          <Text className='empty-tip'>快去挑选心仪的商品吧</Text>
-        </View>
+        <EmptyState icon='bag' title='购物袋还空着' description='去发现值得带回家的好东西' action='去逛逛' onAction={() => Taro.switchTab({ url: '/pages/index/index' })} />
       ) : (
         <>
           <ScrollView className='cart-list' scrollY enhanced showScrollbar={false}>
@@ -117,11 +92,11 @@ export default function Cart() {
                 >
                   {item.checked && <Text className='checkbox-tick'>✓</Text>}
                 </View>
-                <Image className='item-image' src={item.image || ''} mode='aspectFill' />
+                <ProductImage className='item-image' src={item.image} onClick={() => Taro.navigateTo({ url: `/pages/product-detail/index?id=${item.productId}` })} />
                 <View className='item-info'>
                   <Text className='item-name'>{item.name}</Text>
                   <View className='item-bottom'>
-                    <Text className='item-price'>{item.price}</Text>
+                    <Text className='item-price'>¥{item.price}</Text>
                     <View className='quantity-control'>
                       <View className='qty-btn' onClick={() => handleDecrease(item.id)}>
                         <Text>-</Text>
@@ -140,7 +115,7 @@ export default function Cart() {
             ))}
           </ScrollView>
           
-          <View className='cart-footer'>
+          <View className={`cart-footer ${process.env.TARO_ENV === 'h5' ? 'cart-footer-h5' : ''}`}>
             <View className='select-all' onClick={handleToggleAll}>
               <View className={`checkbox ${allChecked ? 'checked' : ''}`}>
                 {allChecked && <Text className='checkbox-tick'>✓</Text>}
@@ -153,7 +128,7 @@ export default function Cart() {
               <Text className='total-price'>{totalPrice.toFixed(2)}</Text>
             </View>
             <View className='checkout-btn' onClick={handleCheckout}>
-              <Text className='checkout-text'>去结算 ({cartItems.reduce((sum, item) => sum + item.quantity, 0)})</Text>
+              <Text className='checkout-text'>去结算 ({cartItems.filter(item => item.checked).reduce((sum, item) => sum + item.quantity, 0)})</Text>
             </View>
           </View>
         </>

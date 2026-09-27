@@ -16,15 +16,15 @@ export default defineAppConfig({
   ],
   window: {
     backgroundTextStyle: 'light',
-    navigationBarBackgroundColor: '#fff',
-    navigationBarTitleText: '商城',
+    navigationBarBackgroundColor: '#f7f6f2',
+    navigationBarTitleText: 'FZ 商城',
     navigationBarTextStyle: 'black'
   },
   tabBar: {
-    color: '#999999',
-    selectedColor: '#ff5000',
+    color: '#7f8983',
+    selectedColor: '#244a3d',
     backgroundColor: '#ffffff',
-    borderStyle: 'black',
+    borderStyle: 'white',
     list: [
       {
         pagePath: 'pages/index/index',
@@ -47,4 +47,3 @@ export default defineAppConfig({
     ]
   }
 })
-

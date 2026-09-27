@@ -1,4 +1,4 @@
-import { View, Text, Image, ScrollView } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
 import { getCart } from '../../store/cartStore'
@@ -7,6 +7,7 @@ import { apiGetAddresses, Address } from '../../api/address'
 import { apiCreateOrder } from '../../api/order'
 import { payOrder } from '../../utils/pay'
 import { track } from '../../utils/tracker'
+import { PageHeading, ProductImage, Icon } from '../../components/ui'
 import './index.scss'
 
 export default function Checkout() {
@@ -90,8 +91,10 @@ export default function Checkout() {
 
   return (
     <View className='checkout-page'>
+      <PageHeading title='确认这份心意' subtitle='核对商品与收货信息' />
       {/* 收货地址 */}
       <View className='address-card' onClick={goPickAddress}>
+        <Icon name='pin' />
         {address ? (
           <View className='addr-info'>
             <View className='addr-line1'>
@@ -111,13 +114,13 @@ export default function Checkout() {
       </View>
 
       {/* 商品清单 */}
-      <ScrollView className='goods-card' scrollY>
+      <View className='goods-card'>
+        <Text className='section-caption'>商品清单</Text>
         {items.map((item) => (
           <View className='goods-item' key={item.id}>
-            <Image
+            <ProductImage
               className='goods-image'
               src={item.image || ''}
-              mode='aspectFill'
             />
             <View className='goods-info'>
               <Text className='goods-name'>{item.name}</Text>
@@ -128,10 +131,11 @@ export default function Checkout() {
             </View>
           </View>
         ))}
-      </ScrollView>
+      </View>
 
       {/* 金额 */}
       <View className='summary-card'>
+        <Text className='section-caption'>费用明细</Text>
         <View className='summary-row'>
           <Text className='summary-label'>商品金额</Text>
           <Text className='summary-value'>¥{totalPrice}</Text>
@@ -152,7 +156,7 @@ export default function Checkout() {
           className={`submit-btn ${submitting ? 'disabled' : ''}`}
           onClick={submit}
         >
-          <Text className='submit-text'>提交订单 ({totalQty})</Text>
+          <Text className='submit-text'>{submitting ? '正在提交…' : `提交订单 (${totalQty})`}</Text>
         </View>
       </View>
     </View>

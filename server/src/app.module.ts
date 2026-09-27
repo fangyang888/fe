@@ -42,6 +42,7 @@ import { StockModule } from './stock/stock.module';
 import { AgentModule } from './agent/agent.module';
 import { AgentConversationRecord } from './agent/persistence/agent-conversation.entity';
 import { AgentMessageRecord } from './agent/persistence/agent-message.entity';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -110,6 +111,7 @@ import { AgentMessageRecord } from './agent/persistence/agent-message.entity';
     ProductModule,
     CategoryModule,
     BannerModule,
+    UploadModule,
     CartModule,
     OrderModule,
     AddressModule,

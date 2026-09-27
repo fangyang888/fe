@@ -6,3 +6,4 @@ logs
 /server/data/dual-linear-ledger/
 
 /**/node_modules
+/uploads/

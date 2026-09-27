@@ -1,7 +1,8 @@
-import { View, Text, Image, ScrollView } from '@tarojs/components'
+import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useRouter, useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import { apiGetOrders, Order, OrderStatus } from '../../api/order'
+import { PageHeading, ProductImage, EmptyState } from '../../components/ui'
 import './index.scss'
 
 const TABS: { key: '' | OrderStatus; text: string }[] = [
@@ -54,6 +55,7 @@ export default function OrderList() {
 
   return (
     <View className='order-list-page'>
+      <PageHeading title='我的订单' subtitle='记录每一次心动' />
       {/* 状态切换 */}
       <ScrollView className='tabs' scrollX showScrollbar={false}>
         {TABS.map((t) => (
@@ -68,10 +70,7 @@ export default function OrderList() {
       </ScrollView>
 
       {orders.length === 0 ? (
-        <View className='empty'>
-          <Text className='empty-icon'>📋</Text>
-          <Text className='empty-text'>暂无相关订单</Text>
-        </View>
+        <EmptyState icon='package' title='暂无相关订单' description='下一次心动，会在这里留下记录' />
       ) : (
         <View className='order-list'>
           {orders.map((order) => (
@@ -89,11 +88,10 @@ export default function OrderList() {
               <View className='order-goods'>
                 {order.items.map((item) => (
                   <View className='goods-item' key={item.id}>
-                    <Image
+                    <ProductImage
                       className='goods-image'
                       src={item.image || ''}
-                      mode='aspectFill'
-                    />
+                            />
                     <View className='goods-info'>
                       <Text className='goods-name'>{item.name}</Text>
                       <View className='goods-meta'>

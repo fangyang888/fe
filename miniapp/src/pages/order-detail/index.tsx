@@ -1,4 +1,4 @@
-import { View, Text, Image } from '@tarojs/components'
+import { View, Text } from '@tarojs/components'
 import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
 import {
@@ -9,6 +9,7 @@ import {
   AddressSnapshot,
 } from '../../api/order'
 import { payOrder } from '../../utils/pay'
+import { ProductImage, Icon } from '../../components/ui'
 import './index.scss'
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
@@ -84,12 +85,13 @@ export default function OrderDetail() {
       {/* 状态条 */}
       <View className='status-bar'>
         <Text className='status-text'>{STATUS_TEXT[order.status]}</Text>
+        <Text className='status-description'>{order.status === 'unpaid' ? '订单已创建，请完成支付' : order.status === 'unshipped' ? '付款已完成，等待商家发货' : order.status === 'shipping' ? '好物正在途中，请留意收货' : order.status === 'closed' ? '这笔订单已关闭' : '感谢你的每一份喜欢'}</Text>
       </View>
 
       {/* 收货地址 */}
       {(addr.name || addr.detail) && (
         <View className='card address-card'>
-          <Text className='addr-icon'>📍</Text>
+          <Icon name='pin' className='addr-icon' />
           <View className='addr-info'>
             <View className='addr-line1'>
               <Text className='addr-name'>{addr.name}</Text>
@@ -106,12 +108,12 @@ export default function OrderDetail() {
 
       {/* 商品 */}
       <View className='card goods-card'>
+        <Text className='section-caption'>商品信息</Text>
         {order.items.map((item) => (
           <View className='goods-item' key={item.id}>
-            <Image
+            <ProductImage
               className='goods-image'
               src={item.image || ''}
-              mode='aspectFill'
             />
             <View className='goods-info'>
               <Text className='goods-name'>{item.name}</Text>
@@ -126,6 +128,7 @@ export default function OrderDetail() {
 
       {/* 订单信息 */}
       <View className='card info-card'>
+        <Text className='section-caption'>订单信息</Text>
         <View className='info-row'>
           <Text className='info-label'>订单编号</Text>
           <Text className='info-value'>{order.orderNo}</Text>

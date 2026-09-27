@@ -1,0 +1,16 @@
+{
+  "assetBaseUrl": "https://fzmall.xyz/fe/catalog/lifestyle-v1/",
+  "note": "生活家居演示目录。图片由 AI 生成；正式销售前需核实实物、价格和库存。",
+  "categories": [
+    { "key": "appliances", "name": "生活电器", "image": "kettle.jpg" },
+    { "key": "textiles", "name": "家居织物", "image": "blanket.jpg" },
+    { "key": "tableware", "name": "杯碗餐具", "image": "bowls.jpg" }
+  ],
+  "products": [
+    { "name": "奶油白细口电热水壶", "price": 328, "image": "kettle.jpg", "category": "appliances", "description": "温柔的奶油白，为日常饮水留一份从容。\n演示商品，图片为 AI 生成；实际材质、规格与售价请以上架前确认的信息为准。", "stock": 0, "sales": 0 },
+    { "name": "燕麦色针织盖毯", "price": 199, "image": "blanket.jpg", "category": "textiles", "description": "自然的燕麦色与针织纹理，让家的角落更柔和。\n演示商品，图片为 AI 生成；实际材质、尺寸与售价请以上架前确认的信息为准。", "stock": 0, "sales": 0 },
+    { "name": "日常陶瓷马克杯", "price": 89, "image": "mug.jpg", "category": "tableware", "description": "简洁的杯形，陪伴一杯咖啡和片刻闲暇。\n演示商品，图片为 AI 生成；实际材质、容量与售价请以上架前确认的信息为准。", "stock": 0, "sales": 0 },
+    { "name": "原色陶瓷餐具组合", "price": 129, "image": "bowls.jpg", "category": "tableware", "description": "朴素的原色陶瓷，为餐桌添一份自然。\n演示商品，图片为 AI 生成；实际件数、规格与售价请以上架前确认的信息为准。", "stock": 0, "sales": 0 }
+  ],
+  "banners": [{ "image": "hero.jpg", "title": "", "link": "/pages/index/index" }]
+}

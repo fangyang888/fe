@@ -10,6 +10,7 @@ import {
   login,
   refreshUserInfo,
 } from '../../store/userStore'
+import { PageHeading, Icon } from '../../components/ui'
 import './index.scss'
 
 const EMPTY_SUMMARY: OrderSummary = {
@@ -19,9 +20,6 @@ const EMPTY_SUMMARY: OrderSummary = {
   unreviewed: 0,
   afterSale: 0,
 }
-
-const DEFAULT_AVATAR =
-  'https://img14.360buyimg.com/imagetools/jfs/t1/167902/2/8762/791358/603742d7E9b4275e3/e09d8f9a8bf4c0ef.png'
 
 export default function Mine() {
   const [user, setUser] = useState<UserInfo | null>(getUserInfo())
@@ -76,24 +74,24 @@ export default function Mine() {
 
   // 订单状态格子（角标取自 orderSummary）
   const orderStatusList = [
-    { key: 'unpaid', icon: '💳', text: '待付款', count: orderSummary.unpaid },
-    { key: 'unshipped', icon: '📦', text: '待发货', count: orderSummary.unshipped },
-    { key: 'shipping', icon: '🚚', text: '待收货', count: orderSummary.shipping },
-    { key: 'unreviewed', icon: '✍️', text: '待评价', count: orderSummary.unreviewed },
-    { key: 'after_sale', icon: '🔄', text: '售后', count: orderSummary.afterSale },
+    { key: 'unpaid', icon: 'wallet' as const, text: '待付款', count: orderSummary.unpaid },
+    { key: 'unshipped', icon: 'package' as const, text: '待发货', count: orderSummary.unshipped },
+    { key: 'shipping', icon: 'truck' as const, text: '待收货', count: orderSummary.shipping },
+    { key: 'unreviewed', icon: 'message' as const, text: '待评价', count: orderSummary.unreviewed },
+    { key: 'after_sale', icon: 'refresh' as const, text: '售后', count: orderSummary.afterSale },
   ]
 
   const menuList = [
-    { id: 1, title: '我的订单', icon: '📦', color: '#ff7a45', url: '/pages/order-list/index' },
-    { id: 2, title: '收货地址', icon: '📍', color: '#36cfc9', url: '/pages/address-list/index' },
-    { id: 3, title: '优惠券', icon: '🎫', color: '#ffa940', url: '/pages/coupon/index' },
-    { id: 4, title: '我的收藏', icon: '❤️', color: '#ff4d6d', url: '/pages/favorite/index' },
-    { id: 5, title: '帮助中心', icon: '❓', color: '#597ef7', url: '/pages/help/index' },
-    { id: 6, title: '设置', icon: '⚙️', color: '#9254de', url: '/pages/settings/index' },
+    { id: 2, title: '收货地址', icon: 'pin' as const, color: '#36cfc9', url: '/pages/address-list/index' },
+    { id: 3, title: '优惠券', icon: 'ticket' as const, color: '#ffa940', url: '/pages/coupon/index' },
+    { id: 4, title: '我的收藏', icon: 'heart' as const, color: '#ff4d6d', url: '/pages/favorite/index' },
+    { id: 5, title: '帮助中心', icon: 'help' as const, color: '#597ef7', url: '/pages/help/index' },
+    { id: 6, title: '设置', icon: 'settings' as const, color: '#9254de', url: '/pages/settings/index' },
   ]
 
   return (
     <View className='mine-page'>
+      <PageHeading title='我的生活空间' subtitle='每一份喜欢，都值得收藏' />
       {/* 用户信息区域 */}
       {user ? (
         <View className='user-section'>
@@ -104,10 +102,7 @@ export default function Mine() {
               openType='chooseAvatar'
               onChooseAvatar={handleChooseAvatar}
             >
-              <Image
-                className='user-avatar'
-                src={user.avatar || DEFAULT_AVATAR}
-              />
+              {user.avatar ? <Image className='user-avatar' src={user.avatar} /> : <View className='avatar-monogram'><Text>{(user.nickname || 'F').slice(0, 1)}</Text></View>}
             </Button>
             <View className='user-detail'>
               {user.nickname ? (
@@ -133,12 +128,11 @@ export default function Mine() {
               </View>
             </View>
           </View>
-          <Text className='arrow-right'>›</Text>
         </View>
       ) : (
         <View className='user-section'>
           <View className='user-info'>
-            <Image className='user-avatar' src={DEFAULT_AVATAR} />
+            <View className='avatar-monogram' onClick={handleLogin}><Icon name='user' /></View>
             <View className='user-detail'>
               <Text className='user-name' onClick={handleLogin}>
                 点击登录
@@ -146,7 +140,6 @@ export default function Mine() {
               <Text className='user-id'>登录后查看更多</Text>
             </View>
           </View>
-          <Text className='arrow-right'>›</Text>
         </View>
       )}
 
@@ -167,7 +160,7 @@ export default function Mine() {
               onClick={() => goOrders(s.key)}
             >
               <View className='status-icon-wrapper'>
-                <Text className='status-icon'>{s.icon}</Text>
+                <Icon name={s.icon} className='status-icon' />
                 {s.count > 0 && (
                   <View className='status-badge'>
                     <Text className='status-badge-text'>
@@ -191,12 +184,7 @@ export default function Mine() {
             onClick={() => goPage(item.url)}
           >
             <View className='menu-item-left'>
-              <View
-                className='menu-icon-chip'
-                style={{ backgroundColor: item.color }}
-              >
-                <Text className='menu-icon'>{item.icon}</Text>
-              </View>
+              <Icon name={item.icon} className='menu-icon' />
               <Text className='menu-text'>{item.title}</Text>
             </View>
             <Text className='arrow-small'>›</Text>

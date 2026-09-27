@@ -49,12 +49,10 @@ export const apiGetProducts = (params?: {
   pageSize?: number
   sort?: 'sales' | 'price' | 'newest'
 }) => {
-  const qs = new URLSearchParams(
-    Object.entries(params || {}).reduce((acc, [k, v]) => {
-      if (v !== undefined && v !== null) acc[k] = String(v)
-      return acc
-    }, {} as Record<string, string>),
-  ).toString()
+  const qs = Object.entries(params || {})
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&')
   return http.get<ProductPage>(`/api/product${qs ? `?${qs}` : ''}`, {
     auth: false,
   })

@@ -1,247 +1,31 @@
 @import '../../styles/variables.scss';
+.home-page { @include page; }
+.search-bar { display: flex; align-items: center; gap: 16px; height: 88px; padding: 0 24px; margin: 0 8px 28px; background: $surface; border: 1px solid $line; border-radius: $r-md; .ui-icon { width: 36px; height: 36px; opacity: .6; } }
+.search-input { flex: 1; min-width: 0; font-size: 26px; height: 80px; }
+.search-clear, .search-submit { background: transparent; margin: 0; padding: 0 4px; line-height: 80px; font-size: 24px; color: $primary; flex: 0 0 auto; width: auto; }
+.search-clear { color: $text-3; }
+.banner-swiper { width: 100%; height: 292px; border-radius: $r-lg; overflow: hidden; }
+.banner-image { width: 100%; height: 292px; }
+.banner-content { position: relative; height: 100%; }
+.banner-title { position: absolute; bottom: 32px; left: 28px; padding: 8px 16px; border-radius: 8px; color: $ink; background: rgba(255,255,255,.92); font-size: 28px; }
+.category-tabs { white-space: nowrap; width: 100%; margin: 12px 0 20px; border-bottom: 1px solid $line; }
+.category-tab { display: inline-block; position: relative; padding: 28px 24px; font-size: 26px; color: $text-2; &.active { color: $primary; font-weight: 600; &::after { content: ''; position: absolute; bottom: 0; left: 24px; right: 24px; height: 5px; border-radius: 5px; background: $primary; } } }
+.section-title { display: flex; justify-content: space-between; align-items: center; padding: 12px 4px 24px; }
+.title-text { font-size: 34px; color: $ink; font-weight: 600; }
+.more-link { display: flex; align-items: center; gap: 6px; font-size: 24px; color: $text-2; .ui-icon { width: 26px; height: 26px; opacity: .6; } }
+.result-count { font-size: 24px; color: $text-2; }
+.product-grid { display: flex; flex-wrap: wrap; justify-content: space-between; }
+.product-card { width: calc(50% - 10px); min-width: 0; @include card; margin-bottom: 24px; overflow: hidden; }
+.product-image { width: 100%; height: 308px; background: $line-2; }
+.product-info { padding: 20px; }
+.product-name { @include clamp(2); font-size: 27px; font-weight: 500; line-height: 1.55; min-height: 84px; }
+.product-sales { display: block; margin-top: 10px; font-size: 22px; color: $text-3; }
+.product-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; }
+.product-price-row { flex: 1; min-width: 0; }
+.price-value { @include price(32px); }
+.original-price { display: block; color: $text-3; font-size: 20px; text-decoration: line-through; }
+.home-add-cart-btn { width: 52px; height: 52px; padding: 8px; margin: 0; background: transparent; border: 1px solid $primary; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; .ui-icon { width: 32px; height: 32px; } }
+.end-note { display: block; text-align: center; color: $text-3; font-size: 22px; letter-spacing: 2px; padding: 36px 0 12px; }
+.load-more { @include btn-ghost; font-size: 26px; margin: 16px 0; }
 
-.home-page {
-  min-height: 100vh;
-  background-color: $bg;
-  padding-bottom: $sp-xl;
-}
-
-// ===== Banner 轮播 =====
-.banner-section {
-  width: 100%;
-  padding: $sp-md $sp-md 0;
-  box-sizing: border-box;
-
-  .banner-swiper {
-    width: 100%;
-    height: 300px;
-    border-radius: $r-xl;
-    overflow: hidden;
-    box-shadow: $shadow-lg;
-  }
-
-  .banner-image {
-    width: 100%;
-    height: 300px;
-    border-radius: $r-xl;
-  }
-}
-
-// 区块标题（极简，左侧细竖条）
-.section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: $sp-md;
-
-  .title-text {
-    position: relative;
-    font-size: $fs-lg;
-    font-weight: 700;
-    color: $ink;
-    letter-spacing: 0.5px;
-    padding-left: 16px;
-
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 6px;
-      height: 26px;
-      border-radius: $r-pill;
-      background: $primary-grad;
-    }
-  }
-
-  .more-text {
-    font-size: $fs-sm;
-    color: $text-3;
-  }
-}
-
-// ===== 类目区域 =====
-.category-section {
-  margin: $sp-md;
-  padding: $sp-lg $sp-md $sp-xs;
-  background-color: $surface;
-  border-radius: $r-xl;
-  box-shadow: $shadow;
-
-  .category-grid {
-    display: flex;
-    flex-wrap: wrap;
-
-    .category-item {
-      width: 25%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-bottom: $sp-md;
-      @include tap;
-
-      .category-icon-wrapper {
-        width: 100px;
-        height: 100px;
-        border-radius: $r-lg;
-        background: $primary-soft;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 12px;
-
-        .category-icon {
-          width: 52px;
-          height: 52px;
-          border-radius: 14px;
-        }
-      }
-
-      .category-name {
-        font-size: $fs-sm;
-        color: $text-2;
-        text-align: center;
-      }
-    }
-  }
-}
-
-// ===== 推荐商品区域 =====
-.recommend-section {
-  margin: $sp-md;
-  padding: 0 $sp-xs;
-  background-color: transparent;
-
-  .product-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: $sp-sm;
-
-    .product-card {
-      width: calc(50% - 6px);
-      box-sizing: border-box;
-      background-color: $surface;
-      border-radius: $r-lg;
-      overflow: hidden;
-      box-shadow: $shadow-sm;
-      @include tap;
-
-      .product-image {
-        width: 100%;
-        height: 330px;
-        background: $line-2;
-      }
-
-      .product-info {
-        padding: $sp-sm $sp-sm $sp-md;
-
-        .product-name {
-          font-size: $fs-md;
-          color: $text;
-          line-height: 1.4;
-          font-weight: 500;
-          @include clamp(2);
-          height: 78px;
-        }
-
-        .product-price-row {
-          display: flex;
-          align-items: baseline;
-          margin-top: 12px;
-
-          .price-symbol {
-            font-size: $fs-sm;
-            color: $ink;
-            font-weight: 700;
-          }
-
-          .price-value {
-            @include price($fs-xl);
-            margin-right: $sp-xs;
-          }
-
-          .original-price {
-            font-size: $fs-xs;
-            color: $text-3;
-            text-decoration: line-through;
-          }
-        }
-
-        .product-bottom {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 12px;
-
-          .product-sales {
-            font-size: $fs-xs;
-            color: $text-3;
-          }
-
-          .add-cart-btn {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: $primary-grad;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: $shadow-primary;
-            @include tap;
-
-            .add-cart-text {
-              font-size: 36px;
-              color: #fff;
-              font-weight: 600;
-              line-height: 1;
-              margin-top: -2px;
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-// ===== 固定购物车入口 =====
-.fixed-cart {
-  position: fixed;
-  right: 28px;
-  bottom: 180px;
-  width: 104px;
-  height: 104px;
-  border-radius: 50%;
-  background: $primary-grad;
-  box-shadow: $shadow-primary;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  @include tap;
-
-  .cart-icon {
-    font-size: 48px;
-  }
-
-  .cart-badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 36px;
-    height: 36px;
-    border-radius: $r-pill;
-    background-color: #fff;
-    border: 2px solid $primary;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 8px;
-
-    .badge-text {
-      font-size: $fs-xs;
-      color: $primary-deep;
-      font-weight: 700;
-    }
-  }
-}
+.home-add-cart-btn.is-disabled { opacity: .35; }

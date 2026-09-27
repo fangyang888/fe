@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // 后端地址，开发时通过代理转发，避免跨域
-const API_TARGET = 'http://127.0.0.1:3000'
+const API_TARGET = process.env.API_PROXY_TARGET || 'http://127.0.0.1:3000'
 
 export default defineConfig({
   plugins: [react()],

@@ -8,6 +8,7 @@ import {
   ProductInput,
 } from '../api/product'
 import { ApiError } from '../api/client'
+import ImageUpload from '../components/ImageUpload'
 
 const EMPTY: ProductInput = {
   name: '',
@@ -28,6 +29,8 @@ export default function Products() {
   const [keyword, setKeyword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [imageUploading, setImageUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [modal, setModal] = useState<{ open: boolean; id?: number }>({
     open: false,
   })
@@ -77,10 +80,12 @@ export default function Products() {
   }
 
   const save = async () => {
+    if (imageUploading || saving) return
     if (!form.name.trim()) {
       alert('请填写商品名称')
       return
     }
+    setSaving(true)
     try {
       if (modal.id) {
         await updateProduct(modal.id, form)
@@ -91,6 +96,8 @@ export default function Products() {
       load()
     } catch (err) {
       alert(err instanceof ApiError ? err.message : '保存失败')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -213,7 +220,7 @@ export default function Products() {
       </div>
 
       {modal.open && (
-        <div className="modal-mask" onClick={() => setModal({ open: false })}>
+        <div className="modal-mask" onClick={() => { if (!imageUploading && !saving) setModal({ open: false }) }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 className="modal-title">
               {modal.id ? '编辑商品' : '新增商品'}
@@ -272,11 +279,11 @@ export default function Products() {
               </div>
             </div>
 
-            <label className="m-label">图片 URL</label>
-            <input
-              className="m-input"
+            <ImageUpload
               value={form.image}
-              onChange={(e) => setField('image', e.target.value)}
+              onChange={url => setField('image', url)}
+              onBusyChange={setImageUploading}
+              disabled={saving}
             />
 
             <label className="m-label">描述</label>
@@ -316,12 +323,13 @@ export default function Products() {
             <div className="modal-actions">
               <button
                 className="ghost-btn"
-                onClick={() => setModal({ open: false })}
+                disabled={imageUploading || saving}
+                onClick={() => { if (!imageUploading && !saving) setModal({ open: false }) }}
               >
                 取消
               </button>
-              <button className="primary-btn" onClick={save}>
-                保存
+              <button className="primary-btn" disabled={imageUploading || saving} onClick={save}>
+                {saving ? '保存中…' : imageUploading ? '等待图片上传…' : '保存'}
               </button>
             </div>
           </div>

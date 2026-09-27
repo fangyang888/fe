@@ -9,6 +9,7 @@ interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: unknown
   auth?: boolean
+  signal?: AbortSignal
 }
 
 export class ApiError extends Error {
@@ -23,10 +24,9 @@ export async function request<T>(
   url: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, auth = true } = options
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
+  const { method = 'GET', body, auth = true, signal } = options
+  const isForm = body instanceof FormData
+  const headers: Record<string, string> = isForm ? {} : { 'Content-Type': 'application/json' }
   if (auth) {
     const token = getToken()
     if (token) headers.Authorization = `Bearer ${token}`
@@ -35,7 +35,8 @@ export async function request<T>(
   const res = await fetch(url, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: isForm ? body : body ? JSON.stringify(body) : undefined,
+    signal,
   })
 
   let data: unknown = null

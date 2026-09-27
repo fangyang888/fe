@@ -6,6 +6,7 @@ import {
   apiCreateAddress,
   apiUpdateAddress,
 } from '../../api/address'
+import { PageHeading } from '../../components/ui'
 import './index.scss'
 
 interface Form {
@@ -88,6 +89,7 @@ export default function AddressEdit() {
 
   return (
     <View className='address-edit-page'>
+      <PageHeading title={editId ? '编辑收货地址' : '新增收货地址'} subtitle='请填写准确的收货信息' />
       <View className='form-card'>
         <View className='form-row'>
           <Text className='label'>收货人</Text>
@@ -148,7 +150,7 @@ export default function AddressEdit() {
           <Text className='label'>设为默认地址</Text>
           <Switch
             checked={form.isDefault}
-            color='#ff5000'
+            color='#244a3d'
             onChange={(e) => setField('isDefault', e.detail.value)}
           />
         </View>

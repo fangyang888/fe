@@ -1,31 +1,12 @@
-// 全局样式
 @import './styles/variables.scss';
-
-page {
-  background-color: $bg;
-  color: $text;
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue',
-    Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  font-size: $fs-md;
-  line-height: 1.5;
-}
-
-view,
-text,
-button {
-  box-sizing: border-box;
-}
-
-// 通用工具类（可在任意页面直接用）
-.u-card {
-  @include card;
-}
-
-.u-ellipsis-1 {
-  @include clamp(1);
-}
-
-.u-ellipsis-2 {
-  @include clamp(2);
-}
+page, body { background: $bg; color: $text; font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif; -webkit-font-smoothing: antialiased; font-size: $fs-md; line-height: 1.5; }
+view, text, button, input, textarea, scroll-view { box-sizing: border-box; }
+button { font-family: inherit; font-weight: 500; }
+button::after { border: 0; }
+input, textarea { font-family: inherit; }
+.u-card { @include card; }
+.u-ellipsis-1 { @include clamp(1); }
+.u-ellipsis-2 { @include clamp(2); }
+.loading { padding: 140px 32px; text-align: center; color: $text-2; font-size: 28px; }
+.section-caption { display: block; font-size: 28px; font-weight: 600; color: $ink; margin-bottom: 24px; }
+@media (prefers-reduced-motion: reduce) { view, button { transition: none !important; animation: none !important; } }

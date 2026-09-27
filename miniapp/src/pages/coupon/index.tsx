@@ -2,6 +2,7 @@ import { View, Text } from '@tarojs/components'
 import { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import { apiGetMyCoupons, MyCoupon, UserCouponStatus } from '../../api/coupon'
+import { PageHeading, EmptyState } from '../../components/ui'
 import './index.scss'
 
 const TABS: { key: UserCouponStatus; text: string }[] = [
@@ -36,6 +37,7 @@ export default function CouponPage() {
 
   return (
     <View className='coupon-page'>
+      <PageHeading title='我的优惠券' subtitle='为下一次心动，留一份惊喜' />
       <View className='tabs'>
         {TABS.map((t) => (
           <View
@@ -49,10 +51,7 @@ export default function CouponPage() {
       </View>
 
       {list.length === 0 ? (
-        <View className='empty'>
-          <Text className='empty-icon'>🎫</Text>
-          <Text className='empty-text'>暂无优惠券</Text>
-        </View>
+        <EmptyState icon='ticket' title='暂无优惠券' description='可用优惠会在这里为你妥善收好' />
       ) : (
         <View className='list'>
           {list.map((c) => (

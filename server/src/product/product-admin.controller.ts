@@ -19,7 +19,7 @@ import { RequirePermissions } from '../auth/decorators';
 class ProductDto {
   name: string;
   price: number;
-  originalPrice?: number;
+  originalPrice?: number | null;
   image?: string;
   stock?: number;
   sales?: number;

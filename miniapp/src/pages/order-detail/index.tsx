@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text } from '@tarojs/components'
 import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
@@ -118,7 +119,7 @@ export default function OrderDetail() {
             <View className='goods-info'>
               <Text className='goods-name'>{item.name}</Text>
               <View className='goods-meta'>
-                <Text className='goods-price'>¥{item.price}</Text>
+                <Text className='goods-price'>¥{formatMoney(item.price)}</Text>
                 <Text className='goods-qty'>x{item.quantity}</Text>
               </View>
             </View>
@@ -149,7 +150,7 @@ export default function OrderDetail() {
         </View>
         <View className='info-row total-row'>
           <Text className='info-label'>实付金额</Text>
-          <Text className='total-amount'>¥{order.totalAmount}</Text>
+          <Text className='total-amount'>¥{formatMoney(order.totalAmount)}</Text>
         </View>
       </View>
 

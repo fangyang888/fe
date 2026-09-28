@@ -28,10 +28,14 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
   const header: Record<string, string> = {
     'Content-Type': 'application/json',
   }
+  const requestToken = auth ? Taro.getStorageSync(STORAGE_KEYS.TOKEN) : ''
 
   if (auth) {
-    const token = Taro.getStorageSync(STORAGE_KEYS.TOKEN)
-    if (token) header.Authorization = `Bearer ${token}`
+    if (!requestToken) {
+      if (!silent) Taro.showToast({ title: '请先在“我的”页面登录', icon: 'none' })
+      return Promise.reject(new Error('未登录'))
+    }
+    header.Authorization = `Bearer ${requestToken}`
   }
 
   return new Promise<T>((resolve, reject) => {
@@ -41,13 +45,17 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
       data,
       header,
       success: (res) => {
+        if (auth && Taro.getStorageSync(STORAGE_KEYS.TOKEN) !== requestToken) {
+          reject(new Error('登录状态已改变'))
+          return
+        }
         const { statusCode, data: body } = res
         if (statusCode >= 200 && statusCode < 300) {
           resolve(body as T)
           return
         }
         // 登录态失效
-        if (statusCode === 401) {
+        if (statusCode === 401 && auth) {
           handleUnauthorized()
           reject(res)
           return
@@ -66,6 +74,7 @@ export function request<T = any>(options: RequestOptions): Promise<T> {
 
 /** 清理登录态并提示重新登录 */
 function handleUnauthorized() {
+  Taro.setStorageSync(STORAGE_KEYS.LOGGED_OUT, true)
   Taro.removeStorageSync(STORAGE_KEYS.TOKEN)
   Taro.removeStorageSync(STORAGE_KEYS.USER_INFO)
   if (isRedirecting) return

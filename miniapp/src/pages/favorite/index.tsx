@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
@@ -60,9 +61,9 @@ export default function FavoritePage() {
               <View className='fav-info'>
                 <Text className='fav-name' onClick={() => Taro.navigateTo({ url: `/pages/product-detail/index?id=${item.productId}` })}>{item.name}</Text>
                 <View className='fav-price-row'>
-                  <Text className='fav-price'>¥{item.price}</Text>
+                  <Text className='fav-price'>¥{formatMoney(item.price)}</Text>
                   {item.originalPrice ? (
-                    <Text className='fav-original'>¥{item.originalPrice}</Text>
+                    <Text className='fav-original'>¥{formatMoney(item.originalPrice)}</Text>
                   ) : null}
                 </View>
                 <View className='fav-actions'>

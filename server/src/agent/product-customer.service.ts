@@ -113,7 +113,7 @@ export class ProductCustomerService {
     products: Array<{
       name: string;
       price: number;
-      originalPrice?: number;
+      originalPrice?: number | null;
     }>,
   ): string {
     return products

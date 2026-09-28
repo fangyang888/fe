@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text, Input, ScrollView, Swiper, SwiperItem, Image, Button } from '@tarojs/components'
 import Taro, { useLoad } from '@tarojs/taro'
 import { useRef, useState } from 'react'
@@ -96,7 +97,7 @@ export default function Index() {
           <ProductImage className='product-image' src={product.image} onClick={() => goDetail(product.id)} />
           <View className='product-info'><Text className='product-name' onClick={() => goDetail(product.id)}>{product.name}</Text>
             <Text className='product-sales'>{product.stock === 0 ? '暂时缺货' : '已售 ' + (product.sales >= 10000 ? `${(product.sales / 10000).toFixed(1)}万` : product.sales)}</Text>
-            <View className='product-bottom'><View className='product-price-row'><Text className='price-value'>¥{product.price}</Text>{!!product.originalPrice && product.originalPrice > product.price && <Text className='original-price'>¥{product.originalPrice}</Text>}</View><Button ariaLabel={`添加${product.name}到购物车`} className={`home-add-cart-btn ${product.stock === 0 ? 'is-disabled' : ''}`} disabled={adding !== undefined || product.stock === 0} onClick={() => add(product)}><Icon name='plus' /></Button></View>
+            <View className='product-bottom'><View className='product-price-row'><Text className='price-value'>¥{formatMoney(product.price)}</Text>{!!product.originalPrice && product.originalPrice > product.price && <Text className='original-price'>¥{formatMoney(product.originalPrice)}</Text>}</View><Button ariaLabel={`添加${product.name}到购物车`} className={`home-add-cart-btn ${product.stock === 0 ? 'is-disabled' : ''}`} disabled={adding !== undefined || product.stock === 0} onClick={() => add(product)}><Icon name='plus' /></Button></View>
           </View>
         </View>)}
       </View>}

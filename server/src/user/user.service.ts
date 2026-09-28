@@ -62,6 +62,28 @@ export class UserService {
     return this.userRepo.save(user);
   }
 
+  /** 个人资料只能修改白名单字段，禁止修改角色、手机号或账号密码。 */
+  async updateProfile(id: number, data: { nickname?: unknown; avatar?: unknown; gender?: unknown }) {
+    const changes: Partial<User> = {};
+    if (data.nickname !== undefined) {
+      if (typeof data.nickname !== 'string' || !data.nickname.trim() || Array.from(data.nickname.trim()).length > 30) {
+        throw new BadRequestException('昵称须为 1–30 个字符');
+      }
+      changes.nickname = data.nickname.trim();
+    }
+    if (data.avatar !== undefined) {
+      if (typeof data.avatar !== 'string' || data.avatar.length > 255 || !/^https:\/\/[^\s]+$/.test(data.avatar)) {
+        throw new BadRequestException('请先上传头像，不能使用临时图片地址');
+      }
+      changes.avatar = data.avatar;
+    }
+    if (data.gender !== undefined) {
+      if (typeof data.gender !== 'number' || ![0, 1, 2].includes(data.gender)) throw new BadRequestException('性别选项无效');
+      changes.gender = data.gender;
+    }
+    return this.update(id, changes);
+  }
+
   /** 给用户分配角色（整体覆盖） */
   async assignRoles(userId: number, roleIds: number[]): Promise<User> {
     const user = await this.findById(userId);

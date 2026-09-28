@@ -52,7 +52,7 @@ export class UserController {
     @CurrentUser('userId') userId: number,
     @Body() dto: UpdateProfileDto,
   ) {
-    return this.users.update(userId, dto);
+    return this.users.updateProfile(userId, dto || {});
   }
 
   // ---------- 以下为后台管理接口，需对应权限 ----------

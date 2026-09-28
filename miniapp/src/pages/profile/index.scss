@@ -1,0 +1,16 @@
+@import '../../styles/variables.scss';
+.profile-page { @include page; }
+.profile-card { @include card; padding: 0 30px; margin-bottom: 24px; border: 1px solid $line; }
+.profile-row, .profile-avatar-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px 0; border-bottom: 1px solid $line; &:last-child { border-bottom: 0; } }
+.profile-label { display: block; font-size: 28px; color: $ink; flex-shrink: 0; }
+.profile-hint { display: block; margin-top: 10px; font-size: 22px; color: $text-2; }
+.profile-input { flex: 1; min-width: 0; height: 60px; text-align: right; font-size: 28px; }
+.profile-picker { flex: 1; text-align: right; font-size: 28px; color: $text-2; }
+.profile-avatar-button { margin: 0; width: 112px; height: 112px; padding: 0; background: $primary-soft; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; &::after { border: 0; } .ui-icon { width: 52px; height: 52px; } }
+.profile-avatar { width: 112px; height: 112px; }
+.profile-phone { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-top: 28px; padding-bottom: 28px; }
+.profile-phone-number { display: block; margin-top: 12px; font-size: 28px; color: $text-2; }
+.profile-bind { @include btn-ghost; min-height: 68px; margin: 0; font-size: 24px; line-height: 1.5; flex-shrink: 0; &::after { border: 0; } }
+.profile-note { display: block; font-size: 23px; color: $text-2; line-height: 1.7; margin: 0 8px 32px; }
+.profile-error { display: block; color: $danger; font-size: 25px; margin-bottom: 24px; }
+.profile-save { @include btn-primary; &::after { border: 0; } }

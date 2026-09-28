@@ -4,7 +4,7 @@ export interface Product {
   id: number
   name: string
   price: number
-  originalPrice?: number
+  originalPrice?: number | null
   image?: string
   sales: number
   stock: number

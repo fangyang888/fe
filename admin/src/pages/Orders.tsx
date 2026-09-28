@@ -128,7 +128,7 @@ export default function Orders() {
                       ? ` 等${o.items.length}件`
                       : ''}
                   </td>
-                  <td>¥{o.totalAmount}</td>
+                  <td>¥{Number(o.totalAmount).toFixed(2)}</td>
                   <td>
                     <span className="badge badge-info">
                       {ORDER_STATUS_TEXT[o.status]}

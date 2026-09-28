@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Like, Repository } from 'typeorm';
 import { Product } from './product.entity';
+import { fromCents, toCents } from '../common/money';
 
 export interface ProductQuery {
   categoryId?: number;
@@ -90,17 +91,28 @@ export class ProductService {
   }
 
   create(data: Partial<Product>): Promise<Product> {
-    return this.repo.save(this.repo.create(data));
+    return this.repo.save(this.repo.create(this.validatePrices(data, true)));
   }
 
   async update(id: number, data: Partial<Product>): Promise<Product> {
     const product = await this.findOneAdmin(id);
-    Object.assign(product, data);
+    Object.assign(product, this.validatePrices(data));
     return this.repo.save(product);
   }
 
   async remove(id: number) {
     await this.repo.delete(id);
     return { ok: true };
+  }
+
+  private validatePrices(data: Partial<Product>, creating = false): Partial<Product> {
+    const result = { ...data };
+    if (creating || data.price !== undefined) {
+      const cents = toCents(data.price);
+      if (cents < 1) throw new BadRequestException('商品价格不能低于 0.01 元');
+      result.price = fromCents(cents);
+    }
+    if (data.originalPrice != null) result.originalPrice = fromCents(toCents(data.originalPrice));
+    return result;
   }
 }

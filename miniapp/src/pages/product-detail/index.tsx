@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text } from '@tarojs/components'
 import Taro, { useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
@@ -71,9 +72,9 @@ export default function ProductDetail() {
 
       <View className='info-card'>
         <View className='price-row'>
-          <Text className='price'>¥{product.price}</Text>
+          <Text className='price'>¥{formatMoney(product.price)}</Text>
           {product.originalPrice ? (
-            <Text className='original'>¥{product.originalPrice}</Text>
+            <Text className='original'>¥{formatMoney(product.originalPrice)}</Text>
           ) : null}
         </View>
         <Text className='name'>{product.name}</Text>

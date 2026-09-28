@@ -1,6 +1,8 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
+import { isLoggedIn } from '../../store/userStore'
 import {
   getCart,
   updateQuantity,
@@ -15,8 +17,11 @@ import './index.scss'
 export default function Cart() {
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [totalPrice, setTotalPrice] = useState(0)
+  const [loggedIn, setLoggedIn] = useState(isLoggedIn())
 
   const loadCartData = async () => {
+    setLoggedIn(isLoggedIn())
+    if (!isLoggedIn()) { setCartItems([]); setTotalPrice(0); return }
     try {
       const { items, totalPrice: total } = await getCart()
       setCartItems(items)
@@ -79,7 +84,7 @@ export default function Cart() {
   return (
     <View className='cart-page'>
       <PageHeading title='购物袋' subtitle='把心意，一起带回家' />
-      {cartItems.length === 0 ? (
+      {!loggedIn ? <EmptyState icon='user' title='登录后查看购物袋' description='登录后继续挑选喜欢的好物' action='去登录' onAction={() => Taro.switchTab({ url: '/pages/mine/index' })} /> : cartItems.length === 0 ? (
         <EmptyState icon='bag' title='购物袋还空着' description='去发现值得带回家的好东西' action='去逛逛' onAction={() => Taro.switchTab({ url: '/pages/index/index' })} />
       ) : (
         <>
@@ -96,7 +101,7 @@ export default function Cart() {
                 <View className='item-info'>
                   <Text className='item-name'>{item.name}</Text>
                   <View className='item-bottom'>
-                    <Text className='item-price'>¥{item.price}</Text>
+                    <Text className='item-price'>¥{formatMoney(item.price)}</Text>
                     <View className='quantity-control'>
                       <View className='qty-btn' onClick={() => handleDecrease(item.id)}>
                         <Text>-</Text>
@@ -125,7 +130,7 @@ export default function Cart() {
             <View className='total-info'>
               <Text className='total-label'>合计：</Text>
               <Text className='total-symbol'>¥</Text>
-              <Text className='total-price'>{totalPrice.toFixed(2)}</Text>
+              <Text className='total-price'>{formatMoney(totalPrice)}</Text>
             </View>
             <View className='checkout-btn' onClick={handleCheckout}>
               <Text className='checkout-text'>去结算 ({cartItems.filter(item => item.checked).reduce((sum, item) => sum + item.quantity, 0)})</Text>

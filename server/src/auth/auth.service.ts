@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { TokenService } from './token.service';
 import { WechatService } from './wechat.service';
@@ -47,6 +48,9 @@ export class AuthService {
 
   /** 绑定手机号 */
   async bindPhone(userId: number, code: string) {
+    if (typeof code !== 'string' || !code.trim() || code.length > 512) throw new BadRequestException('请通过微信授权获取手机号');
+    const user = await this.users.findById(userId);
+    if (user.status !== 1) throw new ForbiddenException('账号已被禁用');
     const phone = await this.wechat.getPhoneNumber(code);
     await this.users.update(userId, { phone });
     return { phone };

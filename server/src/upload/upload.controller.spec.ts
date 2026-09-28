@@ -77,4 +77,12 @@ describe('Image upload HTTP flow', () => {
     await request(app.getHttpServer()).get('/api/media/images/package.json').expect(404);
     await request(app.getHttpServer()).get('/api/media/images/00000000-0000-0000-0000-000000000000.jpg').expect(404);
   });
+
+  it('allows authenticated users to upload an avatar without granting admin upload access', async () => {
+    await request(app.getHttpServer()).post('/api/user/avatar').attach('file', jpg, 'avatar.jpg').expect(401);
+    const member = token.sign({ userId: 2, roles: [], permissions: [] });
+    const result = await request(app.getHttpServer()).post('/api/user/avatar').auth(member, { type: 'bearer' }).attach('file', jpg, 'avatar.jpg').expect(201);
+    await request(app.getHttpServer()).get(new URL(result.body.url).pathname).expect(200).expect('Content-Type', /image\/jpeg/);
+    await request(app.getHttpServer()).post('/api/admin/uploads/images').auth(member, { type: 'bearer' }).attach('file', jpg, 'avatar.jpg').expect(403);
+  });
 });

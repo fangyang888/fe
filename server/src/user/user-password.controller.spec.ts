@@ -20,6 +20,7 @@ describe('User password management', () => {
   let token: TokenService;
   let users: Map<number, Partial<User>>;
   let admin: string;
+  const getPhoneNumber = jest.fn(async () => '13800000000');
   const update = jest.fn(async (id: number, data: Partial<User>) => {
     const user = users.get(id);
     if (!user) return { affected: 0 };
@@ -32,7 +33,7 @@ describe('User password management', () => {
       controllers: [UserController, AuthController],
       providers: [UserService, AuthService, JwtAuthGuard, PermissionGuard, TokenService,
         { provide: ConfigService, useValue: new ConfigService({ JWT_SECRET: 'password-test-only' }) },
-        { provide: WechatService, useValue: {} },
+        { provide: WechatService, useValue: { getPhoneNumber } },
         { provide: getRepositoryToken(Role), useValue: {} },
         { provide: getRepositoryToken(User), useValue: {
           findOne: jest.fn(async ({ where }: { where: { id: number } }) => {
@@ -42,6 +43,10 @@ describe('User password management', () => {
             return profile;
           }),
           update,
+          save: jest.fn(async (data: Partial<User>) => {
+            Object.assign(users.get(data.id!)!, data);
+            return data;
+          }),
           createQueryBuilder: () => {
             let username: string;
             const builder = {
@@ -68,6 +73,7 @@ describe('User password management', () => {
       [3, { id: 3, openid: 'wx-test', status: 1, roles: [] }],
     ]);
     update.mockClear();
+    getPhoneNumber.mockClear();
   });
 
   afterAll(async () => { await app?.close(); });
@@ -124,5 +130,34 @@ describe('User password management', () => {
     await change({ password: 'Self-test-123' }, '1').expect(200);
     await request(app.getHttpServer()).post('/api/auth/admin-login')
       .send({ username: 'admin-test', password: 'Self-test-123' }).expect(201);
+  });
+
+  it('updates editable profile fields without allowing account, role or phone injection', async () => {
+    const member = token.sign({ userId: 3, roles: [], permissions: [] });
+    const result = await request(app.getHttpServer()).put('/api/user/profile').auth(member, { type: 'bearer' })
+      .send({ nickname: ' 清新生活 ', gender: 2, avatar: 'https://example.test/avatar.jpg', username: 'injected', password: 'injected', roles: [{ code: 'admin' }], phone: '13900000000' }).expect(200);
+    expect(result.body).toMatchObject({ id: 3, nickname: '清新生活', gender: 2, roles: [], avatar: 'https://example.test/avatar.jpg' });
+    expect(users.get(3)).not.toHaveProperty('phone');
+    expect(users.get(3)).not.toHaveProperty('username');
+    expect(users.get(3)).not.toHaveProperty('password');
+  });
+
+  it.each([{ nickname: '' }, { nickname: 'x'.repeat(31) }, { avatar: 'wxfile://tmp/avatar.jpg' }, { gender: 9 }])('rejects invalid profile data %#', async (body) => {
+    await request(app.getHttpServer()).put('/api/user/profile').auth(admin, { type: 'bearer' }).send(body).expect(400);
+  });
+
+  it('requires authorization code and stores only the server-verified phone on the current user', async () => {
+    const member = token.sign({ userId: 3, roles: [], permissions: [] });
+    await request(app.getHttpServer()).post('/api/auth/phone').send({ code: 'test-code' }).expect(401);
+    await request(app.getHttpServer()).post('/api/auth/phone').auth(member, { type: 'bearer' }).send({ phone: '13900000000' }).expect(400);
+    expect(getPhoneNumber).not.toHaveBeenCalled();
+    const result = await request(app.getHttpServer()).post('/api/auth/phone').auth(member, { type: 'bearer' })
+      .send({ code: 'test-code', userId: 1, phone: '13900000000' }).expect(201);
+    expect(result.body).toEqual({ phone: '13800000000' });
+    expect(users.get(3)!.phone).toBe('13800000000');
+    expect(users.get(1)).not.toHaveProperty('phone');
+    getPhoneNumber.mockRejectedValueOnce(new Error('upstream failed'));
+    await request(app.getHttpServer()).post('/api/auth/phone').auth(member, { type: 'bearer' }).send({ code: 'expired-code' }).expect(500);
+    expect(users.get(3)!.phone).toBe('13800000000');
   });
 });

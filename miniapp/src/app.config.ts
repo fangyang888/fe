@@ -11,6 +11,7 @@ export default defineAppConfig({
     'pages/favorite/index',
     'pages/help/index',
     'pages/settings/index',
+    'pages/profile/index',
     'pages/checkout/index',
     'pages/product-detail/index'
   ],

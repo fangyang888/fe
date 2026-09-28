@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CartItem } from './cart-item.entity';
 import { Product } from '../product/product.entity';
+import { fromCents, lineCents } from '../common/money';
 
 export interface CartItemView {
   id: number;
@@ -60,13 +61,13 @@ export class CartService {
       items,
       totalQuantity: items.reduce((s, i) => s + i.quantity, 0),
       // 合计只算勾选项
-      totalPrice: checkedItems.reduce((s, i) => s + i.price * i.quantity, 0),
+      totalPrice: fromCents(checkedItems.reduce((s, i) => s + lineCents(i.price, i.quantity), 0)),
     };
   }
 
   /** 加入购物车（已存在则累加） */
   async add(userId: number, productId: number, quantity = 1) {
-    if (quantity <= 0) throw new BadRequestException('数量必须大于 0');
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new BadRequestException('数量必须为正整数');
     const product = await this.productRepo.findOne({
       where: { id: productId },
     });
@@ -86,6 +87,7 @@ export class CartService {
 
   /** 改数量，<=0 则删除 */
   async updateQuantity(userId: number, id: number, quantity: number) {
+    if (!Number.isSafeInteger(quantity)) throw new BadRequestException('数量必须为整数');
     const item = await this.cartRepo.findOne({ where: { id, userId } });
     if (!item) throw new NotFoundException('购物车项不存在');
     if (quantity <= 0) {

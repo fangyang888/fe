@@ -1,15 +1,13 @@
 import { PropsWithChildren } from 'react'
 import { useLaunch, useDidHide } from '@tarojs/taro'
-import { isLoggedIn, login } from './store/userStore'
+import { ensureLogin } from './store/userStore'
 import { initTracker, track, flush } from './utils/tracker'
 import './app.scss'
 
 function App({ children }: PropsWithChildren) {
   useLaunch((options) => {
     // 启动时静默登录：没 token 才走一遍，保证后续请求带身份
-    if (!isLoggedIn()) {
-      login()
-    }
+    ensureLogin()
     // 初始化埋点 + 上报启动事件
     initTracker()
     track('app_launch', { scene: options?.scene }, 'action')

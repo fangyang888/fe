@@ -1,8 +1,7 @@
-import { View, Text, Image, Button, Input } from '@tarojs/components'
+import { View, Text, Image, Button } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
 import { UserInfo } from '../../api/user'
-import { apiUpdateProfile } from '../../api/user'
 import { apiGetOrderSummary, OrderSummary } from '../../api/order'
 import {
   getUserInfo,
@@ -23,7 +22,7 @@ const EMPTY_SUMMARY: OrderSummary = {
 
 export default function Mine() {
   const [user, setUser] = useState<UserInfo | null>(getUserInfo())
-  const [nicknameDraft, setNicknameDraft] = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
   const [orderSummary, setOrderSummary] = useState<OrderSummary>(EMPTY_SUMMARY)
 
   // 每次进入页面刷新用户信息 + 订单角标（已登录时）
@@ -31,7 +30,7 @@ export default function Mine() {
     if (isLoggedIn()) {
       refreshUserInfo().then((u) => u && setUser(u))
       apiGetOrderSummary()
-        .then(setOrderSummary)
+        .then((summary) => { if (isLoggedIn()) setOrderSummary(summary) })
         .catch(() => setOrderSummary(EMPTY_SUMMARY))
     } else {
       setUser(getUserInfo())
@@ -41,24 +40,14 @@ export default function Mine() {
 
   // 未登录：点击触发登录
   const handleLogin = async () => {
+    if (loggingIn) return
+    setLoggingIn(true)
     const u = await login()
-    if (u) setUser(u)
-  }
-
-  // 选择微信头像（open-type=chooseAvatar 回调）
-  const handleChooseAvatar = async (e: any) => {
-    const avatarUrl = e.detail.avatarUrl
-    if (!avatarUrl) return
-    const updated = await apiUpdateProfile({ avatar: avatarUrl })
-    setUser(updated)
-  }
-
-  // 昵称输入失焦时保存
-  const handleNicknameBlur = async () => {
-    const name = nicknameDraft.trim()
-    if (!name || name === user?.nickname) return
-    const updated = await apiUpdateProfile({ nickname: name })
-    setUser(updated)
+    if (u) {
+      setUser(u)
+      apiGetOrderSummary().then(setOrderSummary).catch(() => setOrderSummary(EMPTY_SUMMARY))
+    } else Taro.showToast({ title: '登录未完成，请重试', icon: 'none' })
+    setLoggingIn(false)
   }
 
   // 跳转到订单列表（可带状态）
@@ -82,6 +71,7 @@ export default function Mine() {
   ]
 
   const menuList = [
+    { id: 1, title: '个人资料与手机号', icon: 'user' as const, url: '/pages/profile/index' },
     { id: 2, title: '收货地址', icon: 'pin' as const, color: '#36cfc9', url: '/pages/address-list/index' },
     { id: 3, title: '优惠券', icon: 'ticket' as const, color: '#ffa940', url: '/pages/coupon/index' },
     { id: 4, title: '我的收藏', icon: 'heart' as const, color: '#ff4d6d', url: '/pages/favorite/index' },
@@ -99,23 +89,12 @@ export default function Mine() {
             {/* 头像：点击可换成微信头像 */}
             <Button
               className='avatar-btn'
-              openType='chooseAvatar'
-              onChooseAvatar={handleChooseAvatar}
+              onClick={() => goPage('/pages/profile/index')}
             >
               {user.avatar ? <Image className='user-avatar' src={user.avatar} /> : <View className='avatar-monogram'><Text>{(user.nickname || 'F').slice(0, 1)}</Text></View>}
             </Button>
             <View className='user-detail'>
-              {user.nickname ? (
-                <Text className='user-name'>{user.nickname}</Text>
-              ) : (
-                <Input
-                  className='user-name nickname-input'
-                  type='nickname'
-                  placeholder='点击设置昵称'
-                  onInput={(e) => setNicknameDraft(e.detail.value)}
-                  onBlur={handleNicknameBlur}
-                />
-              )}
+              <Text className='user-name' onClick={() => goPage('/pages/profile/index')}>{user.nickname || '点击完善资料'}</Text>
               <View className='user-meta'>
                 <Text className='user-id'>ID: {user.id}</Text>
                 <View className='user-tag'>
@@ -135,7 +114,7 @@ export default function Mine() {
             <View className='avatar-monogram' onClick={handleLogin}><Icon name='user' /></View>
             <View className='user-detail'>
               <Text className='user-name' onClick={handleLogin}>
-                点击登录
+                {loggingIn ? '正在登录…' : '点击登录'}
               </Text>
               <Text className='user-id'>登录后查看更多</Text>
             </View>

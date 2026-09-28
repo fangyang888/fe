@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface WxSession {
@@ -74,8 +74,8 @@ export class WechatService {
       errmsg: string;
       phone_info?: { phoneNumber: string };
     };
-    if (data.errcode !== 0 || !data.phone_info) {
-      throw new InternalServerErrorException(`获取手机号失败: ${data.errmsg}`);
+    if (!res.ok || data.errcode !== 0 || !data.phone_info?.phoneNumber) {
+      throw new BadRequestException('手机号授权已失效或暂不可用，请重新授权');
     }
     return data.phone_info.phoneNumber;
   }
@@ -83,6 +83,7 @@ export class WechatService {
   private async getAccessToken(): Promise<string> {
     const appid = this.config.get<string>('WX_APPID');
     const secret = this.config.get<string>('WX_SECRET');
+    if (!appid || !secret) throw new InternalServerErrorException('手机号绑定尚未配置');
     const res = await fetch(
       `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`,
     );

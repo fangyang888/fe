@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text, ScrollView } from '@tarojs/components'
 import Taro, { useRouter, useDidShow } from '@tarojs/taro'
 import { useState } from 'react'
@@ -95,7 +96,7 @@ export default function OrderList() {
                     <View className='goods-info'>
                       <Text className='goods-name'>{item.name}</Text>
                       <View className='goods-meta'>
-                        <Text className='goods-price'>¥{item.price}</Text>
+                        <Text className='goods-price'>¥{formatMoney(item.price)}</Text>
                         <Text className='goods-qty'>x{item.quantity}</Text>
                       </View>
                     </View>
@@ -105,7 +106,7 @@ export default function OrderList() {
               <View className='order-card-footer'>
                 <Text className='order-total'>
                   共 {order.items.reduce((s, i) => s + i.quantity, 0)} 件 合计
-                  <Text className='total-amount'> ¥{order.totalAmount}</Text>
+                  <Text className='total-amount'> ¥{formatMoney(order.totalAmount)}</Text>
                 </Text>
               </View>
             </View>

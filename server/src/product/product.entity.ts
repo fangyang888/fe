@@ -6,10 +6,10 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { moneyTransformer } from '../common/money';
 
 /**
- * 商品。价格暂用「元」整数存（与现有前端 homeData 对齐）。
- * 若后续要支持小数/避免浮点，建议改为「分」整数，接口层再换算。
+ * 价格以元存储为定点小数，接口返回数字，金额计算使用整数分。
  */
 @Entity('product')
 export class Product {
@@ -20,12 +20,12 @@ export class Product {
   name: string;
 
   /** 现价（元） */
-  @Column({ type: 'int' })
+  @Column({ type: 'decimal', precision: 12, scale: 2, transformer: moneyTransformer })
   price: number;
 
   /** 原价（元），划线价，可空 */
-  @Column({ type: 'int', nullable: true })
-  originalPrice?: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: moneyTransformer })
+  originalPrice?: number | null;
 
   /** 主图 URL */
   @Column({ nullable: true })

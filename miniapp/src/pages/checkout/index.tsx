@@ -1,3 +1,4 @@
+import { formatMoney } from '../../utils/money'
 import { View, Text } from '@tarojs/components'
 import Taro, { useDidShow, useRouter, useLoad } from '@tarojs/taro'
 import { useState } from 'react'
@@ -125,7 +126,7 @@ export default function Checkout() {
             <View className='goods-info'>
               <Text className='goods-name'>{item.name}</Text>
               <View className='goods-meta'>
-                <Text className='goods-price'>¥{item.price}</Text>
+                <Text className='goods-price'>¥{formatMoney(item.price)}</Text>
                 <Text className='goods-qty'>x{item.quantity}</Text>
               </View>
             </View>
@@ -138,7 +139,7 @@ export default function Checkout() {
         <Text className='section-caption'>费用明细</Text>
         <View className='summary-row'>
           <Text className='summary-label'>商品金额</Text>
-          <Text className='summary-value'>¥{totalPrice}</Text>
+          <Text className='summary-value'>¥{formatMoney(totalPrice)}</Text>
         </View>
         <View className='summary-row'>
           <Text className='summary-label'>运费</Text>
@@ -150,7 +151,7 @@ export default function Checkout() {
       <View className='footer'>
         <View className='footer-total'>
           <Text className='total-label'>合计</Text>
-          <Text className='total-amount'>¥{totalPrice}</Text>
+          <Text className='total-amount'>¥{formatMoney(totalPrice)}</Text>
         </View>
         <View
           className={`submit-btn ${submitting ? 'disabled' : ''}`}

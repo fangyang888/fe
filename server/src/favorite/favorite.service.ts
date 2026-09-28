@@ -9,7 +9,7 @@ export interface FavoriteView {
   productId: number;
   name: string;
   price: number;
-  originalPrice?: number;
+  originalPrice?: number | null;
   image?: string;
   sales: number;
 }

@@ -7,6 +7,7 @@ import {
   Index,
 } from 'typeorm';
 import { Order } from './order.entity';
+import { moneyTransformer } from '../common/money';
 
 /**
  * 订单明细：下单时对商品做快照（名称/价格/图片），
@@ -28,7 +29,7 @@ export class OrderItem {
   name: string;
 
   /** 下单时单价（元） */
-  @Column({ type: 'int' })
+  @Column({ type: 'decimal', precision: 12, scale: 2, transformer: moneyTransformer })
   price: number;
 
   @Column({ nullable: true })

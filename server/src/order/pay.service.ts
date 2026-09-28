@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { Order } from './order.entity';
+import { toCents } from '../common/money';
 
 /** 前端 wx.requestPayment 所需参数 */
 export interface JsapiPayParams {
@@ -93,8 +94,8 @@ export class PayService {
       description: `订单 ${order.orderNo}`,
       out_trade_no: order.orderNo,
       notify_url: c.notifyUrl,
-      // 单位：分。订单 totalAmount 以元(int)存储。
-      amount: { total: Math.round(order.totalAmount * 100), currency: 'CNY' },
+      // 微信支付使用整数分；订单和接口的单位保持元。
+      amount: { total: toCents(order.totalAmount), currency: 'CNY' },
       payer: { openid },
     });
 

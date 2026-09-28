@@ -8,6 +8,7 @@ import {
   Index,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
+import { moneyTransformer } from '../common/money';
 
 /** 订单状态 */
 export type OrderStatus =
@@ -37,7 +38,7 @@ export class Order {
   status: OrderStatus;
 
   /** 订单总额（元） */
-  @Column({ type: 'int' })
+  @Column({ type: 'decimal', precision: 12, scale: 2, transformer: moneyTransformer })
   totalAmount: number;
 
   /** 收货地址快照（下单时拷贝，避免地址被改/删影响历史订单） */

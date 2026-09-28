@@ -75,7 +75,7 @@ export default function Products() {
     setModal({ open: true, id: p.id })
   }
 
-  const setField = (k: keyof ProductInput, v: string | number) => {
+  const setField = (k: keyof ProductInput, v: string | number | null) => {
     setForm((prev) => ({ ...prev, [k]: v }))
   }
 
@@ -83,6 +83,11 @@ export default function Products() {
     if (imageUploading || saving) return
     if (!form.name.trim()) {
       alert('请填写商品名称')
+      return
+    }
+    const validPrice = (value: number) => Number.isFinite(value) && value >= 0 && value <= 9999999999.99 && /^\d+(\.\d{1,2})?$/.test(String(value))
+    if (!validPrice(form.price) || form.price < 0.01 || (form.originalPrice != null && !validPrice(form.originalPrice))) {
+      alert('价格不能低于 0.01 元，原价不能为负数，金额最多保留两位小数')
       return
     }
     setSaving(true)
@@ -168,7 +173,7 @@ export default function Products() {
                 <tr key={p.id}>
                   <td>{p.id}</td>
                   <td className="cell-name">{p.name}</td>
-                  <td>¥{p.price}</td>
+                  <td>¥{Number(p.price).toFixed(2)}</td>
                   <td>{p.stock}</td>
                   <td>{p.sales}</td>
                   <td>{p.isRecommend === 1 ? '是' : '-'}</td>
@@ -240,6 +245,8 @@ export default function Products() {
                   className="m-input"
                   type="number"
                   value={form.price}
+                  min="0.01"
+                  step="0.01"
                   onChange={(e) => setField('price', Number(e.target.value))}
                 />
               </div>
@@ -249,8 +256,10 @@ export default function Products() {
                   className="m-input"
                   type="number"
                   value={form.originalPrice ?? ''}
+                  min="0"
+                  step="0.01"
                   onChange={(e) =>
-                    setField('originalPrice', Number(e.target.value))
+                    setField('originalPrice', e.target.value === '' ? null : Number(e.target.value))
                   }
                 />
               </div>

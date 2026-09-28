@@ -21,4 +21,5 @@ export const BASE_URL =
 export const STORAGE_KEYS = {
   TOKEN: 'auth_token',
   USER_INFO: 'user_info',
+  LOGGED_OUT: 'auth_logged_out',
 };

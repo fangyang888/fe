@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { Order, OrderStatus } from './order.entity';
+import { fromCents, lineCents } from '../common/money';
 import { OrderItem } from './order-item.entity';
 import { CartItem } from '../cart/cart-item.entity';
 import { Product } from '../product/product.entity';
@@ -96,9 +97,10 @@ export class OrderService {
 
     return this.dataSource.transaction(async (manager) => {
       const items: OrderItem[] = [];
-      let totalAmount = 0;
+      let totalCents = 0;
 
       for (const ci of cartItems) {
+        if (!Number.isSafeInteger(ci.quantity) || ci.quantity <= 0) throw new BadRequestException('商品数量必须为正整数');
         const p = pmap.get(ci.productId);
         if (!p || p.status !== 1) {
           throw new BadRequestException(`商品已下架: ${ci.productId}`);
@@ -118,14 +120,14 @@ export class OrderService {
         oi.image = p.image;
         oi.quantity = ci.quantity;
         items.push(oi);
-        totalAmount += p.price * ci.quantity;
+        totalCents += lineCents(p.price, ci.quantity);
       }
 
       const order = new Order();
       order.orderNo = this.genOrderNo();
       order.userId = userId;
       order.status = 'unpaid';
-      order.totalAmount = totalAmount;
+      order.totalAmount = fromCents(totalCents);
       order.addressSnapshot = JSON.stringify(address);
       order.remark = dto.remark;
       order.items = items;

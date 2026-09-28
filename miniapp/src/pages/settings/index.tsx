@@ -1,6 +1,6 @@
 import { View, Text } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { logout, login } from '../../store/userStore'
+import { logout, clearLocalCache, isLoggedIn } from '../../store/userStore'
 import { PageHeading, Icon } from '../../components/ui'
 import './index.scss'
 
@@ -9,17 +9,15 @@ export default function Settings() {
     const res = await Taro.showModal({ title: '提示', content: '确定退出登录?' })
     if (!res.confirm) return
     logout()
-    // 退出后重新静默登录（dev 环境会回到 dev 用户），并返回上一页
-    await login()
     Taro.showToast({ title: '已退出', icon: 'success' })
-    setTimeout(() => Taro.navigateBack(), 600)
+    Taro.switchTab({ url: '/pages/mine/index' })
   }
 
   const clearCache = async () => {
     const res = await Taro.showModal({ title: '提示', content: '清除本地缓存?' })
     if (!res.confirm) return
     try {
-      Taro.clearStorageSync()
+      clearLocalCache()
     } catch {
       // ignore
     }
@@ -38,6 +36,10 @@ export default function Settings() {
     <View className='settings-page'>
       <PageHeading title='按你的习惯' subtitle='管理账户与本地数据' />
       <View className='group'>
+        <View className='cell' onClick={() => Taro.navigateTo({ url: '/pages/profile/index' })}>
+          <Icon name='user' /><Text className='cell-text'>个人资料与手机号</Text>
+          <Text className='cell-arrow'>›</Text>
+        </View>
         <View className='cell' onClick={clearCache}>
           <Icon name='trash' /><Text className='cell-text'>清除缓存</Text>
           <Text className='cell-arrow'>›</Text>
@@ -48,9 +50,9 @@ export default function Settings() {
         </View>
       </View>
 
-      <View className='logout-btn' onClick={handleLogout}>
+      {isLoggedIn() && <View className='logout-btn' onClick={handleLogout}>
         <Text className='logout-text'>退出登录</Text>
-      </View>
+      </View>}
       <Text className='settings-version'>FZ 商城 · v1.0.0</Text>
     </View>
   )

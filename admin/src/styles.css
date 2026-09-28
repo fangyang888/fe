@@ -561,6 +561,31 @@ body {
 .image-upload-error { color: #b42318; }
 .image-upload-status { color: #28714d; }
 button:disabled { cursor: not-allowed; opacity: .55; }
+.password-row-link { display: inline-block; text-decoration: none; margin: 0 8px 4px 0; white-space: nowrap; }
+.password-page { max-width: 760px; }
+.password-page .page-head { justify-content: space-between; flex-wrap: wrap; }
+.password-back { color: var(--text-secondary); font-size: 14px; text-underline-offset: 4px; }
+.password-card { padding: 28px; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 2px 12px rgba(0, 0, 0, .04); }
+.password-account { padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.password-eyebrow { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.password-account h3 { font-size: 20px; margin-bottom: 6px; }
+.password-hint { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.password-intro { margin-bottom: 22px; }
+.password-page #new-password { margin-bottom: 6px; }
+.password-page #password-rules { margin-bottom: 20px; }
+.password-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; padding-top: 6px; }
+.password-actions a { display: inline-flex; align-items: center; text-decoration: none; }
+.password-success { background: #e6f7ee; color: #21694f; padding: 16px; border-radius: 8px; margin-bottom: 22px; line-height: 1.6; }
+@media (max-width: 640px) {
+  .layout:has(.password-page) { display: block; }
+  .layout:has(.password-page) .sidebar { width: 100%; }
+  .layout:has(.password-page) .logo { display: none; }
+  .layout:has(.password-page) .nav { display: flex; overflow-x: auto; padding: 0; }
+  .layout:has(.password-page) .nav-item { flex-shrink: 0; padding: 14px; }
+  .layout:has(.password-page) .topbar { padding: 0 16px; }
+  .layout:has(.password-page) .content { padding: 20px 16px; }
+  .password-card { padding: 20px; }
+}
 .modal { max-width: calc(100vw - 24px); }
 @media (max-width: 480px) {
   .modal { padding: 20px; }

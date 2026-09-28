@@ -25,6 +25,9 @@ class AssignRolesDto {
 class SetStatusDto {
   status: number;
 }
+class ChangePasswordDto {
+  password: string;
+}
 class CreateAccountDto {
   username: string;
   password: string;
@@ -96,5 +99,16 @@ export class UserController {
     @Body() dto: SetStatusDto,
   ) {
     return this.users.setStatus(id, dto.status);
+  }
+
+  /** PUT /api/user/:id/password — 超级管理员重置后台账号密码 */
+  @Put(':id/password')
+  @RequirePermissions('user:reset-password')
+  changePassword(
+    @CurrentUser('userId') actorId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.users.changePassword(actorId, id, dto?.password);
   }
 }

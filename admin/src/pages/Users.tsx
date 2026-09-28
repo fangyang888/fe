@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import {
   getUsers,
   setUserStatus,
@@ -142,6 +143,11 @@ export default function Users() {
                   </td>
                   <td>{u.created_at?.slice(0, 19).replace('T', ' ')}</td>
                   <td>
+                    {canCreate && u.username && (
+                      <Link className="row-btn password-row-link" to={`/users/${u.id}/password`}>
+                        修改密码
+                      </Link>
+                    )}
                     <button
                       className="row-btn"
                       onClick={() => toggleStatus(u)}

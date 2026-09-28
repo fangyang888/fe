@@ -1,5 +1,5 @@
 import { http, setToken, clearToken } from './client'
-import type { LoginResult, UserInfo, UserPage } from './types'
+import type { LoginResult, UserInfo, UserPage, UserRow } from './types'
 
 const USER_KEY = 'admin_user'
 
@@ -30,6 +30,12 @@ export const getUsers = (page = 1, pageSize = 20) =>
 
 export const setUserStatus = (id: number, status: number) =>
   http.put(`/api/user/${id}/status`, { status })
+
+export const getUser = (id: number) =>
+  http.get<UserRow>(`/api/user/${id}`)
+
+export const changeUserPassword = (id: number, password: string) =>
+  http.put<{ success: boolean }>(`/api/user/${id}/password`, { password })
 
 export interface CreateAccountInput {
   username: string

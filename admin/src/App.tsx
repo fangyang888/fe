@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
+import UserPassword from './pages/UserPassword'
 import Products from './pages/Products'
 import Orders from './pages/Orders'
 import Categories from './pages/Categories'
@@ -25,6 +26,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
+      <Route path="/users/:id/password" element={<Protected><UserPassword /></Protected>} />
       <Route path="/products" element={<Protected><Products /></Protected>} />
       <Route path="/orders" element={<Protected><Orders /></Protected>} />
       <Route path="/categories" element={<Protected><Categories /></Protected>} />

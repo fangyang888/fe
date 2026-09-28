@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -74,6 +75,29 @@ export class UserService {
   /** 启用 / 禁用 */
   async setStatus(id: number, status: number): Promise<User> {
     return this.update(id, { status });
+  }
+
+  /** 超级管理员重置后台账号密码，不向调用方返回密码或哈希。 */
+  async changePassword(actorId: number, id: number, password: unknown) {
+    const actor = await this.findById(actorId);
+    if (actor.status !== 1 || !actor.roles?.some((role) => role.code === 'admin')) {
+      throw new ForbiddenException('仅超级管理员可以修改用户密码');
+    }
+    if (
+      typeof password !== 'string' ||
+      password.length < 6 ||
+      password.length > 64 ||
+      !password.trim()
+    ) {
+      throw new BadRequestException('密码须为 6–64 位，不能全部为空格');
+    }
+    const user = await this.findById(id);
+    if (!user.username) {
+      throw new BadRequestException('微信登录用户没有账号密码，无需修改');
+    }
+    const result = await this.userRepo.update(id, { password: hashPassword(password) });
+    if (!result.affected) throw new NotFoundException('用户不存在');
+    return { success: true };
   }
 
   /** 后台创建账号（账号密码登录用）。isAdmin=true 则挂 admin 角色 */

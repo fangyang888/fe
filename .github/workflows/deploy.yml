@@ -220,9 +220,21 @@ jobs:
             fi
 
             # 重新加载 Nginx 配置，确保长耗时预测接口不会 5 分钟 504
+            sudo test -s /etc/nginx/ssl/fzmall.xyz/fzmall.xyz.pem
+            sudo test -s /etc/nginx/ssl/fzmall.xyz/fzmall.xyz.key
+            NGINX_BACKUP=$(mktemp /tmp/fe-nginx-before-deploy.XXXXXX)
+            sudo cp /etc/nginx/conf.d/fe.conf "$NGINX_BACKUP"
             sudo cp deploy/nginx.conf /etc/nginx/conf.d/fe.conf
-            sudo nginx -t
-            sudo systemctl reload nginx
+            if ! sudo nginx -t || ! sudo systemctl reload nginx; then
+              sudo cp "$NGINX_BACKUP" /etc/nginx/conf.d/fe.conf
+              sudo nginx -t && sudo systemctl reload nginx
+              exit 1
+            fi
+
+            # 验证小程序实际使用的 HTTPS 入口，包括证书和域名校验。
+            curl --fail --show-error --max-time 15 \
+              --resolve fzmall.xyz:443:127.0.0.1 \
+              https://fzmall.xyz/api/home
 
             # 再验证一次公网入口使用的 Nginx 代理链路
             curl --fail --show-error --max-time 45 http://127.0.0.1/api/stock/health

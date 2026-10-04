@@ -1,0 +1,9 @@
+# Replace paths before using this template. See https://developers.openai.com/codex/mcp
+[mcp_servers.vector-analysis]
+command = "/ABSOLUTE/PATH/TO/node"
+args = ["/ABSOLUTE/PATH/vector-analysis-mcp/index.js"]
+startup_timeout_sec = 10
+tool_timeout_sec = 120
+
+[mcp_servers.vector-analysis.env]
+LOTTERY_HISTORY_URL = "http://47.106.103.79/api/history"

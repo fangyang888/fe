@@ -1,0 +1,24 @@
+{
+  "name": "vector-analysis-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only MCP tools for causal vector-model replay and analysis",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "start": "node index.js",
+    "test": "npm run build && node --test test/*.test.js",
+    "smoke": "node scripts/smoke.mjs",
+    "experiment": "node scripts/experiment.mjs",
+    "experiment:numbers": "node scripts/number-experiment.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.25.3"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

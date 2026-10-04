@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vector-analysis": {
+      "command": "node",
+      "args": ["/ABSOLUTE/PATH/vector-analysis-mcp/index.js"],
+      "env": {
+        "LOTTERY_HISTORY_URL": "http://127.0.0.1:3000/api/history"
+      }
+    }
+  }
+}

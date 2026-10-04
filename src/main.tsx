@@ -117,6 +117,8 @@ import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
 import PeakShapeObservation from './PeakShapeObservation';
 import ThreePathObservation from './ThreePathObservation';
 import AdaptiveZodiacObservation from './AdaptiveZodiacObservation';
+import Likely32Lab from './Likely32Lab';
+import Likely32VectorTracker from './Likely32VectorTracker';
 import OnlineRiskRanking from './OnlineRiskRanking.jsx';
 import PreviousFourth from './PreviousFourth.jsx';
 // @ts-ignore
@@ -167,6 +169,18 @@ const routes = [
     label: '32码反向未出现概率',
     section: '杀码',
     element: <Likely22PositionStats />,
+  },
+  {
+    path: '/kill/likely32-optimization-lab',
+    label: '32码优化实验室',
+    section: '杀码',
+    element: <Likely32Lab />,
+  },
+  {
+    path: '/kill/likely32-vector-tracker',
+    label: '双向量方案追踪',
+    section: '杀码',
+    element: <Likely32VectorTracker />,
   },
   {
     path: '/kill/bayesian-position-selector',

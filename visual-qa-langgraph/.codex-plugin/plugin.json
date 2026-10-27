@@ -1,0 +1,28 @@
+{
+  "name": "visual-qa-langgraph",
+  "version": "0.1.0",
+  "description": "使用 Python + LangGraph 完成 Web 设计还原、Playwright 截图、视觉对比与可选修正。",
+  "author": {
+    "name": "yang"
+  },
+  "skills": "./skills/",
+  "keywords": [
+    "pixso",
+    "visual-qa-langgraph",
+    "playwright",
+    "langgraph",
+    "frontend"
+  ],
+  "interface": {
+    "displayName": "Visual QA LangGraph",
+    "shortDescription": "Python 页面实现、截图与视觉验收",
+    "longDescription": "通过 visual-qa-langgraph Skill 协调 Pixso 设计、页面源码、Playwright 截图、DOM/CSS/结构/测量检查和可选模型修正。运行路径不依赖旧 visual-qa CLI。",
+    "developerName": "yang",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": [
+      "使用 Visual QA LangGraph 按 Pixso 设计实现并验收页面。",
+      "使用 Python 截图与 visual-qa-langgraph 检查这个页面的视觉差异。"
+    ]
+  }
+}

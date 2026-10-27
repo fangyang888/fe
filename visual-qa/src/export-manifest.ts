@@ -105,7 +105,9 @@ function assetFromRegion(
   assetsDir: string,
   format: ExportManifestAsset["format"],
   scale: number,
+  redAsImage: boolean,
 ): ExportManifestAsset | undefined {
+  if (redAsImage && region.source === "red-frame" && !region.nodeId) return undefined;
   if (!region.nodeId && !region.bounds) return undefined;
   const name = slug(region.name, region.id);
   const asset: ExportManifestAsset = {
@@ -126,7 +128,9 @@ function assetFromRegion(
       region.bounds,
     ),
   };
-  const policy = dimensionPolicy(sourceNodeId, format, scale, region.nodeId, region.bounds);
+  const policy = redAsImage && region.source === "red-frame"
+    ? undefined
+    : dimensionPolicy(sourceNodeId, format, scale, region.nodeId, region.bounds);
   if (policy) asset.dimensionPolicy = policy;
   return asset;
 }
@@ -203,11 +207,13 @@ export function createExportManifest(input: ExportManifestInput): ExportManifest
         assetsDir,
         region.format ?? defaultFormat,
         scale,
+        input.plan.source.redAsImage === true,
       );
       if (asset) {
         exports.push(asset);
         if (
           region.source !== "item-id" &&
+          !(input.plan.source.redAsImage && region.source === "red-frame") &&
           region.nodeId &&
           asset.format !== "svg" &&
           !asset.dimensionPolicy
@@ -217,7 +223,9 @@ export function createExportManifest(input: ExportManifestInput): ExportManifest
           );
         }
       }
-      else ambiguities.push(`${region.id} needs a Pixso nodeId or mapped bounds`);
+      else ambiguities.push(input.plan.source.redAsImage && region.source === "red-frame"
+        ? `${region.id} needs a Pixso nodeId; red bounds are approximate and cannot be used for cropping`
+        : `${region.id} needs a Pixso nodeId or mapped bounds`);
       continue;
     }
     if (!region.layers || region.layers.length < 2) {

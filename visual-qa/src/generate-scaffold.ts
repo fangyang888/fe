@@ -14,6 +14,32 @@ export interface ScaffoldOptions {
 }
 const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
+/** Infer only clear, source-ordered flow. Ambiguous overlap stays a review issue. */
+export function inferFlowLayout(children: GenerationNode[] | undefined): { mode: "row" | "column"; confidence: number } | undefined {
+  if (!children || children.length < 2) return undefined;
+  const rects = children.map((child) => {
+    const { x, y, width, height } = child.properties;
+    return [x, y, width, height].every((value) => typeof value === "number" && Number.isFinite(value)) &&
+      typeof width === "number" && width > 0 && typeof height === "number" && height > 0
+      ? { x: x as number, y: y as number, width, height }
+      : undefined;
+  });
+  if (rects.some((rect) => !rect)) return undefined;
+  const values = rects as Array<{ x: number; y: number; width: number; height: number }>;
+  const row = values.slice(1).every((rect, index) => {
+    const before = values[index]!;
+    const crossOverlap = Math.min(before.y + before.height, rect.y + rect.height) - Math.max(before.y, rect.y);
+    return rect.x >= before.x + before.width - 1 && crossOverlap >= 0.5 * Math.min(before.height, rect.height);
+  });
+  const column = values.slice(1).every((rect, index) => {
+    const before = values[index]!;
+    const crossOverlap = Math.min(before.x + before.width, rect.x + rect.width) - Math.max(before.x, rect.x);
+    return rect.y >= before.y + before.height - 1 && crossOverlap >= 0.5 * Math.min(before.width, rect.width);
+  });
+  if (row === column) return undefined;
+  return { mode: row ? "row" : "column", confidence: 0.9 };
+}
+
 function selectorAttribute(selector: string): [string, string] {
   if (/^#[A-Za-z_][\w-]*$/.test(selector)) return ["id", selector.slice(1)];
   if (/^\.[A-Za-z_][\w-]*$/.test(selector)) return ["class", selector.slice(1)];
@@ -28,6 +54,7 @@ export function generateScaffold(context: Context, options: ScaffoldOptions) {
   if (options.unit === "rem" && (!Number.isFinite(options.rootFontSize) || options.rootFontSize! <= 0)) throw new Error("rem requires the project's rootFontSize");
   const length = (value: number) => `${Number((value / (options.unit === "rem" ? options.rootFontSize! : 1)).toFixed(6))}${options.unit}`;
   const issues: Array<{ nodeId: string; message: string }> = [];
+  const layoutDecisions: Array<{ nodeId: string; mode: "row" | "column" | "absolute"; source: "explicit" | "pixso" | "geometry"; confidence: number }> = [];
   const rules: string[] = [];
   const bindings: Array<{ nodeId: string; selector: string; src?: string }> = [];
   const seen = new Set<string>();
@@ -52,7 +79,12 @@ export function generateScaffold(context: Context, options: ScaffoldOptions) {
     }
     const layout = options.layout?.[node.nodeId];
     if (layout && !["row", "column", "absolute"].includes(layout.mode)) throw new Error("Unknown layout mode");
-    const mode = layout?.mode ?? (p.layoutMode === "HORIZONTAL" ? "row" : p.layoutMode === "VERTICAL" ? "column" : undefined);
+    const pixsoMode = p.layoutMode === "HORIZONTAL" ? "row" : p.layoutMode === "VERTICAL" ? "column" : undefined;
+    const inferred = !layout && !pixsoMode && !isImage ? inferFlowLayout(node.children) : undefined;
+    const mode = layout?.mode ?? pixsoMode ?? inferred?.mode;
+    if (mode) layoutDecisions.push({ nodeId: node.nodeId, mode,
+      source: layout ? "explicit" : pixsoMode ? "pixso" : "geometry",
+      confidence: inferred?.confidence ?? 1 });
     if (p.layoutPositioning !== undefined && mode !== "absolute") issue("Review layoutPositioning; supply local coordinates for absolute overlays");
     if (isImage) for (const field of ["transform", "zIndex", "constraints", "blendMode", "isMask"]) {
       if (p[field] !== undefined) issue(`Review image outer ${field}; not translated automatically`);
@@ -110,7 +142,7 @@ export function generateScaffold(context: Context, options: ScaffoldOptions) {
     if (image.groupSelector && !assignedSelectors.has(image.groupSelector)) issues.push({ nodeId: image.nodeId!, message: `Bind composite container selector ${image.groupSelector} using options.selectors` });
   }
   return { html: `${html}\n`, css: `${rules.join("\n\n")}\n`,
-    manifest: { kind: "visual-qa-scaffold", schemaVersion: 1, status: "draft", unit: options.unit, rootFontSize: options.rootFontSize, bindings, issues,
+    manifest: { kind: "visual-qa-scaffold", schemaVersion: 1, status: "draft", unit: options.unit, rootFontSize: options.rootFontSize, bindings, layoutDecisions, issues,
       next: "Integrate HTML/CSS into the existing framework, resolve issues and run adaptive verification" } };
 }
 

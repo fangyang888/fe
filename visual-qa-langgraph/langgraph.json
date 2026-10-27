@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "visual_qa": "./dev.py:visual_qa"
+  },
+  "env": ".env"
+}

@@ -600,7 +600,10 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
   const redRegions = rectangles.flatMap((rectangle, index): IntentPlanRegion[] => {
     const order = index + 1;
     const hint = findHint(hints, order);
-    const mode = hint?.mode ?? "review";
+    const mode = input.redBoxesAsSingleImages ? "single-image" : hint?.mode ?? "review";
+    if (input.redBoxesAsSingleImages && hint?.mode && hint.mode !== "single-image") {
+      ambiguities.push(`region-${order} is marked as an image but its hint requests ${hint.mode}`);
+    }
     const referencedNodeIds = [
       hint?.nodeId,
       ...(hint?.layers?.map((layer) => layer.nodeId) ?? []),
@@ -608,7 +611,9 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
     if (referencedNodeIds.some((nodeId) => itemNodeIds.has(nodeId))) {
       return [];
     }
-    if (!hint) ambiguities.push(`region-${order} needs an implementation intent`);
+    if (!hint && !input.redBoxesAsSingleImages) {
+      ambiguities.push(`region-${order} needs an implementation intent`);
+    }
     if (mode === "layers" && (!hint?.layers || hint.layers.length < 2)) {
       ambiguities.push(`region-${order} uses layers but needs at least two layer definitions`);
     }
@@ -633,7 +638,11 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
       confidence: rectangle.confidence,
       ...(hint?.export === false ? { export: false } : {}),
       ...(hint?.nodeId ? { nodeId: hint.nodeId } : {}),
-      ...(hint?.selector ? { selector: hint.selector } : {}),
+      ...(hint?.selector
+        ? { selector: hint.selector }
+        : input.redBoxesAsSingleImages
+          ? { selector: `[data-visual="region-${order}"]` }
+          : {}),
       ...(hint?.format ? { format: hint.format } : {}),
       ...(hint?.layers ? { layers: hint.layers } : {}),
       ...(hint?.note ? { note: hint.note } : {}),
@@ -667,6 +676,7 @@ export async function createIntentPlan(input: IntentPlanInput): Promise<IntentPl
         : {}),
       ...(image ? { imageSize: { width: image.width, height: image.height } } : {}),
       ...(input.viewport ? { viewport: input.viewport } : {}),
+      ...(input.redBoxesAsSingleImages ? { redAsImage: true } : {}),
       ...(frameBounds ? { frameBounds } : {}),
     },
     regions,

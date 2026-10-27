@@ -464,6 +464,7 @@ npm run visual-qa -- intent-plan \
 Hints 按红框从上到下、从左到右的顺序匹配，支持以下 `mode`：
 
 - `single-image`：整体导出一张图片；提供 `nodeId` 时精确导出 Pixso 节点，否则按红框坐标从父节点截图裁切。
+- 若使用 `--red-as-image`，红框仅标识图片的大致区域。必须绑定 Pixso `nodeId` 后才能导出；导出清单固定使用节点原图，不按红框裁切或用红框尺寸覆盖实际尺寸。Python LangGraph 流程可用浅层布局自动匹配节点；匹配不唯一时通过 hints 指定 `nodeId`。
 - `layers`：分别导出 `base-image` 与 `overlay-image` 等图层；每层需要 Pixso `nodeId` 或画布坐标。
 - `dom-text`：不导出素材，页面使用 DOM 文字。
 - `ignore`：系统 UI 或非业务区域，不实现也不导出。

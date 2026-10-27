@@ -2,6 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "LangGraph：调试 graph_debug.py",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/langgraph-py/debug_graph.py",
+      "python": "${workspaceFolder}/langgraph-py/.venv/bin/python",
+      "cwd": "${workspaceFolder}/langgraph-py",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
       "name": "Python 第6课：模块与包",
       "type": "debugpy",
       "request": "launch",

@@ -67,6 +67,8 @@ Web 使用 `generate-scaffold` 把 ready context 转为保持层级的 HTML 片�
 
 `unit` 来自目标项目，rem 必须明确提供项目 rootFontSize，生成器不修改全局根字号。没有需要覆盖的节点时，省略 selectors/layout。`assets.src` 是合入业务页面后可用的本地 URL；不下载/复制素材、不验证文件或像素边界，继续使用原有导出校验。图片必须明确给出 alt（装饰图片可为空）；缺失素材输出同尺寸无修饰 div 占位和待处理项，最终结构验收仍会拦截。
 
+使用 Python LangGraph 编排时，可通过 `--project-skill` 指向项目自己的 SKILL.md，由其中的 `visual-qa-policy` JSON 块确定单位、设计视口下的根字号和是否由构建工具转换 px。图生成 `scaffold-options.json`，并让图片内联尺寸与 `cssRules.preferRem` 使用同一策略。已有构建转换时草稿保留 px，避免二次换算；没有明确根字号时不得推断 rem 比例。
+
 ```sh
 <cli> generate-scaffold --context artifacts/generation-context.json --config artifacts/scaffold-options.json --output artifacts/scaffold-1 --trace-log artifacts/run-1/timing.jsonl
 ```

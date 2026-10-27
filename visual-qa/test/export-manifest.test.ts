@@ -217,6 +217,26 @@ test("trusts an explicit item id for direct export when design bounds are omitte
   assert.deepEqual(manifest.ambiguities, []);
 });
 
+test("red-as-image exports the node at 3x and treats the red box as approximate", () => {
+  const marked = plan([{
+    id: "region-1", order: 1, name: "picture", mode: "single-image",
+    source: "red-frame", nodeId: "138:97117", selector: "#picture",
+    bounds: { x: 10, y: 20, width: 100, height: 60 },
+    borderWidth: 3, confidence: 1,
+  }]);
+  marked.source.redAsImage = true;
+  const manifest = createExportManifest({ plan: marked });
+  assert.equal(manifest.status, "ready");
+  assert.equal(manifest.exports[0]?.operation.kind, "pixso-node-export");
+  assert.equal(manifest.exports[0]?.dimensionPolicy, undefined);
+
+  delete marked.regions[0]!.nodeId;
+  const unresolved = createExportManifest({ plan: marked });
+  assert.equal(unresolved.status, "needs-review");
+  assert.match(unresolved.ambiguities[0] ?? "", /needs a Pixso nodeId/);
+  assert.equal(unresolved.exports.length, 0);
+});
+
 test("skips image regions that are not used by the implementation", () => {
   const manifest = createExportManifest({
     plan: plan([

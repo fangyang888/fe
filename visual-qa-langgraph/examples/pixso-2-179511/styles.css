@@ -1,0 +1,38 @@
+html, body { margin: 0; min-height: 100%; }
+body { background: #fff; }
+.screen {
+  width: 100%;
+  min-height: 100vh;
+  background: #fff;
+}
+.toolbar {
+  box-sizing: border-box;
+  height: 72px;
+  padding: 12px;
+}
+#create-button {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 24px;
+  background: #26bfbf;
+  color: #fff;
+  font: 500 17px/24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+.home-area {
+  position: relative;
+  height: 34px;
+}
+#home-indicator {
+  position: absolute;
+  left: 50%;
+  top: 20px;
+  width: 134px;
+  height: 5px;
+  transform: translateX(-50%);
+  border-radius: 100px;
+  background: #000;
+}

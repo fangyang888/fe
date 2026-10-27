@@ -111,6 +111,7 @@ export interface IntentDetectionConfig {
 
 export interface IntentPlanInput {
   name: string;
+  redBoxesAsSingleImages?: boolean;
   designUrl?: string;
   sourceNodeId: string;
   annotatedImage?: string;
@@ -162,6 +163,7 @@ export interface IntentPlan {
     referenceImage?: string;
     imageSize?: { width: number; height: number };
     viewport?: { width: number; height: number };
+    redAsImage?: boolean;
     frameBounds?: RectangleBounds;
   };
   regions: IntentPlanRegion[];

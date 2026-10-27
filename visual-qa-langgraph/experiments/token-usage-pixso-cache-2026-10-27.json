@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "codex-session-token-usage",
+  "source": "rollout-2026-10-12T18-23-48-01a12fa3-d48c-7cc3-8ebe-8afd06996e41.jsonl",
+  "startInclusive": "2026-10-27T02:05:33.642Z",
+  "endExclusive": "2026-10-27T02:22:14.000Z",
+  "responseCount": 84,
+  "turns": [
+    {
+      "turnId": "01a17b1b-100e-73f2-a943-6f4b8e73e8e3",
+      "responses": 47,
+      "input_tokens": 7149637,
+      "cached_input_tokens": 7084800,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 31064,
+      "reasoning_output_tokens": 13771,
+      "total_tokens": 7180701
+    },
+    {
+      "turnId": "01a17b24-c261-73f2-a70e-199bef553b28",
+      "responses": 37,
+      "input_tokens": 7168522,
+      "cached_input_tokens": 7128320,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 19538,
+      "reasoning_output_tokens": 9170,
+      "total_tokens": 7188060
+    }
+  ],
+  "total": {
+    "input_tokens": 14318159,
+    "cached_input_tokens": 14213120,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 50602,
+    "reasoning_output_tokens": 22941,
+    "total_tokens": 14368761
+  },
+  "uncachedInputTokens": 105039,
+  "cachedInputPercent": 99.27,
+  "cumulativeMatches": true,
+  "note": "output_tokens includes reasoning_output_tokens; cached_input_tokens is a subset of input_tokens. These are actual Codex usage records, not an A/B model comparison."
+}

@@ -1,33 +1,28 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-05T15:26:06.029Z",
+  "updatedAt": "2026-10-27T05:31:54.837Z",
   "designs": {
     "138:97029": {
       "nodeId": "138:97029",
-      "file": "/tmp/pixso-test5/reference.png",
-      "hash": "062ad5754727cd54da7650a226358ac911e1760519abd18045114b5fec16bb5e"
+      "file": "/Users/yang/fe/fe/visual-qa-benchmark/design.png",
+      "hash": "ff8cbe71a0b8ccd006d21530e64c730cec40f18240c595c95dbb59daaeababd3"
+    },
+    "2:179511": {
+      "nodeId": "2:179511",
+      "file": "/Users/yang/fe/fe/visual-qa-langgraph/examples/pixso-2-179511/design.png",
+      "hash": "3bafda274b935889c500aeca2807056bf41190fdf0e4402ceb8e74f316992720"
+    },
+    "138:49972": {
+      "nodeId": "138:49972",
+      "file": "/Users/yang/meiyou/node-tools/modules/puzzle/visual-qa/new-2/design.png",
+      "hash": "c31febf02f712d0739c70edb8512ba9b0e7736c74d9dcb7a46a00ce9219da42f"
     }
   },
   "assets": {},
   "code": {
-    "revision": "3bc12306321ca27ba42fe6c69cb357970074ad2e",
-    "version": "3257b1f33f1fafedb7e9bb73e2c68cb95258f67c836acd6f094b2f3eb6764719",
-    "changedFiles": [
-      "cache.json",
-      "visual-qa/README.md",
-      "visual-qa/cases/contract.example.json",
-      "visual-qa/package.json",
-      "visual-qa/src/agent-context.ts",
-      "visual-qa/src/capture.ts",
-      "visual-qa/src/cli.ts",
-      "visual-qa/src/config.ts",
-      "visual-qa/src/measure-case.ts",
-      "visual-qa/src/measure.ts",
-      "visual-qa/src/types.ts",
-      "visual-qa/src/verify.ts",
-      "visual-qa/test/measure.browser.ts",
-      "visual-qa/test/measure.test.ts"
-    ]
+    "revision": "not-scanned",
+    "version": "not-scanned",
+    "changedFiles": []
   },
   "verifications": {
     "test5-gift-card": {
@@ -37,6 +32,38 @@
       "caseHash": "47832cc395090277aff053bfc51b17aebb01d9b176d9659939ec584349637eb6",
       "mode": "final",
       "report": "/tmp/test5-qa/report.json"
+    },
+    "family-card-benchmark": {
+      "status": "passed",
+      "designHash": "ff8cbe71a0b8ccd006d21530e64c730cec40f18240c595c95dbb59daaeababd3",
+      "codeVersion": "not-scanned",
+      "caseHash": "37b75bc4fcfbabdb3c86b84ebf685f938587285b3c0d901c863dd163d3502d0f",
+      "mode": "final",
+      "report": "/Users/yang/fe/fe/visual-qa-benchmark/output/report.json"
+    },
+    "pixso-toolbar-2-179511": {
+      "status": "passed",
+      "designHash": "3bafda274b935889c500aeca2807056bf41190fdf0e4402ceb8e74f316992720",
+      "codeVersion": "not-scanned",
+      "caseHash": "b66bc8ea1f138703c8918ee62449b5ff9556c1d14d041032dd98ff59bfff9121",
+      "mode": "final",
+      "report": "/Users/yang/fe/fe/visual-qa-langgraph/examples/pixso-2-179511/output/report.json"
+    },
+    "puzzle-new-1": {
+      "status": "failed",
+      "designHash": "c31febf02f712d0739c70edb8512ba9b0e7736c74d9dcb7a46a00ce9219da42f",
+      "codeVersion": "not-scanned",
+      "caseHash": "d5602ed7a9cb7509598e09cdfe4cc6af2bc9ee16c5c6c29ad19e3701e889238c",
+      "mode": "agent",
+      "report": "/Users/yang/meiyou/node-tools/modules/puzzle/visual-qa/new-1/output/report.json"
+    },
+    "puzzle-new-2": {
+      "status": "passed",
+      "designHash": "c31febf02f712d0739c70edb8512ba9b0e7736c74d9dcb7a46a00ce9219da42f",
+      "codeVersion": "not-scanned",
+      "caseHash": "c8f52a85359ba5f0547c4e3db77ad2d76b7868a4adbd180c8d146100f871d7fe",
+      "mode": "final",
+      "report": "/Users/yang/meiyou/node-tools/modules/puzzle/visual-qa/new-2/output/report.json"
     }
   }
 }

@@ -2,5 +2,8 @@
     "liveServer.settings.port": 5501,
      "opencode.provider": "anthropic",
      "opencode.anthropic.apiKey": "sk-ant-xxx",
-     "opencode.anthropic.model": "claude-3.5-sonnet"
+     "opencode.anthropic.model": "claude-3.5-sonnet",
+     "[jsonc]": {
+       "editor.formatOnSave": false
+    }
 }

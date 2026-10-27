@@ -179,6 +179,26 @@ test("marks unclassified regions for review", async () => {
   assert.equal(plan.ambiguities.length, 2);
 });
 
+test("treats every red frame as one opaque image when explicitly requested", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "intent-plan-"));
+  const annotatedImage = path.join(directory, "annotated.png");
+  await fs.writeFile(annotatedImage, PNG.sync.write(fixtureImage()));
+  const plan = await createIntentPlan({
+    name: "red-images",
+    sourceNodeId: "138:97029",
+    annotatedImage,
+    viewport: { width: 100, height: 200 },
+    redBoxesAsSingleImages: true,
+  });
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.regions.length, 2);
+  assert.deepEqual(plan.regions.map((region) => region.mode), ["single-image", "single-image"]);
+  assert.deepEqual(plan.regions.map((region) => region.selector), [
+    '[data-visual="region-1"]', '[data-visual="region-2"]',
+  ]);
+  assert.equal(plan.regions.every((region) => region.imageBoundary?.pixsoAccess === "export-only"), true);
+});
+
 test("preserves explicit design bounds and unused export intent", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "intent-plan-"));
   const annotatedImage = path.join(directory, "annotated.png");

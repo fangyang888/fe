@@ -321,7 +321,7 @@ Usage:
   visual-qa compare --expected <design.png> --actual <actual.png> --output <diff.png> [--top-regions 3] [--compact] [--quiet]
   visual-qa verify --case <case.json> [--mode quick|agent|final|adaptive] [--browser-endpoint ws://...] [--changed-only|--skip-code-scan] [--top-regions 3] [--reuse-design] [--reuse-verification|--no-cache] [--no-ai-on-pass] [--cache cache.json] [--compact] [--quiet]
   visual-qa browser-server [--browser-channel chrome]
-  visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> --intent intent.json [--annotated marked.png --width 375 --height 812 --frame x,y,width,height]
+  visual-qa intent-plan --design-url <pixso-url> --output <intent-plan.json> [--annotated marked.png --width 375 --height 812 --frame x,y,width,height --red-as-image] [--intent intent.json]
   visual-qa export-manifest --plan <intent-plan.json> --output <export-manifest.json> [--assets-dir assets/images] [--format png] [--scale 3] [--reuse-assets] [--cache cache.json] [--compact] [--quiet]
   visual-qa agent-context --case <case.json> --output <agent-context.json> [--plan intent-plan.json] [--manifest export-manifest.json] [--report report.json]
   visual-qa generation-context --plan <intent-plan.json> --nodes <pixso-nodes.json> --output <generation-context.json>
@@ -582,6 +582,7 @@ async function main(): Promise<void> {
             : `pixso-${sourceNodeId.replace(/[^a-z0-9]+/gi, "-")}`),
         ...(designUrl ? { designUrl } : {}),
         sourceNodeId,
+        ...(flags.has("red-as-image") ? { redBoxesAsSingleImages: true } : {}),
         ...(annotatedImage ? { annotatedImage } : {}),
         ...(flags.has("reference")
           ? { referenceImage: flags.get("reference") }

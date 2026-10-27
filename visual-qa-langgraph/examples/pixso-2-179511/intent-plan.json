@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "visual-qa-langgraph-intent-plan",
+  "name": "pixso-2-179511",
+  "status": "ready",
+  "source": {
+    "provider": "pixso",
+    "designUrl": "https://pixso.cn/app/design/qywt_bYlzqjdJdNrHVnluA?item-id=2:179511&editMode=coder",
+    "nodeId": "2:179511"
+  },
+  "regions": [],
+  "ambiguities": []
+}

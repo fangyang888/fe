@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import { planDesignBatch } from "../src/design-batch.js";
-import { generateScaffold, writeScaffold } from "../src/generate-scaffold.js";
+import { generateScaffold, inferFlowLayout, writeScaffold } from "../src/generate-scaffold.js";
 import { generationTiming, summarizeGeneration } from "../src/generation-timing.js";
 import type { IntentPlan } from "../src/types.js";
 
@@ -97,6 +97,23 @@ test("scaffold emits escaped nested HTML, image selectors and deterministic rem 
   assert.throws(() => generateScaffold(context, { ...config, assets: { image: { src: "https://example.com/image", alt: "" } } }), /local asset/);
   assert.throws(() => generateScaffold(context, { ...config, layout: { unknown: { mode: "row" } } }), /Unknown configuration/);
   assert.throws(() => generateScaffold(context, { ...config, layout: { card: { mode: "absolute" } } }), /local left/);
+});
+
+test("scaffold infers ordered flex flow but never guesses an absolute overlay", () => {
+  const context = structuredClone(complete().context!);
+  delete context.tree.properties.layoutMode;
+  Object.assign(context.tree.children![0].properties, { x: 0, y: 0, width: 100, height: 50 });
+  Object.assign(context.tree.children![1].properties, { x: 120, y: 5, width: 80, height: 30 });
+  const result = generateScaffold(context, { unit: "px", assets: { image: { src: "./hero.png", alt: "" } } });
+  assert.ok(result.manifest.layoutDecisions.some((value) =>
+    value.nodeId === "frame" && value.mode === "row" && value.source === "geometry"));
+  assert.match(result.css, /flex-direction: row/);
+
+  Object.assign(context.tree.children![1].properties, { x: 25, y: 10 });
+  assert.equal(inferFlowLayout(context.tree.children), undefined);
+  const ambiguous = generateScaffold(context, { unit: "px", assets: { image: { src: "./hero.png", alt: "" } } });
+  assert.ok(ambiguous.manifest.issues.some((issue) => issue.nodeId === "frame" && issue.message.includes("Resolve container flow")));
+  assert.equal(ambiguous.css.includes("position: absolute"), false);
 });
 
 test("unsupported properties and missing assets remain draft issues; opaque children fail closed", () => {

@@ -1,6 +1,3 @@
-
-
-
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph_py.nodes.call_model import call_model
@@ -24,3 +21,5 @@ def build_graph():
     workflow.add_edge("tools", "call_model")
     
     return workflow
+
+

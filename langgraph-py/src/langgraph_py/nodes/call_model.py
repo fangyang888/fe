@@ -8,15 +8,21 @@ from langgraph_py.states.core_agent_state import CoreAgentState
 from langgraph_py.states.model_config import AssistantConfig, ModelConfig
 from langgraph_py.tools.opr import add
 from langgraph_py.core.config import openai_settings
+from pydantic import BaseModel,Field
+from langchain.agents.structured_output import ProviderStrategy
 
 
 
+class ResultInfo(BaseModel):
+    """计算问题的回答"""
+    title: str = Field(description="用户提出的原始问题，保留原文")
+    result: int = Field(description="最终计算结果，只返回整数，不含单位或计算过程")
 
 
 async def call_model(state: CoreAgentState, runtime: Runtime[ModelConfig],) -> dict:
     """调用模型节点"""
     messages = state["messages"]  # 取出messages，不包含系统提示词
-    value = state.get("model_config")
+    value = state.get("model_config") 
     assistant = runtime.context or {}
     if value is None:
         model_config = ModelConfig(
@@ -24,13 +30,18 @@ async def call_model(state: CoreAgentState, runtime: Runtime[ModelConfig],) -> d
             model_name=assistant.get(
                 "model_name", openai_settings.default_model
             ),
+            # response_format = ProviderStrategy(ResultInfo)
+            
         )
     elif isinstance(value, dict):
         model_config = ModelConfig(**value)
     else:
         model_config = value
+    model_config.kwargs = model_config.kwargs | {
+        "response_format": ResultInfo
+    }
     template_name = '用简洁、准确的语言回答用户问题，计算时使用工具'
     model = create_model(**model_config.to_kwargs())
-    model_with_tools = model.bind_tools([add])
+    model_with_tools = model.bind_tools([add],strict=True)
     response = await model_with_tools.ainvoke([SystemMessage(content=template_name), *messages])
     return {"messages": [response]}

@@ -1,9 +1,14 @@
 {
-  "dependencies": ["."],
+  "dependencies": [
+    "."
+  ],
   "graphs": {
     "agent": "langgraph_py.dev:graph",
     "parallel": "langgraph_py.dev:parallel_graph",
-    "loop_graph": "langgraph_py.dev:loop_graph"
+    "loop_graph": "langgraph_py.dev:loop_graph",
+    "file_human_in_the_loop": "langgraph_py.file_human_in_the_loop:graph",
+    "memory_graph": "langgraph_py.projects.deepagent_memory.demo:memory_graph",
+    "pixso_component_match": "langgraph_py.pixso_component_match.match:graph"
   },
   "env": ".env"
 }

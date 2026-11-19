@@ -1,0 +1,15 @@
+{
+  "main_model_calls": 2,
+  "summary_model_calls": 2,
+  "first_main_input_messages": 5,
+  "first_main_dialogue_messages": 4,
+  "state_messages": 12,
+  "archive_paths": [
+    "/Users/yang/fe/fe/langgraph-py/projects/context_compression_homework/runs/homework-65c1a5ccaba04cc29cb6a32915c6e849/filesystem/conversation_history/session_560536496c344ab5b8caf4a37b80cd33.md"
+  ],
+  "business_state": {
+    "device": "电脑",
+    "problem": "无法联网",
+    "address": "建设路20号"
+  }
+}

@@ -6,6 +6,7 @@ from io import StringIO
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,6 +25,7 @@ def load_module(name: str, path: Path):
 
 packager = load_module("plugin_packager", ROOT / "scripts/package_plugin.py")
 manager = load_module("plugin_manager", ROOT / "build/codex-plugin.py")
+antigravity_manager = load_module("antigravity_manager", ROOT / "build/antigravity-plugin.py")
 
 
 class CodexDiscoveryTests(unittest.TestCase):
@@ -202,6 +204,149 @@ class DistributionTests(unittest.TestCase):
         (self.source / "src/external.txt").symlink_to(outside)
         with self.assertRaisesRegex(ValueError, "Symlinks"):
             self.build()
+
+
+class AntigravityDistributionTests(unittest.TestCase):
+    write = DistributionTests.write
+
+    def setUp(self):
+        DistributionTests.setUp(self)
+        self.write(".antigravity-plugin/plugin.json", json.dumps({"name": packager.NAME, "version": "0.1.0"}))
+        self.write("build/antigravity-plugin.py", (ROOT / "build/antigravity-plugin.py").read_text())
+        self.write("build/ANTIGRAVITY.md", "# Installation\n")
+        self.write("skills/visual-qa-langgraph/SKILL.md",
+                   "---\nname: visual-qa-langgraph\ndescription: Visual QA\n---\n当前 Codex 对话\n")
+        self.write("skills/visual-qa-langgraph/agents/openai.yaml", "policy: {}\n")
+        self.config = Path(self.temp.name) / "isolated config"
+        self.destination = self.config / "plugins" / packager.NAME
+
+    def build(self):
+        archive = packager.build(self.source, self.output, "antigravity")
+        return archive, self.output / antigravity_manager.BUNDLE
+
+    def run_manager(self, action, root, *extra):
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+            return antigravity_manager.main([action, "--bundle", str(root),
+                                            "--config-dir", str(self.config), *extra])
+
+    def test_native_layout_preserves_runtime_paths_and_codex_policy(self):
+        self.write(".env", "private key")
+        self.write("src/.env.secret", "private key")
+        self.write("src/__pycache__/private.pyc", "private key")
+        self.write("examples/demo/output/private.json", "private key")
+        archive, root = self.build()
+        info = antigravity_manager.validate_bundle(root)
+        self.assertEqual(info["target"], "antigravity")
+        skill = root / "skills" / packager.NAME / "SKILL.md"
+        self.assertTrue((skill.parent / "../.." / "pyproject.toml").is_file())
+        self.assertIn("disable-model-invocation: true", skill.read_text())
+        self.assertIn("当前 Antigravity 对话", skill.read_text())
+        self.assertFalse((skill.parent / "agents/openai.yaml").exists())
+        self.assertNotIn("disable-model-invocation", (self.source / skill.relative_to(root)).read_text())
+        self.assertFalse((root / ".codex-plugin").exists())
+        self.assertFalse((self.output / "latest.json").exists())
+        with zipfile.ZipFile(archive) as bundle:
+            self.assertFalse(any("private key" in bundle.read(name).decode(errors="replace")
+                                 for name in bundle.namelist()))
+
+    def test_reproducibility_and_source_change_versioning(self):
+        first, _ = self.build()
+        contents = first.read_bytes()
+        second, _ = self.build()
+        self.assertEqual(contents, second.read_bytes())
+        self.write("src/visual_qa_graph/cli.py", "# next version\n")
+        third, _ = self.build()
+        self.assertNotEqual(first, third)
+
+    def test_install_update_status_remove_and_other_plugins_are_preserved(self):
+        _, root = self.build()
+        other = self.destination.parent / "another-plugin" / "keep.txt"
+        other.parent.mkdir(parents=True)
+        other.write_text("keep")
+        self.assertEqual(self.run_manager("install", root), 0)
+        first = antigravity_manager.validate_bundle(self.destination)["version"]
+        self.assertEqual(self.run_manager("status", root), 0)
+        self.write("src/visual_qa_graph/cli.py", "# updated\n")
+        self.build()
+        self.assertEqual(self.run_manager("update", root), 0)
+        self.assertNotEqual(first, antigravity_manager.validate_bundle(self.destination)["version"])
+        self.assertEqual(self.run_manager("remove", Path(self.temp.name) / "missing"), 0)
+        self.assertFalse(self.destination.exists())
+        self.assertEqual(other.read_text(), "keep")
+
+    def test_dry_run_does_not_create_config_directory(self):
+        _, root = self.build()
+        self.assertEqual(self.run_manager("install", root, "--dry-run"), 0)
+        self.assertFalse(self.config.exists())
+
+    def test_tampered_update_preserves_previous_installation(self):
+        _, root = self.build()
+        self.assertEqual(self.run_manager("install", root), 0)
+        original = (self.destination / "src/visual_qa_graph/cli.py").read_bytes()
+        (root / "src/visual_qa_graph/cli.py").write_text("tampered")
+        self.assertEqual(self.run_manager("update", root), 1)
+        self.assertEqual((self.destination / "src/visual_qa_graph/cli.py").read_bytes(), original)
+
+    def test_failed_replacement_rolls_back(self):
+        _, root = self.build()
+        self.assertEqual(self.run_manager("install", root), 0)
+        original = antigravity_manager.validate_bundle(self.destination)["version"]
+        rename = Path.rename
+
+        def fail_staging(path, target):
+            if path.name == "new":
+                raise OSError("replacement failed")
+            return rename(path, target)
+
+        with patch.object(Path, "rename", autospec=True, side_effect=fail_staging):
+            self.assertEqual(self.run_manager("update", root), 1)
+        self.assertEqual(antigravity_manager.validate_bundle(self.destination)["version"], original)
+
+    def test_unmanaged_destination_and_symlink_are_preserved(self):
+        _, root = self.build()
+        self.destination.mkdir(parents=True)
+        marker = self.destination / "my-file"
+        marker.write_text("keep")
+        self.assertEqual(self.run_manager("install", root), 1)
+        self.assertEqual(self.run_manager("remove", root), 1)
+        self.assertEqual(marker.read_text(), "keep")
+        link_config = Path(self.temp.name) / "symlink config"
+        (link_config / "plugins").mkdir(parents=True)
+        (link_config / "plugins" / packager.NAME).symlink_to(root, target_is_directory=True)
+        self.config = link_config
+        self.assertEqual(self.run_manager("remove", root), 1)
+        antigravity_manager.validate_bundle(root)
+
+    def test_workspace_scope_installs_only_in_that_workspace(self):
+        _, root = self.build()
+        project = Path(self.temp.name) / "business project"
+        project.mkdir()
+        with redirect_stdout(StringIO()):
+            self.assertEqual(antigravity_manager.main(["install", "--bundle", str(root),
+                                                      "--project", str(project)]), 0)
+        antigravity_manager.validate_bundle(project / ".agents/plugins" / packager.NAME)
+        self.assertFalse(self.config.exists())
+
+    def test_distributed_manager_runs_after_zip_relocation(self):
+        archive, _ = self.build()
+        recipient = Path(self.temp.name) / "recipient with spaces"
+        with zipfile.ZipFile(archive) as bundle:
+            bundle.extractall(recipient)
+        extracted = recipient / antigravity_manager.BUNDLE
+        command = [sys.executable, str(extracted / "antigravity-plugin.py")]
+        result = subprocess.run(command + ["install", "--config-dir", str(self.config)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        antigravity_manager.validate_bundle(self.destination)
+
+    def test_path_traversal_in_bundle_is_rejected_before_writing(self):
+        _, root = self.build()
+        path = root / "bundle.json"
+        info = json.loads(path.read_text())
+        info["files"]["../outside"] = "invalid"
+        path.write_text(json.dumps(info))
+        self.assertEqual(self.run_manager("install", root), 1)
+        self.assertFalse(self.config.exists())
 
 
 if __name__ == "__main__":

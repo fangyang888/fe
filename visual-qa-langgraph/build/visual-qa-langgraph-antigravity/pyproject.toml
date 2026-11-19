@@ -1,0 +1,28 @@
+[project]
+name = "visual-qa-langgraph"
+version = "0.1.0"
+description = "Standalone Python browser visual QA and LangGraph repair workflow"
+requires-python = ">=3.13"
+dependencies = [
+  "langgraph>=1.2.14,<2",
+  "langchain-openai>=1.6.7,<2",
+  "langgraph-checkpoint-sqlite>=3,<4",
+  "httpx>=0.28,<1",
+  "Pillow>=10,<13",
+  "playwright>=1.55,<2",
+  "pixelmatch>=0.3,<0.4",
+  "numpy>=2,<3",
+  "scipy>=1.15,<2",
+]
+
+[project.scripts]
+visual-qa-langgraph = "visual_qa_graph.cli:main"
+visual-qa-graph = "visual_qa_graph.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/visual_qa_graph"]
+

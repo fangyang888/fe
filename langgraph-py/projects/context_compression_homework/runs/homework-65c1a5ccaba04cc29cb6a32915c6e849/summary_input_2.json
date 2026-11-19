@@ -1,0 +1,13 @@
+[
+  {
+    "type": "human",
+    "data": {
+      "content": "为继续报修登记提炼历史。保留设备、故障、地址变化和提交状态。区分此前地址与当前确认地址，不要把尚未提交写为已经提交。只依据待总结消息，不推测后续对话。\n待总结旧消息：\n<message type=\"human\">You are in the middle of a conversation that has been summarized.\n\nThe full conversation history has been saved to /conversation_history/session_560536496c344ab5b8caf4a37b80cd33.md should you need to refer back to it for details.\n\nA condensed summary follows:\n\n&lt;summary&gt;\n- 设备：电脑  \n- 故障：无法联网  \n- 地址：此前地址未提供；当前确认地址：幸福路10号（已记录）  \n- 提交状态：报修尚未提交\n&lt;/summary&gt;</message>\n<message type=\"human\">地址改成建设路20号。</message>\n<message type=\"ai\">已更正地址。</message>",
+      "additional_kwargs": {},
+      "response_metadata": {},
+      "type": "human",
+      "name": null,
+      "id": null
+    }
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "visual-qa-langgraph",
+  "displayName": "Visual QA LangGraph",
+  "version": "0.1.0",
+  "description": "使用 Python + LangGraph 完成 Web 设计还原、Playwright 截图、视觉对比与可选修正。",
+  "author": {"name": "yang"},
+  "keywords": ["pixso", "visual-qa-langgraph", "playwright", "langgraph", "frontend"],
+  "suggestedPrompts": [
+    "使用 visual-qa-langgraph 验收当前 Web 页面",
+    "使用 visual-qa-langgraph 根据 Pixso 设计实现页面并完成视觉验收"
+  ]
+}

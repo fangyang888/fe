@@ -1,0 +1,34 @@
+[
+  {
+    "course_id": "math-grade-3",
+    "lesson_id": "fractions-addition",
+    "source_id": "fractions-handout",
+    "physical_page": 1,
+    "chunk_number": 1,
+    "text": "三年级数学 · 同分母分数加法\n学习目标：理解分母、分子和“平均分”\n示例讲义 · 用于 PDF 加载与知识库实验\n第 1 页\n一、什么是分数？\n把一个整体平均分成 4 份，其中的 1 份是 1/4，3 份是 3/4。\n分母 4：平均分成几份。分子 3：取了其中几份。\n图示：3/4\n二、判断能不能直接相加\n1/5 和 2/5 的分母相同：每份大小一样，可以直接数份数。\n1/4 和 1/5 的分母不同：每份大小不同，不能直接把分子相加。"
+  },
+  {
+    "course_id": "math-grade-3",
+    "lesson_id": "fractions-addition",
+    "source_id": "fractions-handout",
+    "physical_page": 1,
+    "chunk_number": 2,
+    "text": "本节课只学习“分母相同”的分数加法。\n课堂检查\n① 2/7 的分母是几？它表示整体被平均分成几份？\n② 1/6 和 3/6 的每一份大小相同吗？为什么？\n提示：先看分母，再看分子。"
+  },
+  {
+    "course_id": "math-grade-3",
+    "lesson_id": "fractions-addition",
+    "source_id": "fractions-handout",
+    "physical_page": 2,
+    "chunk_number": 3,
+    "text": "三年级数学 · 同分母分数加法\n学习目标：会计算同分母分数加法，并解释计算依据\n示例讲义 · 用于 PDF 加载与知识库实验\n第 2 页\n三、计算方法\n同分母分数相加：分母不变，分子相加。\n例：1/6 + 2/6 = (1 + 2)/6 = 3/6。\n原因：每份仍是六分之一，只是从 1 份增加到 3 份。\n1/6：\n2/6：\n3/6：\n常见错误\n错误：1/6 + 2/6 = 3/12，把分母也相加了。\n订正：1/6 + 2/6 = 3/6，因为每份大小没有改变。"
+  },
+  {
+    "course_id": "math-grade-3",
+    "lesson_id": "fractions-addition",
+    "source_id": "fractions-handout",
+    "physical_page": 2,
+    "chunk_number": 4,
+    "text": "自检：2/8 + 3/8 = ？请说出分母为什么不变。"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "pixso_component_match": "langgraph_py.pixso_component_match.match:graph"
+  },
+  "env": {
+    "LANGSMITH_TRACING": "true",
+    "LANGSMITH_PROJECT": "pixso-component-match",
+    "LANGSMITH_AGENT_ID": "",
+    "LANGSMITH_AGENT_ENVIRONMENT": ""
+  }
+}

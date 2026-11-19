@@ -1,0 +1,25 @@
+{
+  "active_wal_number": 3,
+  "current_seq": 498,
+  "index_specs": {
+    "dense": {
+      "build_params": {},
+      "field_name": "dense",
+      "index_type": "FLAT",
+      "metric_type": "COSINE",
+      "search_params": {}
+    }
+  },
+  "manifest_format_version": 2,
+  "partitions": {
+    "_default": {
+      "data_files": [
+        "data/data_000001_000353.parquet",
+        "data/data_000354_000498.parquet"
+      ],
+      "delta_files": []
+    }
+  },
+  "schema_version": 1,
+  "version": 3
+}

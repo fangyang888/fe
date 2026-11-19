@@ -69,6 +69,17 @@ python3 build/codex-plugin.py remove       # 卸载插件及其 Codex 缓存
 
 管理脚本位于 `build/codex-plugin.py`，支持安装、更新、状态查看、删除及 `--dry-run`。系统具备可用的 make 时，也可以使用 `make build/install/update/status/remove`；其中 `make update` 会先重新打包。完整命令、产物结构和 ZIP 分发方式见 [打包与插件管理](build/README.md)。安装后需要重新打开或刷新 Codex，并用新聊天加载 Skill。源码修改后重新打包再执行更新，内容版本会自动变化。
 
+Antigravity 使用独立插件清单 [.antigravity-plugin/plugin.json](.antigravity-plugin/plugin.json)，共用 Python 实现与 Skill：
+
+```sh
+python3 scripts/package_plugin.py --target antigravity
+python3 build/antigravity-plugin.py install --dry-run
+python3 build/antigravity-plugin.py install
+python3 build/antigravity-plugin.py status
+```
+
+安装后刷新 Antigravity，在新对话中输入 `/visual-qa-langgraph`。支持全局和 `--project /path/to/project` 项目安装，完整说明见 [Antigravity 打包与管理](build/ANTIGRAVITY.md)。`--target all` 可以同时打包 Codex 和 Antigravity。
+
 ## 新 Pixso 用例
 
 示例位于 [examples/pixso-2-179511](examples/pixso-2-179511/README.md)，对应 [Pixso 节点 2:179511](https://pixso.cn/app/design/qywt_bYlzqjdJdNrHVnluA?item-id=2:179511&editMode=coder)。已从该节点导出 375 × 106 的设计基准图，完成真实 MCP 读取和浏览器最终验收。

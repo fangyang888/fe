@@ -1,0 +1,21 @@
+[project]
+name = "py-service"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "fangyang", email = "fangyang1@xiaoyouzi.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "asyncpg>=0.32.0",
+    "fastapi[standard]>=0.163.2",
+    "sqlalchemy[asyncio]>=2.1.9",
+]
+
+[project.scripts]
+py-service = "py_service:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"

@@ -9,6 +9,7 @@ const {
 } = require('../../src/lib/likely32Vector.ts');
 const {learnVectorSwaps, rememberVectorSwaps} = require('../../src/lib/likely32VectorLearning.ts');
 const {FUSION_GATE_RULE, replayFusionGate} = require('../../src/lib/likely32FusionGate.ts');
+const {summarizeMissStreaks} = require('../../src/lib/likely32Tracker.ts');
 const {updateFusionJournal} = require('./fusion-journal.cjs');
 
 const runtimeDir = process.env.LIKELY32_EMBED_DATA_DIR;
@@ -281,6 +282,12 @@ function buildContext(past) {
 async function evaluateGate(rows, fusion, vectors, contexts, history, lab) {
   const rule = FUSION_GATE_RULE;
   const replay = replayFusionGate(rows.map((row, index) => ({...row, fusion: fusion.hits[index]})));
+  const streakMetrics = hit => {
+    const all = summarizeMissStreaks(replay.rows, hit);
+    const recent = summarizeMissStreaks(replay.rows.slice(-20), hit);
+    return {current: all.current, recentLongest: recent.longest, allLongest: all.longest};
+  };
+  const streaks = {gated: streakMetrics(row => row.hit), fusion: streakMetrics(row => row.fusion)};
   const {after} = rule;
   const isLater = ({year, No}) => year > after.year || year === after.year && No > after.No;
   const summarizeGate = (label, window) => {
@@ -323,7 +330,7 @@ async function evaluateGate(rows, fusion, vectors, contexts, history, lab) {
   }
   console.table(windows);
   if (current) console.log(`当前融合门槛 ${current.gains} 救回 / ${current.losses} 损失，${current.enabled ? '启用融合' : '使用原向量'}`);
-  return {rule, windows, current};
+  return {rule, windows, current, streaks};
 }
 
 async function main() {
@@ -334,7 +341,7 @@ async function main() {
     const published = await readFile(reportPath, 'utf8').then(JSON.parse).catch(() => null);
     if (published?.version === 1 && published.historyDigest === digest && published.model === process.env.EDU_EMBED_MODEL
       && published.fusionGate?.rule?.version === FUSION_GATE_RULE.version && published.missingPeriods === 0
-      && published.fusionGate.current?.picks && published.fusionGate.current.fusionPicks
+      && published.fusionGate.current?.picks && published.fusionGate.current.fusionPicks && published.fusionGate.streaks
       && (!liveHistory || published.journal?.currentPending)) return;
   }
   const warmup = VECTOR_SWAP_WARMUP;

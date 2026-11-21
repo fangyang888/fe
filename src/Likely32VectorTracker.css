@@ -34,6 +34,7 @@
 .v32-decision-result strong{color:#b5e9e0;font-size:22px}
 .v32-decision-result p{margin-top:6px;color:#d3deed;font-size:13px;line-height:1.75}
 .v32-decision .v32-numbers,.v32-decision-actions{margin-top:14px}
+.v32-decision .v32-streak-metrics{margin:12px 0 0}
 .v32-decision-actions:empty{display:none}
 .v32-decision-actions{display:flex;gap:8px;flex-wrap:wrap}
 .v32-decision-actions button{

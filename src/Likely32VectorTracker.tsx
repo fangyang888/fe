@@ -21,11 +21,13 @@ type EmbeddingComparison = {
   windows: Array<{label: string; count: number}>;
   rows: Array<{name: string; hits: number[]}>;
 };
+type StreakSummary = {current: number | null; recentLongest: number | null; allLongest: number | null};
 type FusionGateReport = {
   rule: {after: {year: number; No: number}; qwenWeight: number; window: number; minimumDecisions: number; support: number};
   current: {after: {year: number; No: number}; enabled: boolean; count: number; gains: number; losses: number;
     support: number; picks: number[] | null; fusionPicks?: number[] | null} | null;
   windows: Array<{label: string; count: number; gated: number; vector: number; fusion: number; activations: number}>;
+  streaks?: {gated: StreakSummary; fusion: StreakSummary};
 };
 type FusionJournal = {
   count: number; gated: number; vector: number; gains: number; losses: number;
@@ -176,12 +178,14 @@ function FusionDecision({result, reportState, openBacktest}: {
       <strong>{status}</strong>
       <p>{explanation}</p>
     </div>
+    {ready && gate?.streaks ? <StreakMetrics stats={gate.streaks.gated} label="Qwen 门槛方案连续未命中统计"/> : null}
     {ready && !ready.enabled && gate ? <details className="v32-fusion-candidate">
       <summary>Qwen 融合候选</summary>
       {ready.fusionPicks ? <>
         <p>{gate.rule.qwenWeight * 100}% Qwen＋{(1 - gate.rule.qwenWeight) * 100}% 原向量，供本期对照。</p>
         <Numbers picks={ready.fusionPicks} label="Qwen 融合候选 32 码"/>
       </> : <p>融合候选待生成。报告更新后可查看。</p>}
+      {gate.streaks ? <StreakMetrics stats={gate.streaks.fusion} label="Qwen 融合候选连续未命中统计"/> : null}
     </details> : null}
     {updateHint ? <p className="v32-decision-notice" role="status">{updateHint}</p> : null}
     {ready && failure && !loading ? <p className="v32-decision-notice">最近一次报告检查失败，当前显示上次读取的结果。</p> : null}
@@ -217,6 +221,15 @@ function Numbers({picks, special, label = '选中的32个号码'}: {picks: numbe
   return <div className="v32-numbers" role="group" aria-label={label}>{[...picks].sort((a, b) => a - b).map(n =>
     <span key={n} className={n === special ? 'v32-number is-hit' : 'v32-number'} aria-label={n === special ? `${numberText(n)}，命中特别码` : numberText(n)}>{numberText(n)}</span>,
   )}</div>;
+}
+
+function StreakMetrics({stats, label = '连续未命中统计'}: {stats: StreakSummary; label?: string}) {
+  const display = (value: number | null) => value === null ? '—' : `${value} 期`;
+  return <div className="v32-streak-metrics" role="group" aria-label={label}>
+    <span>当前连错 <b>{display(stats.current)}</b></span>
+    <span>近 20 期内最长 <b>{display(stats.recentLongest)}</b></span>
+    <span>全历史最长 <b>{display(stats.allLongest)}</b></span>
+  </div>;
 }
 
 export default function Likely32VectorTracker() {
@@ -314,14 +327,15 @@ export default function Likely32VectorTracker() {
         <div className="v32-grid">{schemes.map(scheme => {
           const stats = trackerStats(recent, scheme.key);
           const ready = scheme.key !== 'vectorLearn' || result.current.vectorLearning.ready;
+          const streak = streaks[scheme.key];
           return <article className="v32-current" data-model={scheme.key} key={scheme.key}>
             <span className="v32-eyebrow">{scheme.label}</span><h3>{scheme.name}</h3><p>{scheme.description}</p>
             <div className="v32-score"><strong>{stats.count ? `${(stats.hits / stats.count * 100).toFixed(0)}%` : '—'}</strong><span>近20期命中 <b>{stats.hits}/{stats.count}</b>{stats.count < recent.length ? '（不含预热）' : ''}</span></div>
-            <div className="v32-streak-metrics" aria-label="连续未命中统计">
-              <span>当前连错 <b>{streaks[scheme.key].all.eligibleCount ? streaks[scheme.key].all.current : '—'} 期</b></span>
-              <span>近20期内最长 <b>{streaks[scheme.key].recent.eligibleCount ? streaks[scheme.key].recent.longest : '—'} 期</b></span>
-              <span>全历史最长 <b>{streaks[scheme.key].all.eligibleCount ? streaks[scheme.key].all.longest : '—'} 期</b></span>
-            </div>
+            <StreakMetrics stats={{
+              current: streak.all.eligibleCount ? streak.all.current : null,
+              recentLongest: streak.recent.eligibleCount ? streak.recent.longest : null,
+              allLongest: streak.all.eligibleCount ? streak.all.longest : null,
+            }}/>
             <Numbers picks={result.current.picks[scheme.key]}/>
             <div className="v32-card-footer">{ready ? '32个号码 · 等待开奖' : `学习预热 ${result.current.vectorLearning.trainingCount}/100期 · 号码仅供预览`}</div>
           </article>;

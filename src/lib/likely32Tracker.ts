@@ -24,20 +24,25 @@ export function trackerStats(rows: TrackerRow[], model: TrackerModel) {
   return {count: eligible.length, hits: eligible.filter(r => r.hits[model]).length};
 }
 export function missStreaks(rows: TrackerRow[], model: TrackerModel) {
+  return summarizeMissStreaks(rows, row => row.hits[model], row => model !== 'vectorLearn' || row.vectorLearning.ready);
+}
+
+export function summarizeMissStreaks<T extends Issue>(rows: T[], hit: (row: T) => boolean, eligible: (row: T) => boolean = () => true) {
   const runs: {from: Issue; through: Issue; length: number; ongoing: boolean}[] = [];
   const byIssue: Record<string, number> = {};
-  let current = 0, longest = 0, eligibleCount = 0, from: Issue | null = null, previous: TrackerRow | null = null;
+  let current = 0, longest = 0, eligibleCount = 0, from: Issue | null = null, previous: T | null = null;
   const finish = (ongoing: boolean) => {
     if (current >= 2 && from && previous) runs.push({from, through: issue(previous), length: current, ongoing});
   };
   for (const row of rows) {
     const adjacent = !previous || (row.year === previous.year && row.No === previous.No + 1) || (row.year === previous.year + 1 && row.No === 1);
-    if (!adjacent || model === 'vectorLearn' && !row.vectorLearning.ready) {
+    const rowEligible = eligible(row);
+    if (!adjacent || !rowEligible) {
       finish(false); current = 0; from = null;
     }
-    if (model !== 'vectorLearn' || row.vectorLearning.ready) {
+    if (rowEligible) {
       eligibleCount++;
-      if (row.hits[model]) {finish(false); current = 0; from = null;}
+      if (hit(row)) {finish(false); current = 0; from = null;}
       else {if (!current) from = issue(row); current++; longest = Math.max(longest, current);}
     }
     byIssue[issueKey(row)] = current;

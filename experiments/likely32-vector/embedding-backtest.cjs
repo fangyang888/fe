@@ -303,24 +303,23 @@ async function evaluateGate(rows, fusion, vectors, contexts, history, lab) {
   const afterLatest = {year, No};
   if (vectors.length === contexts.length && (isLater(afterLatest) || year === after.year && No === after.No)) {
     const decision = replay.current;
-    let picks = decision.enabled ? null : lab.current.picks.vector;
-    if (decision.enabled) {
-      const context = buildContext(history);
-      try {
-        const {vectors: [vector]} = await embed([context]);
-        if (vector && vector.length !== vectors[0].length) throw new Error('当前向量的维度与历史不一致');
-        if (vector) {
-          const index = vectors.length;
-          const qwen = neighborPercentiles([...vectors, vector], index);
-          const manual = neighborPercentiles([...contexts.map(row => row.manual), context.manual], index);
-          picks = predictFromVector(vector, context.order, fusion.state,
-            (_a, _b, prior) => fusedRank(qwen, manual, rule.qwenWeight, prior)).picks;
-        }
-      } catch (error) {
-        console.error(`当前状态向量未生成（${error.message}）`);
+    const context = buildContext(history);
+    let fusionPicks = null;
+    try {
+      const {vectors: [vector]} = await embed([context]);
+      if (vector) {
+        if (vector.length !== vectors[0].length) throw new Error('当前向量的维度与历史不一致');
+        const index = vectors.length;
+        const qwen = neighborPercentiles([...vectors, vector], index);
+        const manual = neighborPercentiles([...contexts.map(row => row.manual), context.manual], index);
+        fusionPicks = predictFromVector(vector, context.order, fusion.state,
+          (_a, _b, prior) => fusedRank(qwen, manual, rule.qwenWeight, prior)).picks;
       }
+    } catch (error) {
+      console.error(`当前融合候选未生成（${error.message}）`);
     }
-    current = {after: afterLatest, ...decision, picks};
+    const picks = decision.enabled ? fusionPicks : lab.current.picks.vector;
+    current = {after: afterLatest, ...decision, picks, fusionPicks};
   }
   console.table(windows);
   if (current) console.log(`当前融合门槛 ${current.gains} 救回 / ${current.losses} 损失，${current.enabled ? '启用融合' : '使用原向量'}`);
@@ -335,7 +334,8 @@ async function main() {
     const published = await readFile(reportPath, 'utf8').then(JSON.parse).catch(() => null);
     if (published?.version === 1 && published.historyDigest === digest && published.model === process.env.EDU_EMBED_MODEL
       && published.fusionGate?.rule?.version === FUSION_GATE_RULE.version && published.missingPeriods === 0
-      && published.fusionGate.current?.picks && (!liveHistory || published.journal?.currentPending)) return;
+      && published.fusionGate.current?.picks && published.fusionGate.current.fusionPicks
+      && (!liveHistory || published.journal?.currentPending)) return;
   }
   const warmup = VECTOR_SWAP_WARMUP;
   if (history.length <= 10 + warmup) throw new Error('至少需要131期连续历史用于向量回测');

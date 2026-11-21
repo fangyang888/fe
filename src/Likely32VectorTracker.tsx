@@ -24,7 +24,7 @@ type EmbeddingComparison = {
 type FusionGateReport = {
   rule: {after: {year: number; No: number}; qwenWeight: number; window: number; minimumDecisions: number; support: number};
   current: {after: {year: number; No: number}; enabled: boolean; count: number; gains: number; losses: number;
-    support: number; picks: number[] | null} | null;
+    support: number; picks: number[] | null; fusionPicks?: number[] | null} | null;
   windows: Array<{label: string; count: number; gated: number; vector: number; fusion: number; activations: number}>;
 };
 type FusionJournal = {
@@ -145,6 +145,7 @@ function FusionDecision({result, reportState, openBacktest}: {
   const sameHistory = report?.historyDigest === result.historyDigest;
   const reportMatches = report && issue(report.through) === latest && sameHistory && report.missingPeriods === 0;
   const ready = current && reportMatches && issue(current.after) === latest ? current : null;
+  const picks = ready ? (ready.enabled ? ready.picks : result.current.picks.vector) : null;
   const archived = report?.journal;
   let status = '等待最新报告';
   let explanation = loading ? '正在读取 Qwen 报告。' : failure || '报告生成后会显示下一期的融合决策。';
@@ -158,7 +159,7 @@ function FusionDecision({result, reportState, openBacktest}: {
     }
   }
   if (ready && gate) {
-    status = ready.enabled ? ready.picks ? '启用 Qwen 融合' : '达到融合门槛，号码待生成' : '采用原向量';
+    status = ready.enabled ? picks ? '采用 Qwen 融合' : '达到融合门槛，号码待生成' : '采用原向量';
     explanation = `前 ${gate.rule.window} 期，融合使 ${ready.gains} 期由未中变为命中、${ready.losses} 期由命中变为未中。平滑救回占比 ${(ready.support * 100).toFixed(1)}%，启用门槛 ${gate.rule.support * 100}%。`;
   }
   const archivedCurrent = ready && archived?.currentPending;
@@ -167,18 +168,24 @@ function FusionDecision({result, reportState, openBacktest}: {
     : jobStatus === 'disabled' && !ready ? '服务器尚未配置 Qwen 自动更新。' : '';
   return <section className="v32-decision" aria-labelledby="v32-decision-title">
     <div className="v32-decision-header">
-      <div><h2 id="v32-decision-title">Qwen 融合 · 下一期决策</h2><p>开奖数据截至 {latest} 期</p></div>
+      <div><h2 id="v32-decision-title">Qwen 下一期待开奖 · 当前 32 码</h2><p>开奖数据截至 {latest} 期</p></div>
       {archivedCurrent ? <span className="v32-decision-archive">下一期已留档 · {archived.count} 期已计分</span> : null}
     </div>
+    {picks ? <Numbers picks={picks} label="下一期采用的 32 码"/> : null}
     <div className="v32-decision-result" role="status">
       <strong>{status}</strong>
       <p>{explanation}</p>
     </div>
-    {ready?.enabled && ready.picks ? <Numbers picks={ready.picks}/> : null}
+    {ready && !ready.enabled && gate ? <details className="v32-fusion-candidate">
+      <summary>Qwen 融合候选</summary>
+      {ready.fusionPicks ? <>
+        <p>{gate.rule.qwenWeight * 100}% Qwen＋{(1 - gate.rule.qwenWeight) * 100}% 原向量，供本期对照。</p>
+        <Numbers picks={ready.fusionPicks} label="Qwen 融合候选 32 码"/>
+      </> : <p>融合候选待生成。报告更新后可查看。</p>}
+    </details> : null}
     {updateHint ? <p className="v32-decision-notice" role="status">{updateHint}</p> : null}
     {ready && failure && !loading ? <p className="v32-decision-notice">最近一次报告检查失败，当前显示上次读取的结果。</p> : null}
     <div className="v32-decision-actions">
-      {ready && !ready.enabled ? <a href="#v32-original-picks">查看原向量 32 码</a> : null}
       {report ? <button type="button" onClick={openBacktest}>查看回测与留档</button> : null}
     </div>
   </section>;
@@ -206,8 +213,8 @@ function EmbeddingBacktest({report, detailsRef}: {report: EmbeddingReport; detai
   </details>;
 }
 
-function Numbers({picks, special}: {picks: number[]; special?: number}) {
-  return <div className="v32-numbers" aria-label="选中的32个号码">{[...picks].sort((a, b) => a - b).map(n =>
+function Numbers({picks, special, label = '选中的32个号码'}: {picks: number[]; special?: number; label?: string}) {
+  return <div className="v32-numbers" role="group" aria-label={label}>{[...picks].sort((a, b) => a - b).map(n =>
     <span key={n} className={n === special ? 'v32-number is-hit' : 'v32-number'} aria-label={n === special ? `${numberText(n)}，命中特别码` : numberText(n)}>{numberText(n)}</span>,
   )}</div>;
 }
@@ -307,7 +314,7 @@ export default function Likely32VectorTracker() {
         <div className="v32-grid">{schemes.map(scheme => {
           const stats = trackerStats(recent, scheme.key);
           const ready = scheme.key !== 'vectorLearn' || result.current.vectorLearning.ready;
-          return <article className="v32-current" id={scheme.key === 'vector' ? 'v32-original-picks' : undefined} data-model={scheme.key} key={scheme.key}>
+          return <article className="v32-current" data-model={scheme.key} key={scheme.key}>
             <span className="v32-eyebrow">{scheme.label}</span><h3>{scheme.name}</h3><p>{scheme.description}</p>
             <div className="v32-score"><strong>{stats.count ? `${(stats.hits / stats.count * 100).toFixed(0)}%` : '—'}</strong><span>近20期命中 <b>{stats.hits}/{stats.count}</b>{stats.count < recent.length ? '（不含预热）' : ''}</span></div>
             <div className="v32-streak-metrics" aria-label="连续未命中统计">

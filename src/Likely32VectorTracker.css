@@ -36,13 +36,19 @@
 .v32-decision .v32-numbers,.v32-decision-actions{margin-top:14px}
 .v32-decision-actions:empty{display:none}
 .v32-decision-actions{display:flex;gap:8px;flex-wrap:wrap}
-.v32-decision-actions a,.v32-decision-actions button{
+.v32-decision-actions button{
   display:inline-flex;align-items:center;padding:8px 13px;min-height:38px;
   border:1px solid #3c5865;border-radius:7px;background:#192e3c;
   color:#e6edf7;font:inherit;font-size:13px;text-decoration:none;cursor:pointer;
 }
-.v32-decision-actions a:hover,.v32-decision-actions button:hover{border-color:#77decf}
-.v32-embedding,#v32-original-picks{scroll-margin-top:76px}
+.v32-decision-actions button:hover{border-color:#77decf}
+.v32-fusion-candidate{margin-top:14px;border-top:1px solid #31515c;padding-top:12px}
+.v32-fusion-candidate summary{cursor:pointer;font-size:13px;font-weight:600;color:#b5e9e0}
+.v32-fusion-candidate p{margin-top:8px;color:#a4b3c8;font-size:12px;line-height:1.6}
+.v32-embedding{scroll-margin-top:76px}
+@media(min-width:901px){
+  .v32-decision .v32-numbers{grid-template-columns:repeat(16,minmax(0,1fr))}
+}
 @media(max-width:760px){
   .v32-decision{padding:18px 16px}
   .v32-decision-header h2{font-size:18px}

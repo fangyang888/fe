@@ -1,7 +1,7 @@
 import {ZODIACS, isZodiac} from './zodiacLabels';
 import type {Zodiac} from './zodiacLabels';
-import {buildVectorZodiacPredictions, ZODIAC_VECTOR_TRIAL_START} from './vectorZodiacObservation';
-import type {VectorZodiacDraw, VectorZodiacPrediction} from './vectorZodiacObservation';
+import {buildVectorZodiacDecisions, zodiacForNumber, zodiacMapping, ZODIAC_VECTOR_SWITCH_WINDOW, ZODIAC_VECTOR_TRIAL_START} from './vectorZodiacObservation';
+import type {VectorZodiacDecision, VectorZodiacDraw, VectorZodiacPrediction} from './vectorZodiacObservation';
 import {summarizeMissStreaks} from './likely32Tracker';
 
 export {ZODIACS};
@@ -18,7 +18,6 @@ const PRIOR = ZODIACS.map(zodiac => (zodiac === '马' ? 5 : 4) / 49);
 
 type ZodiacDraw = VectorZodiacDraw & {
   year: number;
-  specialNumber: number;
 };
 
 type ModelConfig = {
@@ -45,8 +44,8 @@ export type ZodiacObservationRow = {
   twoSuccess: boolean | null;
   threeSuccess: boolean | null;
   vector: VectorZodiacPrediction | null;
+  vectorDecision: VectorZodiacDecision | null;
   vectorSuccess: boolean | null;
-  vectorBaselineSuccess: boolean | null;
   modelResults: Record<ZodiacModel, { twoSuccess: boolean | null; threeSuccess: boolean | null }>;
 };
 
@@ -59,19 +58,20 @@ export type ZodiacBacktestSummary = {
 };
 export type VectorZodiacSummary = {count: number; successCount: number; successRate: number};
 
-function parseRegularZodiacs(record: Record<string, unknown>, numberInfos: unknown, special: number): Zodiac[] | null {
+function parseRegularNumbers(record: Record<string, unknown>, numberInfos: unknown, special: number, specialZodiac: Zodiac): number[] | null {
   if (!Array.isArray(numberInfos)) return null;
+  const mapping = zodiacMapping(special, specialZodiac);
   const seen = new Set([special]);
-  const zodiacs: Zodiac[] = [];
+  const numbers: number[] = [];
   for (let index = 0; index < 6; index++) {
     const number = record[`n${index + 1}`];
     const info = numberInfos[index];
     if (typeof number !== 'number' || !Number.isInteger(number) || number < 1 || number > 49 || seen.has(number)
-        || !info || typeof info !== 'object' || info.number !== number || !isZodiac(info.zodiac)) return null;
+        || !info || typeof info !== 'object' || info.number !== number || info.zodiac !== zodiacForNumber(mapping, number)) return null;
     seen.add(number);
-    zodiacs.push(info.zodiac);
+    numbers.push(number);
   }
-  return zodiacs;
+  return numbers;
 }
 
 function parseHistory(input: unknown) {
@@ -122,7 +122,7 @@ function parseHistory(input: unknown) {
         No: record.No,
         specialNumber,
         zodiac,
-        regularZodiacs: parseRegularZodiacs(record, numberInfos, specialNumber),
+        regularNumbers: parseRegularNumbers(record, numberInfos, specialNumber, zodiac),
       });
     }
     buckets.set(record.No, periodEntries);
@@ -146,7 +146,7 @@ function parseHistory(input: unknown) {
       rejected,
       duplicatePeriods,
       missingOrInvalidPeriods: latestNo === null ? 0 : latestNo - draws.length,
-      vectorMissingMetadata: draws.filter(draw => !draw.regularZodiacs).length,
+      vectorMissingMetadata: draws.filter(draw => !draw.regularNumbers).length,
     },
   };
 }
@@ -242,11 +242,12 @@ function summarizeVector(rows: ZodiacObservationRow[]): VectorZodiacSummary {
 }
 
 function compareVectors(rows: ZodiacObservationRow[]) {
-  const paired = rows.filter(row => row.vectorSuccess !== null && row.vectorBaselineSuccess !== null);
+  const paired = rows.filter(row => row.vectorSuccess !== null);
   return {
     count: paired.length,
     vectorWins: paired.filter(row => row.vectorSuccess).length,
-    baselineWins: paired.filter(row => row.vectorBaselineSuccess).length,
+    learningWins: paired.filter(row => row.vectorDecision?.results.learning).length,
+    shortWins: paired.filter(row => row.vectorDecision?.results.short).length,
   };
 }
 
@@ -257,7 +258,7 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
   const finalTarget = history.latestNo === null ? BACKTEST_START : history.latestNo + 1;
   const firstTarget = Math.min(BACKTEST_START, finalTarget);
   const targets = Array.from({length: finalTarget - firstTarget + 1}, (_, index) => firstTarget + index);
-  const {predictions: vectorPredictions, baseline: vectorBaseline} = buildVectorZodiacPredictions(history.draws, targets);
+  const vectorDecisions = buildVectorZodiacDecisions(history.draws, finalTarget);
 
   for (const targetNo of targets) {
     const stable = targetNo >= BACKTEST_START ? modelRanking(byNo, targetNo, ZODIAC_MODELS.stable) : null;
@@ -275,8 +276,8 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
       : null;
     const selected = choice && rankings ? rankings[choice].slice(0, 3) : [];
     const actual = byNo.get(targetNo) ?? null;
-    const vector = vectorPredictions.get(targetNo) ?? null;
-    const baseline = vectorBaseline.get(targetNo);
+    const vectorDecision = vectorDecisions.get(targetNo) ?? null;
+    const vector = vectorDecision?.forecasts[vectorDecision.scheme] ?? null;
     const previousChoice = [...rows].reverse().find(row => row.choice)?.choice ?? null;
     const result = (ranking: Zodiac[] | null, take: number) =>
       actual && ranking ? !ranking.slice(0, take).includes(actual.zodiac) : null;
@@ -293,8 +294,8 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
       twoSuccess: actual && selected.length === 3 ? !selected.slice(0, 2).includes(actual.zodiac) : null,
       threeSuccess: actual && selected.length === 3 ? !selected.includes(actual.zodiac) : null,
       vector,
-      vectorSuccess: actual && vector ? !vector.selected.includes(actual.zodiac) : null,
-      vectorBaselineSuccess: actual && baseline ? !baseline.selected.includes(actual.zodiac) : null,
+      vectorDecision,
+      vectorSuccess: vectorDecision?.results[vectorDecision.scheme] ?? null,
       modelResults: {
         stable: {twoSuccess: result(stable, 2), threeSuccess: result(stable, 3)},
         recent: {twoSuccess: result(recent, 2), threeSuccess: result(recent, 3)},
@@ -330,6 +331,7 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
     recentTotal: summarize(settledRows, 'recent'),
     vectorTotal: summarizeVector(settledRows),
     vectorComparison: compareVectors(settledRows),
+    vectorRecent: compareVectors(rows.slice(0, -1).slice(-ZODIAC_VECTOR_SWITCH_WINDOW)),
     vectorTrial: compareVectors(settledRows.filter(row => row.targetNo >= ZODIAC_VECTOR_TRIAL_START)),
     vectorPaired: {count: paired.length, vectorWins: paired.filter(row => row.vectorSuccess).length,
       adaptiveWins: paired.filter(row => row.threeSuccess).length},

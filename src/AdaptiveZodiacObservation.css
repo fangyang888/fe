@@ -13,6 +13,14 @@
 }
 .azo-vector-hero h2 { margin: 8px 0 14px; font-size: clamp(24px, 4vw, 34px); }
 .azo-vector-version { margin: 0 0 12px; color: #b3cbc4; font-size: 13px; }
+.azo-vector-comparison { grid-column: 1 / -1; padding-top: 14px; border-top: 1px solid #456f63; }
+.azo-vector-comparison p { margin: 0 0 10px; color: #c4ded6; font-size: 13px; line-height: 1.65; }
+.azo-vector-comparison dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.azo-vector-comparison dl > div { padding: 9px 11px; border: 1px solid #3c5d54; border-radius: 8px; }
+.azo-vector-comparison [data-current="true"] { border-color: #62b59f; background: #193832; }
+.azo-vector-comparison dt { color: #b3cbc4; font-size: 12px; }
+.azo-vector-comparison dd { margin: 5px 0 0; color: #e5f2ed; font-size: 14px; font-weight: 700; }
+.azo-vector-comparison small { display: block; margin-top: 4px; color: #b3cbc4; font-size: 12px; font-weight: 400; }
 .azo-history-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
 .azo-history-actions a {
   display: inline-flex;

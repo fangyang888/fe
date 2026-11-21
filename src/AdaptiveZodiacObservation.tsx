@@ -9,12 +9,16 @@ import {
   type ZodiacObservationRow,
   type VectorZodiacSummary,
 } from './lib/adaptiveZodiacObservation';
-import {ZODIAC_VECTOR_CONFIG, ZODIAC_VECTOR_TRIAL_START, ZODIAC_VECTOR_WINDOWS} from './lib/vectorZodiacObservation';
-import type {VectorZodiacPrediction} from './lib/vectorZodiacObservation';
+import {
+  ZODIAC_VECTOR_CONFIG, ZODIAC_VECTOR_FEEDBACK_WINDOW, ZODIAC_VECTOR_SHORT_HALF_LIFE,
+  ZODIAC_VECTOR_SWITCH_WINDOW, ZODIAC_VECTOR_TRIAL_START, ZODIAC_VECTOR_WINDOWS,
+} from './lib/vectorZodiacObservation';
+import type {VectorZodiacDecision, VectorZodiacPrediction, VectorZodiacScheme} from './lib/vectorZodiacObservation';
 import './PeakShapeObservation.css';
 import './AdaptiveZodiacObservation.css';
 
 const modelLabel = (model: ZodiacModel | null) => model ? ZODIAC_MODELS[model].label : '无法计算';
+const vectorLabels: Record<VectorZodiacScheme, string> = {learning: '学习版', short: '短线版'};
 const percentage = (value: number, count: number) => count ? `${(value * 100).toFixed(2)}%` : '—';
 const phase = (no: number) => no <= 180
   ? '初段记录'
@@ -63,22 +67,38 @@ function ResultText({value, settled = false}: {value: boolean | null; settled?: 
 function VectorDetails({vector}: {vector: VectorZodiacPrediction}) {
   return <details className="azo-vector-details">
     <summary>查看 12 肖得分与相似历史</summary>
-    <p className="pso-muted">{vector.windows.length === ZODIAC_VECTOR_WINDOWS.length
-      ? '各窗口的近邻加权得分取平均，用于排序。'
-      : '本期使用 24 期窗口的近邻加权得分。'}</p>
+    <p className="pso-muted">各窗口按本期权重合并得分。历史生肖按本期号码分组换算后参与计分。</p>
+    <p className="pso-muted">{vector.windows.map(window => `${window.lookback} 期窗口 ${percentage(window.share, 1)}`).join(' · ')}</p>
     <ol className="azo-vector-ranking" aria-label="本期向量得分，从低到高">
       {vector.scores.map(row => <li key={row.zodiac} className={vector.selected.includes(row.zodiac) ? 'is-excluded' : undefined}>
         <b>{row.zodiac}肖</b><span>{percentage(row.score, 1)}</span>
       </li>)}
     </ol>
     <div className="pso-table-wrap azo-neighbor-table" tabIndex={0} aria-label="各窗口最相似的历史">
-      <table><thead><tr><th>窗口</th><th>历史目标期</th><th>余弦相似度</th><th>随后特别码生肖</th><th>权重</th></tr></thead>
+      <table><thead><tr><th>窗口</th><th>历史目标期</th><th>余弦相似度</th><th>历史特别码生肖</th><th>对齐后生肖</th><th>权重</th></tr></thead>
         <tbody>{vector.windows.flatMap(window => window.nearest.map(row => <tr key={`${window.lookback}-${row.No}`}>
-          <td>{window.lookback} 期</td><td>第 {row.No} 期</td><td>{row.similarity.toFixed(3)}</td><td>{row.zodiac}肖</td><td>{row.weight.toFixed(2)}</td>
+          <td>{window.lookback} 期</td><td>第 {row.No} 期</td><td>{row.similarity.toFixed(3)}</td>
+          <td>{row.zodiac}肖</td><td>{row.alignedZodiac}肖</td><td>{row.weight.toFixed(2)}</td>
         </tr>))}</tbody>
       </table>
     </div>
   </details>;
+}
+
+function VectorSwitchComparison({decision}: {decision: VectorZodiacDecision}) {
+  const {recent, forecasts} = decision;
+  const difference = recent.shortWins - recent.learningWins;
+  const explanation = recent.count < ZODIAC_VECTOR_SWITCH_WINDOW ? `近 ${ZODIAC_VECTOR_SWITCH_WINDOW} 期中可对照 ${recent.count} 期，采用学习版。`
+    : difference > 0 ? `近 ${ZODIAC_VECTOR_SWITCH_WINDOW} 期短线版净多成功 ${difference} 期，本期采用短线版。`
+    : difference < 0 ? `近 ${ZODIAC_VECTOR_SWITCH_WINDOW} 期学习版净多成功 ${-difference} 期，本期采用学习版。`
+    : `近 ${ZODIAC_VECTOR_SWITCH_WINDOW} 期成功数持平，本期采用学习版。`;
+  return <div className="azo-vector-comparison" role="group" aria-label="两套向量同期对照">
+    <p>{explanation}</p>
+    <dl>
+      <div data-current={decision.scheme === 'learning'}><dt>学习版</dt><dd>{forecasts.learning.selected.join(' · ')}<small>{recent.learningWins}/{recent.count} 成功</small></dd></div>
+      <div data-current={decision.scheme === 'short'}><dt>短线版</dt><dd>{forecasts.short.selected.join(' · ')}<small>{recent.shortWins}/{recent.count} 成功</small></dd></div>
+    </dl>
+  </div>;
 }
 
 function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
@@ -98,7 +118,8 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
   const rollingLead = current.rolling.recentWins - current.rolling.stableWins;
   const currentConfig = current.choice ? ZODIAC_MODELS[current.choice] : null;
   const integrity = data.integrity;
-  const {lookback, dimensions, neighbors, minimumNeighbors} = ZODIAC_VECTOR_CONFIG;
+  const {dimensions, neighbors, minimumNeighbors} = ZODIAC_VECTOR_CONFIG;
+  const lookback = ZODIAC_VECTOR_WINDOWS[1].lookback;
   const streakValue = (value: number | null) => value === null ? '—' : `${value} 期`;
 
   return <>
@@ -113,9 +134,8 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
         <div>
           <span className="pso-eyebrow">第 {current.targetNo} 期 · 待开奖</span>
           <h2 id="azo-vector-current">向量杀 3 肖</h2>
-          {current.vector ? <p className="azo-vector-version">{current.vector.windows.length === ZODIAC_VECTOR_WINDOWS.length
-            ? '12 / 24 / 36 期多尺度向量'
-            : '多尺度数据不足，本期使用 24 期向量'}</p> : null}
+          {current.vectorDecision && current.vector ? <p className="azo-vector-version">本期采用{vectorLabels[current.vectorDecision.scheme]}
+            {current.vector.windows.length !== ZODIAC_VECTOR_WINDOWS.length ? ' · 使用 24 期窗口' : ''}</p> : null}
           {current.vector ? <div className="azo-vector-picks" role="group" aria-label="向量排除的三个生肖">
             {current.vector.selected.map(zodiac => <strong key={zodiac}>{zodiac}<small>肖</small></strong>)}
           </div> : <p className="azo-empty-pick">需要前 {lookback} 期完整生肖数据及至少 {minimumNeighbors} 个历史近邻。</p>}
@@ -125,6 +145,7 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
           <div><dt>近 20 期内最长</dt><dd>{streakValue(data.vectorStreak.recentLongest)}</dd></div>
           <div><dt>全历史最长</dt><dd>{streakValue(data.vectorStreak.allLongest)}</dd></div>
         </dl>
+        {current.vectorDecision ? <VectorSwitchComparison decision={current.vectorDecision}/> : null}
       </div>
       <div className="azo-hero-copy">
         <span className="pso-eyebrow">第 {current.targetNo} 期 · 当前采用 {modelLabel(current.choice)}</span>
@@ -161,8 +182,9 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
           <span>本期实际参数</span><strong>{currentConfig ? `${currentConfig.neighbors}个相似样本` : '暂不可用'}</strong><p>{current.switched ? '本期发生模型切换。' : '本期延续当前判断。'} 排名只使用目标期之前的数据。</p>
         </article>
         <article className="azo-vector-model">
-          <span>独立向量杀 3 肖</span><strong>多尺度余弦相似度 · 每个窗口 {dimensions} 维</strong>
-          <p>12、24、36 期分别构建生肖频次与遗漏向量，各自匹配最多 {neighbors} 个历史近邻。三个窗口等权平均，排除得分最低的 3 肖。</p>
+          <span>独立向量杀 3 肖</span><strong>近 {ZODIAC_VECTOR_SWITCH_WINDOW} 期领先切换</strong>
+          <p>按号码类别对齐生肖映射。12、24、36 期各建 {dimensions} 维向量，每个窗口匹配最多 {neighbors} 个历史近邻。</p>
+          <p>学习版根据前 {ZODIAC_VECTOR_FEEDBACK_WINDOW} 期结果调整窗口权重。短线版另按 {ZODIAC_VECTOR_SHORT_HALF_LIFE} 期半衰期给近期近邻更高权重。近 {ZODIAC_VECTOR_SWITCH_WINDOW} 期短线版成功数严格领先时采用短线版，持平或样本不足时采用学习版。</p>
           {current.vector ? <p>本期近邻 {current.vector.windows.map(window => `${window.lookback} 期窗口采用 ${window.neighborCount} 个`).join('，')}。</p> : null}
         </article>
       </div>
@@ -174,10 +196,11 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
       <p className="pso-muted">当期特别码生肖落在所排除的生肖之外，记为成功。每期使用该期之前的开奖记录回放。</p>
       <div className="azo-summary-grid azo-overall-grid">
         <article className="azo-stat azo-vector-model">
-          <span>多尺度向量杀 3 肖 · 151 期起</span><VectorScore data={data.vectorTotal}/>
-          {data.vectorComparison.count ? <p>向量同期 {data.vectorComparison.count} 期，多尺度成功 {data.vectorComparison.vectorWins} 期，原 24 期向量成功 {data.vectorComparison.baselineWins} 期。</p> : null}
+          <span>自动切换向量 · 151 期起</span><VectorScore data={data.vectorTotal}/>
+          {data.vectorComparison.count ? <p>同期 {data.vectorComparison.count} 期，固定学习版成功 {data.vectorComparison.learningWins} 期，固定短线版成功 {data.vectorComparison.shortWins} 期。</p> : null}
+          {data.vectorRecent.count ? <p>近 {ZODIAC_VECTOR_SWITCH_WINDOW} 期自动切换成功 {data.vectorRecent.vectorWins}/{data.vectorRecent.count}。</p> : null}
           <p>{data.vectorTrial.count
-            ? `从第 ${ZODIAC_VECTOR_TRIAL_START} 期起已对照 ${data.vectorTrial.count} 期，多尺度成功 ${data.vectorTrial.vectorWins} 期，原向量成功 ${data.vectorTrial.baselineWins} 期。`
+            ? `从第 ${ZODIAC_VECTOR_TRIAL_START} 期起已对照 ${data.vectorTrial.count} 期，自动切换成功 ${data.vectorTrial.vectorWins} 期，固定学习版 ${data.vectorTrial.learningWins} 期，固定短线版 ${data.vectorTrial.shortWins} 期。`
             : `从第 ${ZODIAC_VECTOR_TRIAL_START} 期起单独对照，目前待开奖入库。`}</p>
           {data.vectorPaired.count ? <p>同期 {data.vectorPaired.count} 期，向量成功 {data.vectorPaired.vectorWins} 期，自适应 3 肖成功 {data.vectorPaired.adaptiveWins} 期。</p> : null}
         </article>
@@ -210,7 +233,9 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
           <td>稳定 {row.rolling.stableWins}/{row.rolling.count} · 近期 {row.rolling.recentWins}/{row.rolling.count}</td>
           <td className="azo-table-picks">{row.selected.slice(0, 2).join(' · ') || '—'}</td><td className="azo-table-plus">{row.selected[2] ?? '—'}</td>
           <td>{row.actual ? `${String(row.actual.specialNumber).padStart(2, '0')} · ${row.actual.zodiac}肖` : '待开奖'}</td><td><ResultText value={row.twoSuccess} /></td><td><ResultText value={row.threeSuccess} /></td>
-          <td className="azo-vector-cell">{row.vector?.selected.join(' · ') ?? '—'}{row.vector ? <small>{row.vector.windows.map(window => window.lookback).join(' / ')} 期窗口</small> : null}</td>
+          <td className="azo-vector-cell">{row.vector?.selected.join(' · ') ?? '—'}{row.vectorDecision ? <small>
+            {vectorLabels[row.vectorDecision.scheme]} · 学习 {row.vectorDecision.recent.learningWins}/{row.vectorDecision.recent.count} · 短线 {row.vectorDecision.recent.shortWins}/{row.vectorDecision.recent.count}
+          </small> : null}</td>
           <td><ResultText value={row.vectorSuccess} settled={!!row.actual}/></td>
         </tr>)}
         {visibleRows.length === 0 ? <tr><td colSpan={11}>当前范围暂无记录。</td></tr> : null}

@@ -73,4 +73,25 @@ export default defineConfig([
 ```
 
 
-// 40 44 9 21 47 48 5 
+// 40 44 9 21 47 48 5
+
+## 32 码追踪页的 Qwen 向量回测
+
+使用 Node 20.19+。在 `experiments/likely32-vector/.env` 设置 `EDU_EMBED_BASE_URL`、`EDU_EMBED_MODEL` 和 `EDU_EMBED_API_KEY`。模型可设置为 `qwen3.7-text-embedding`，基址填写服务提供的 OpenAI 兼容 API 基址。
+
+```sh
+pnpm likely32:embedding
+pnpm likely32:embedding ./history-export.json
+```
+
+默认读取本地 `/api/history`，也可以传入同格式的 JSON 文件或历史接口 URL。脚本仅发送开奖前的号码状态，按批缓存向量并生成 `public/likely32-embedding-report.json`。打开 `/fe/kill/likely32-vector-tracker` 下的「大模型向量回测」即可查看。要在生产构建中包含结果，先生成报告，再运行 `pnpm build`。
+
+额度不足时，可在命令末尾加 `--cached-only`，用已有缓存生成连续区间的回测。报告会标明缺少向量的期数和实际截止期。
+
+报告也比较余弦、角度、欧氏距离、曼哈顿距离、Pearson、Spearman 和中心化余弦。各算法共享近邻和换码规则，依据 2025 年及以前的命中率选定候选，再查看 2026 年及以后表现。已有向量可直接用于对照。
+
+融合实验将 Qwen 和手工向量各自的近邻排名转换为百分位，再按固定比例合并。另比较按近邻年龄降权、按前 100 期滚动中心化，以及沿用现有换码学习门槛。
+
+融合启用门槛使用前 100 期的同期命中差异。至少出现 4 次差异且平滑救回占比 `(救回 + 1) / (救回 + 损失 + 2)` 达到 60% 时，启用 Qwen 75% 加原向量 25% 的排名融合。其余期次使用原向量。规则从 2026-323 期后固定，后续开奖独立计数。正常运行脚本时，达到门槛才为下一期额外请求当前状态向量。继续使用 `--cached-only` 可只读本地向量缓存。
+
+用实时历史接口生成报告时会复核历史，再在 `data/likely32-fusion-journal/` 保存每期首份预测与原向量对照。重复计算保留首份记录，历史修订或时间无法核验的记录跳过计分。计分对照历史接口的 `created_at` 入库时间，开奖时间需另行核验。JSON 文件输入可回放历史，留档使用 URL 输入。

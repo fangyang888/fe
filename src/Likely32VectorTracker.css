@@ -8,3 +8,43 @@
 @media(max-width:760px){.v32-page{padding:76px 16px 40px}.v32-header{align-items:flex-start;flex-direction:column;gap:18px}.v32-header h1{font-size:29px}.v32-header nav{width:100%}.v32-header a,.v32-header button{flex:1}.v32-status{margin:22px 0 28px;gap:4px}.v32-status>span{width:100%;margin-left:0}.v32-section-title{align-items:flex-start;flex-direction:column;gap:10px}.v32-section-title h2{font-size:18px}.v32-section-title>span{flex-wrap:wrap}.v32-grid{grid-template-columns:1fr;gap:14px}.v32-current{padding:20px}.v32-current>p{min-height:0}.v32-numbers{gap:5px}.v32-number{min-height:32px;font-size:13px}.v32-row-header{padding:14px 16px}.v32-row>.v32-grid{padding:18px 16px;gap:20px}.v32-history-model+.v32-history-model{border-top:1px solid #2d3b50;padding-top:18px}.v32-model-heading{flex-wrap:wrap}}
 .v32-header nav{flex-wrap:wrap}.v32-streak-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px;padding:14px 0;border-top:1px solid #304152;border-bottom:1px solid #304152}.v32-streak-metrics span{font-size:11px;color:#a4b3c8;line-height:1.8}.v32-streak-metrics b{display:block;font-size:17px;color:#f8d3a0}.v32-streak-history{margin-top:30px}.v32-streak-card{min-width:0;padding:20px 22px;border:1px solid #344458;border-radius:12px;background:#101927}.v32-streak-card h3{font-size:16px;margin-bottom:10px}.v32-streak-card p{color:#a4b3c8;font-size:12px;line-height:1.8}.v32-streak-card summary{cursor:pointer;color:#f8d3a0;font-size:12px;padding:12px 0 0}.v32-streak-card ol{list-style:none;margin:14px 0 0;padding:0;max-height:300px;overflow:auto}.v32-streak-card li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;padding:10px 0;border-top:1px solid #2d3b50;font-size:12px}.v32-streak-card li span{color:#a4b3c8}.v32-streak-card li b,.v32-outcome.is-streak{color:#ffc175}.v32-outcome.is-streak{background:#392b1b;border:1px solid #866138;border-radius:5px;padding:3px 6px;font-weight:700}
 @media(max-width:760px){.v32-header nav{gap:8px}.v32-header a,.v32-header button{padding:10px 8px;font-size:12px}.v32-streak-card{padding:18px 16px}}
+.v32-embedding{margin-top:24px;padding:16px 20px;border:1px solid #344458;border-radius:12px;background:#101927}
+.v32-embedding summary{cursor:pointer;font-size:15px;font-weight:700}
+.v32-embedding section h3{margin-top:20px;font-size:15px}
+.v32-embedding p{margin-top:12px;color:#a4b3c8;font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.v32-embedding-table{overflow-x:auto;margin-top:12px}
+.v32-embedding table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.v32-embedding th,.v32-embedding td{padding:10px 12px;border-bottom:1px solid #2d3b50;text-align:left}
+.v32-embedding thead th{color:#a4b3c8}
+.v32-embedding th:first-child{padding-left:0}
+
+.v32-status>span:first-child{margin-left:0}
+.v32-decision{
+  margin-bottom:28px;
+  padding:22px 24px;
+  background:#12232e;
+  border:1px solid #315954;
+  border-radius:14px;
+}
+.v32-decision-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px 20px;flex-wrap:wrap}
+.v32-decision-header h2{font-size:20px}
+.v32-decision-header p,.v32-decision-notice{margin-top:6px;color:#a4b3c8;font-size:12px;line-height:1.6}
+.v32-decision-archive{padding:5px 9px;border:1px solid #3a655f;border-radius:6px;color:#b5e9e0;font-size:12px;line-height:1.5}
+.v32-decision-result{margin-top:14px}
+.v32-decision-result strong{color:#b5e9e0;font-size:22px}
+.v32-decision-result p{margin-top:6px;color:#d3deed;font-size:13px;line-height:1.75}
+.v32-decision .v32-numbers,.v32-decision-actions{margin-top:14px}
+.v32-decision-actions:empty{display:none}
+.v32-decision-actions{display:flex;gap:8px;flex-wrap:wrap}
+.v32-decision-actions a,.v32-decision-actions button{
+  display:inline-flex;align-items:center;padding:8px 13px;min-height:38px;
+  border:1px solid #3c5865;border-radius:7px;background:#192e3c;
+  color:#e6edf7;font:inherit;font-size:13px;text-decoration:none;cursor:pointer;
+}
+.v32-decision-actions a:hover,.v32-decision-actions button:hover{border-color:#77decf}
+.v32-embedding,#v32-original-picks{scroll-margin-top:76px}
+@media(max-width:760px){
+  .v32-decision{padding:18px 16px}
+  .v32-decision-header h2{font-size:18px}
+  .v32-decision-result strong{font-size:20px}
+}

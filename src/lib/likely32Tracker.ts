@@ -7,14 +7,14 @@ export type TrackerRow = Issue & {
   vectorLearning: {ready: boolean};
 };
 export type TrackerResult = {
-  latest: Issue; rows: TrackerRow[];
+  latest: Issue; historyDigest: string; rows: TrackerRow[];
   current: {picks: Record<TrackerModel, number[]>; vectorLearning: {ready: boolean; trainingCount: number}};
 };
 export const issueKey = (r: Issue) => `${r.year}-${r.No}`;
 const issue = (r: Issue) => ({year: r.year, No: r.No});
 export function compactTracker(result: LabResult): TrackerResult {
   const picks = (p: LabResult['current']['picks']) => ({vectorLearn: p.vectorLearn, vector: p.vector});
-  return {latest: issue(result.latest), current: {picks: picks(result.current.picks),
+  return {latest: issue(result.latest), historyDigest: result.historyDigest, current: {picks: picks(result.current.picks),
     vectorLearning: {ready: result.current.vectorLearning.ready, trainingCount: result.current.vectorLearning.trainingCount}},
     rows: result.rows.map(r => ({...issue(r), special: r.special, picks: picks(r.picks),
       hits: {vectorLearn: r.hits.vectorLearn, vector: r.hits.vector}, vectorLearning: {ready: r.vectorLearning.ready}}))};

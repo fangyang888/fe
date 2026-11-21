@@ -74,7 +74,7 @@ export function parseLabHistory(input: unknown): Draw[] {
 const groupFor = (miss: number) => miss <= 1 ? 0 : miss <= 5 ? 1 : 2;
 const bucketFor = (miss: number) => miss <= 5 ? miss : miss <= 10 ? 6 : 7;
 
-function features(history: Draw[]): Features[] {
+export function features(history: Draw[]): Features[] {
   const hist = history.map(r => r.numbers);
   const lastRow = new Set(hist.at(-1) ?? []);
   return Array.from({length: 49}, (_, index) => {

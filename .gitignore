@@ -8,3 +8,6 @@ logs
 /**/node_modules
 /uploads/
 /vector-analysis-mcp/generated/
+/experiments/likely32-vector/.cache/
+/public/likely32-embedding-report.json
+/data/likely32-fusion-journal/

@@ -4,7 +4,7 @@ import {VECTOR_LEARNING_RULE} from './likely32VectorLearning';
 import type {TrackerResult} from './likely32Tracker';
 import {TRACKER_MODELS} from './likely32Tracker';
 export const TRACKER_CACHE_KEY = 'likely32-vector-tracker:cache:v1';
-const SCHEMA = 1;
+const SCHEMA = 2;
 export async function trackerFingerprint(input: unknown, engineUrl: string) {
   const history = parseLabHistory(input);
   if (history.length < 11) throw new Error('至少需要11期连续历史才能开始实验');
@@ -28,7 +28,8 @@ export function parseTrackerCache(text: string | null, fingerprint: string, hist
     if (cache.schema !== SCHEMA || cache.fingerprint !== fingerprint || !Number.isFinite(Date.parse(cache.savedAt))) return null;
     const r = cache.result as TrackerResult;
     const last = history.at(-1)!;
-    if (!r || r.latest.year !== last.year || r.latest.No !== last.No || !Array.isArray(r.rows) || r.rows.length !== history.length - 10) return null;
+    if (!r || !/^[a-f0-9]{1,16}$/.test(r.historyDigest) || r.latest.year !== last.year || r.latest.No !== last.No ||
+      !Array.isArray(r.rows) || r.rows.length !== history.length - 10) return null;
     const validPicks = (picks: number[]) => Array.isArray(picks) && picks.length === 32 && new Set(picks).size === 32 && picks.every(n => Number.isInteger(n) && n >= 1 && n <= 49);
     if (!TRACKER_MODELS.every(m => validPicks(r.current.picks[m])) ||
       r.current.vectorLearning.trainingCount !== Math.min(history.length - 10, 100) || r.current.vectorLearning.ready !== (history.length >= 110)) return null;

@@ -178,6 +178,15 @@ function predictions(items: Features[], config: Config, exposures: number[], suc
   return {picks, vectorLearning: vectorLearning.details, rolling100: rolling100.details, vector: vector.details, adaptive: adaptive.adaptive, pools: pools.map(p => p.length), selectedGroups: Object.fromEntries(MODELS.map(m => [m, GROUPS.map((_, g) => items.filter(x => x.group === g && picks[m].includes(x.n)).length)])) as Record<Model, number[]>};
 }
 
+export function labHistoryDigest(history: Draw[]) {
+  // Diagnostic digest only: local snapshots are not a tamper-proof server ledger.
+  let digest = 14695981039346656037n;
+  for (const char of history.map(r => `${r.year}:${r.No}:${r.numbers.join(',')}`).join('|')) {
+    digest = BigInt.asUintN(64, (digest ^ BigInt(char.charCodeAt(0))) * 1099511628211n);
+  }
+  return digest.toString(16);
+}
+
 export function buildLikely32Lab(input: unknown, config: Config = DEFAULT_CONFIG) {
   validateConfig(config);
   const history = parseLabHistory(input);
@@ -210,14 +219,9 @@ export function buildLikely32Lab(input: unknown, config: Config = DEFAULT_CONFIG
       successes[oldest.bucket]--;
     }
   }
-  // Diagnostic digest only: local snapshots are not a tamper-proof server ledger.
-  let digest = 14695981039346656037n;
-  for (const char of history.map(r => `${r.year}:${r.No}:${r.numbers.join(',')}`).join('|')) {
-    digest = BigInt.asUintN(64, (digest ^ BigInt(char.charCodeAt(0))) * 1099511628211n);
-  }
   const currentItems = features(history);
   const currentVector = vectorPrediction(history, currentItems, [...currentItems].sort((a, b) => b.score - a.score || a.n - b.n).map(x => x.n), vectorState);
-  return {version: LAB_VERSION, config, historyDigest: digest.toString(16), historyCount: history.length, latest: history[history.length - 1], rows,
+  return {version: LAB_VERSION, config, historyDigest: labHistoryDigest(history), historyCount: history.length, latest: history[history.length - 1], rows,
     current: predictions(currentItems, config, exposures, successes, adaptiveState, currentVector, rolling100Prediction(history), vectorHistory), learnedSamples: training.length};
 }
 export type LabResult = ReturnType<typeof buildLikely32Lab>;

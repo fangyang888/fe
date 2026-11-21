@@ -10,3 +10,4 @@ logs
 /vector-analysis-mcp/generated/
 /experiments/likely32-vector/.cache/
 /data/likely32-fusion-journal/
+/data/likely32-embedding/

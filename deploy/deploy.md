@@ -33,9 +33,13 @@
 
 ## 32 码追踪页的 Qwen 报告
 
-访问 `/fe/kill/likely32-vector-tracker`。发布包会包含仓库里的 `public/likely32-embedding-report.json`，线上通过 `/fe/likely32-embedding-report.json` 读取。可直接访问报告地址核对响应是否为 JSON。
+访问 `/fe/kill/likely32-vector-tracker`。线上报告地址是 `/fe/likely32-embedding-report.json`，优先读取服务器生成的报告，初次发布时可读取包内快照。
 
-新开奖入库后，在保存向量缓存和预测留档的工作区运行 `pnpm likely32:embedding <历史接口 URL>`。提交生成的报告并重新部署即可更新线上结果。Qwen 配置、向量缓存和留档原件保存在生成报告的环境中，云端页面只读取部署包里的 JSON。
+首次启用时，在 GitHub 仓库的 Actions Secrets 配置 `EDU_EMBED_API_KEY`，在 Variables 配置 `EDU_EMBED_BASE_URL`（也支持放在 Secrets）。`EDU_EMBED_MODEL` 可选，默认 `qwen3.7-text-embedding`。部署会把这些配置传入 ECS 上的服务端 `.env`。
+
+部署后，在线上历史管理页点「同步最后一期」或「同步全年」即可触发后台生成。同步成功后可以直接离开该页，追踪页打开时会定时读取报告。更新失败时可重新同步重试。服务器在 `/home/deploy/fe/data/likely32-embedding/` 保留报告、向量缓存和留档，常规部署会继续使用这批数据。
+
+如需沿用本地已有的向量和留档，可在首次启用前将 `experiments/likely32-vector/.cache/` 的内容迁到该数据目录的 `cache/`，将 `data/likely32-fusion-journal/` 的内容迁到 `journal/`。首次从空缓存生成需要对历史数据做向量化。
 
 
 ## 1. 购买 ECS

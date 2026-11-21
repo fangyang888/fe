@@ -99,12 +99,13 @@ function EmbeddingComparisonTable({title, comparison}: {title: string; compariso
 }
 
 function useEmbeddingReport(refreshTick: number) {
-  const [state, setState] = useState<{report: EmbeddingReport | null; failure: string; completedTick: number}>({
-    report: null, failure: '', completedTick: -1,
+  const [state, setState] = useState<{report: EmbeddingReport | null; failure: string; completedTick: number; jobStatus: string}>({
+    report: null, failure: '', completedTick: -1, jobStatus: '',
   });
   useEffect(() => {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort('timeout'), 10_000);
+    let jobStatus = '';
     // Read the generated file directly in development, even if it was created after Vite started.
     const reportPath = import.meta.env.DEV ? 'public/likely32-embedding-report.json' : 'likely32-embedding-report.json';
     fetch(`${import.meta.env.BASE_URL}${reportPath}`, {
@@ -113,18 +114,19 @@ function useEmbeddingReport(refreshTick: number) {
       signal: controller.signal,
     })
       .then(async response => {
+        jobStatus = response.headers.get('X-Likely32-Report-Status') ?? '';
         if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
           throw new Error(response.status === 404 || response.ok ? '尚无 Qwen 报告。' : 'Qwen 报告暂时无法读取。');
         }
         const data: EmbeddingReport = await response.json();
         if (data.version !== 1 || !data.from || !data.through || !data.windows?.length) throw new Error('向量回测结果格式无效');
-        if (!controller.signal.aborted) setState({report: data, failure: '', completedTick: refreshTick});
+        if (!controller.signal.aborted) setState({report: data, failure: '', completedTick: refreshTick, jobStatus});
       })
       .catch(error => {
         const timedOut = controller.signal.reason === 'timeout';
         if (timedOut || !controller.signal.aborted) {
           const failure = timedOut ? 'Qwen 报告读取超时。' : error instanceof Error ? error.message : 'Qwen 报告暂时无法读取。';
-          setState(previous => ({...previous, failure, completedTick: refreshTick}));
+          setState(previous => ({...previous, failure, completedTick: refreshTick, jobStatus}));
         }
       })
       .finally(() => window.clearTimeout(timeout));
@@ -136,7 +138,7 @@ function useEmbeddingReport(refreshTick: number) {
 function FusionDecision({result, reportState, openBacktest}: {
   result: TrackerResult; reportState: ReturnType<typeof useEmbeddingReport>; openBacktest: () => void;
 }) {
-  const {report, failure, loading} = reportState;
+  const {report, failure, loading, jobStatus} = reportState;
   const gate = report?.fusionGate;
   const current = gate?.current;
   const latest = issue(result.latest);
@@ -160,6 +162,9 @@ function FusionDecision({result, reportState, openBacktest}: {
     explanation = `前 ${gate.rule.window} 期，融合使 ${ready.gains} 期由未中变为命中、${ready.losses} 期由命中变为未中。平滑救回占比 ${(ready.support * 100).toFixed(1)}%，启用门槛 ${gate.rule.support * 100}%。`;
   }
   const archivedCurrent = ready && archived?.currentPending;
+  const updateHint = jobStatus === 'updating' ? 'Qwen 报告正在后台更新。'
+    : jobStatus === 'error' ? '后台更新失败，可重新同步开奖记录重试。'
+    : jobStatus === 'disabled' && !ready ? '服务器尚未配置 Qwen 自动更新。' : '';
   return <section className="v32-decision" aria-labelledby="v32-decision-title">
     <div className="v32-decision-header">
       <div><h2 id="v32-decision-title">Qwen 融合 · 下一期决策</h2><p>开奖数据截至 {latest} 期</p></div>
@@ -170,6 +175,7 @@ function FusionDecision({result, reportState, openBacktest}: {
       <p>{explanation}</p>
     </div>
     {ready?.enabled && ready.picks ? <Numbers picks={ready.picks}/> : null}
+    {updateHint ? <p className="v32-decision-notice" role="status">{updateHint}</p> : null}
     {ready && failure && !loading ? <p className="v32-decision-notice">最近一次报告检查失败，当前显示上次读取的结果。</p> : null}
     <div className="v32-decision-actions">
       {ready && !ready.enabled ? <a href="#v32-original-picks">查看原向量 32 码</a> : null}

@@ -84,7 +84,7 @@ pnpm likely32:embedding
 pnpm likely32:embedding ./history-export.json
 ```
 
-默认读取本地 `/api/history`，也可以传入同格式的 JSON 文件或历史接口 URL。脚本仅发送开奖前的号码状态，按批缓存向量并生成 `public/likely32-embedding-report.json`。打开 `/fe/kill/likely32-vector-tracker` 即可查看。生产构建包含仓库里的报告快照，更新线上报告时提交生成的 JSON 并重新部署。
+默认读取本地 `/api/history`，也可以传入同格式的 JSON 文件或历史接口 URL。脚本仅发送开奖前的号码状态，按批缓存向量并生成 `public/likely32-embedding-report.json`。打开 `/fe/kill/likely32-vector-tracker` 即可查看。ECS 上的自动更新随历史同步触发，配置见 [部署指南](deploy/deploy.md#32-码追踪页的-qwen-报告)。
 
 额度不足时，可在命令末尾加 `--cached-only`，用已有缓存生成连续区间的回测。报告会标明缺少向量的期数和实际截止期。
 

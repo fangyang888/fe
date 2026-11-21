@@ -1,18 +1,8 @@
 const {createHash, randomUUID} = require('node:crypto');
-const {readFileSync} = require('node:fs');
 const {mkdir, readFile, rename, writeFile} = require('node:fs/promises');
 const {resolve} = require('node:path');
 const {setTimeout: delay} = require('node:timers/promises');
-const ts = require('typescript');
-
-// Run the same TypeScript rules as the tracker without bundling credentials.
-require.extensions['.ts'] = (module, filename) => {
-  const {outputText} = ts.transpileModule(readFileSync(filename, 'utf8'), {
-    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
-  });
-  module._compile(outputText, filename);
-};
-const {buildLikely32Lab, features, parseLabHistory} = require('../../src/lib/likely32Lab.ts');
+const {buildLikely32Lab, features, labHistoryDigest, parseLabHistory} = require('../../src/lib/likely32Lab.ts');
 const {
   VECTOR_NEIGHBOR_SPACING, VECTOR_NEIGHBOR_WARMUP, VECTOR_SWAP_WARMUP, VECTOR_WEIGHT_TEMPERATURE, createVectorState, dotProduct,
   numberContext, numberContextBlocks, predictFromVector, updateVectorState,
@@ -21,9 +11,10 @@ const {learnVectorSwaps, rememberVectorSwaps} = require('../../src/lib/likely32V
 const {FUSION_GATE_RULE, replayFusionGate} = require('../../src/lib/likely32FusionGate.ts');
 const {updateFusionJournal} = require('./fusion-journal.cjs');
 
-const cacheDir = resolve(__dirname, '.cache');
-const reportPath = resolve(__dirname, '../../public/likely32-embedding-report.json');
-const journalDir = resolve(__dirname, '../../data/likely32-fusion-journal');
+const runtimeDir = process.env.LIKELY32_EMBED_DATA_DIR;
+const cacheDir = runtimeDir ? resolve(runtimeDir, 'cache') : resolve(__dirname, '.cache');
+const reportPath = runtimeDir ? resolve(runtimeDir, 'likely32-embedding-report.json') : resolve(__dirname, '../../public/likely32-embedding-report.json');
+const journalDir = runtimeDir ? resolve(runtimeDir, 'journal') : resolve(__dirname, '../../data/likely32-fusion-journal');
 const blockLabels = ['log1p capped gap', 'capped gap ratio', 'scaled original rank',
   'last 20 draw frequency', 'last 40 special frequency', 'last draw membership', 'penultimate draw membership'];
 const args = process.argv.slice(2);
@@ -33,7 +24,11 @@ const liveHistory = /^https?:\/\//i.test(historyArgument);
 
 async function readHistory(source) {
   if (!/^https?:\/\//i.test(source)) return JSON.parse(await readFile(source, 'utf8'));
-  const response = await fetch(source, {cache: 'no-store', signal: AbortSignal.timeout(20_000)});
+  const response = await fetch(source, {
+    cache: 'no-store',
+    headers: {Connection: 'close'},
+    signal: AbortSignal.timeout(20_000),
+  });
   if (!response.ok) throw new Error(`历史接口 HTTP ${response.status}`);
   return response.json();
 }
@@ -335,6 +330,13 @@ async function evaluateGate(rows, fusion, vectors, contexts, history, lab) {
 async function main() {
   const raw = await readHistory(historyArgument);
   const history = parseLabHistory(raw);
+  if (runtimeDir) {
+    const digest = labHistoryDigest(history);
+    const published = await readFile(reportPath, 'utf8').then(JSON.parse).catch(() => null);
+    if (published?.version === 1 && published.historyDigest === digest && published.model === process.env.EDU_EMBED_MODEL
+      && published.fusionGate?.rule?.version === FUSION_GATE_RULE.version && published.missingPeriods === 0
+      && published.fusionGate.current?.picks && (!liveHistory || published.journal?.currentPending)) return;
+  }
   const warmup = VECTOR_SWAP_WARMUP;
   if (history.length <= 10 + warmup) throw new Error('至少需要131期连续历史用于向量回测');
   const contexts = [];
@@ -358,13 +360,16 @@ async function main() {
   const similarities = compareSimilarities(vectors, contexts, history, rows);
   const {strategies, fusion} = compareStrategies(vectors, contexts, history, rows);
   const fusionGate = await evaluateGate(rows, fusion, vectors, contexts, history, lab);
+  if (runtimeDir && fusionGate.current?.enabled && !fusionGate.current.picks) throw new Error('当前融合号码未生成');
   let confirmation = null;
   if (liveHistory && fusionGate.current?.picks) {
     try {
       confirmation = parseLabHistory(await readHistory(historyArgument));
     } catch (error) {
+      if (runtimeDir) throw new Error(`历史接口复核失败（${error.message}）`);
       console.error(`本次留档跳过，历史接口复核失败（${error.message}）`);
     }
+    if (runtimeDir && labHistoryDigest(confirmation) !== lab.historyDigest) throw new Error('开奖数据已变化，等待下一次更新');
   }
   const journal = await updateFusionJournal({root: journalDir, model, version: FUSION_GATE_RULE.version,
     history, sourceRows: liveHistory ? raw : null, confirmation, current: fusionGate.current, baseline: lab.current.picks.vector});

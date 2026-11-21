@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "likely32:embedding": "node --env-file=experiments/likely32-vector/.env experiments/likely32-vector/embedding-backtest.cjs",
+    "likely32:embedding": "node --env-file=experiments/likely32-vector/.env experiments/likely32-vector/run-backtest.cjs",
+    "likely32:build": "vite build --config experiments/likely32-vector/vite.runtime.config.ts",
     "all": "export NVM_DIR=\"$HOME/.nvm\" && . \"$NVM_DIR/nvm.sh\" && nvm use v20.19.5 && (pnpm run dev & pnpm --dir server start:dev)"
   },
   "dependencies": {

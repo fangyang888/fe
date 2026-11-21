@@ -287,15 +287,17 @@ export default function HistoryManager() {
       });
       if (!res.ok) throw new Error(await getErrorMessage(res, "同步失败"));
       const data = await res.json();
+      const reportNotice = data.qwenReport === "queued" ? "。已提交 Qwen 报告更新"
+        : data.qwenReport === "disabled" ? "。Qwen 自动更新尚未配置" : "";
       if (mode === "year") {
         setMsg({
           type: "success",
-          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，更新 ${data.updated || 0} 期，忽略未变 ${data.skipped} 期`,
+          text: `✅ ${year}年同步完成：抓取 ${data.fetched} 期，新增 ${data.inserted} 期，更新 ${data.updated || 0} 期，忽略未变 ${data.skipped} 期${reportNotice}`,
         });
       } else {
         setMsg({
           type: data.inserted > 0 ? "success" : "error",
-          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}`,
+          text: `${data.inserted > 0 ? "✅" : "ℹ️"} ${data.message || `新增 ${data.inserted} 期，忽略 ${data.skipped} 期`}${reportNotice}`,
         });
       }
       fetchRecords();

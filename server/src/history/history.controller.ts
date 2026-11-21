@@ -8,13 +8,16 @@ import {
   Body,
   ParseIntPipe,
   Header,
+  Res,
   Query,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { HistoryService } from './history.service';
 import { History } from './history.entity';
 import { CreateHistoryDto, SyncHistoryDto } from './history.dto';
+import { Likely32ReportService } from './likely32-report.service';
 
 @Controller('api/history')
 @UsePipes(
@@ -25,7 +28,10 @@ import { CreateHistoryDto, SyncHistoryDto } from './history.dto';
   }),
 )
 export class HistoryController {
-  constructor(private readonly historyService: HistoryService) {}
+  constructor(
+    private readonly historyService: HistoryService,
+    private readonly likely32Report: Likely32ReportService,
+  ) {}
 
   /** GET /api/history — 获取记录，支持 ?year=2025 */
   @Get()
@@ -40,6 +46,13 @@ export class HistoryController {
   async getAsText(@Query('year') year?: string): Promise<string> {
     const yearNum = year ? parseInt(year, 10) : undefined;
     return this.historyService.getAsText(yearNum);
+  }
+
+  @Get('qwen-report')
+  @Header('Cache-Control', 'no-store')
+  async getQwenReport(@Res({ passthrough: true }) response: Response) {
+    response.setHeader('X-Likely32-Report-Status', this.likely32Report.status);
+    return this.likely32Report.read();
   }
 
   /** GET /api/history/:id — 获取单条 */
@@ -62,13 +75,15 @@ export class HistoryController {
   /** POST /api/history/sync-year — 从 spider 同步整年，重复 year+No 自动忽略 */
   @Post('sync-year')
   async syncYear(@Body() dto: SyncHistoryDto) {
-    return this.historyService.syncYear(dto.year);
+    const result = await this.historyService.syncYear(dto.year);
+    return { ...result, qwenReport: this.likely32Report.refresh() };
   }
 
   /** POST /api/history/sync-latest — 从 spider 同步指定年份最后一期 */
   @Post('sync-latest')
   async syncLatest(@Body() dto: SyncHistoryDto) {
-    return this.historyService.syncLatest(dto.year);
+    const result = await this.historyService.syncLatest(dto.year);
+    return { ...result, qwenReport: this.likely32Report.refresh() };
   }
 
   /** PUT /api/history/:id — 修改 */

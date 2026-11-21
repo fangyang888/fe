@@ -42,10 +42,11 @@ jobs:
 
       - name: Build Backend
         run: |
-          cd server
-          pnpm install
-          pnpm run build
-          test -f dist/src/main.js
+          pnpm --dir server install
+          pnpm --dir server run build
+          pnpm run likely32:build
+          test -f server/dist/src/main.js
+          test -s server/dist/likely32/embedding-backtest.cjs
 
       - name: Build Admin
         run: |
@@ -102,11 +103,14 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL || vars.OPENAI_MODEL || 'gpt-5.6-sol' }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || vars.OPENAI_BASE_URL }}
+          EDU_EMBED_BASE_URL: ${{ secrets.EDU_EMBED_BASE_URL || vars.EDU_EMBED_BASE_URL }}
+          EDU_EMBED_MODEL: ${{ vars.EDU_EMBED_MODEL || 'qwen3.7-text-embedding' }}
+          EDU_EMBED_API_KEY: ${{ secrets.EDU_EMBED_API_KEY }}
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          envs: OPENAI_API_KEY,OPENAI_MODEL,OPENAI_BASE_URL
+          envs: OPENAI_API_KEY,OPENAI_MODEL,OPENAI_BASE_URL,EDU_EMBED_BASE_URL,EDU_EMBED_MODEL,EDU_EMBED_API_KEY
           script: |
             set -eu
 
@@ -143,6 +147,9 @@ jobs:
             printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY" >> .env
             printf 'OPENAI_MODEL=%s\n' "${OPENAI_MODEL:-gpt-5.6-sol}" >> .env
             printf 'OPENAI_BASE_URL=%s\n' "${OPENAI_BASE_URL:-}" >> .env
+            printf 'EDU_EMBED_BASE_URL=%s\n' "${EDU_EMBED_BASE_URL:-}" >> .env
+            printf 'EDU_EMBED_MODEL=%s\n' "${EDU_EMBED_MODEL:-qwen3.7-text-embedding}" >> .env
+            printf 'EDU_EMBED_API_KEY=%s\n' "${EDU_EMBED_API_KEY:-}" >> .env
             chmod 600 .env
 
             echo ".env file generated successfully."

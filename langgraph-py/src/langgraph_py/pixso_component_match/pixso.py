@@ -210,6 +210,8 @@ def design_roots(data, design_url):
     target = (query.get("item-id") or query.get("node-id") or [None])[0]
     if not target:
         return roots
+    if isinstance(data, dict) and data.get("source") == "figma":
+        target = target.replace("-", ":")
     pending = list(roots)
     while pending:
         node = pending.pop()
@@ -218,7 +220,7 @@ def design_roots(data, design_url):
         pending.extend(children_of(node)[0])
     received = ", ".join(node_id(r) or "无 ID" for r in roots[:4])
     raise ValueError(f"链接指定图层 {target}，返回的树中未找到该图层（根节点 {received}）。"
-                     "请在 Pixso 激活对应文件，再从 read_pixso 重新运行")
+                     "请在设计工具中激活对应文件，再从相应的读取节点重新运行")
 
 
 async def complete_children(session, tool, args, link, roots):
@@ -335,7 +337,7 @@ async def capture_regions(endpoint, transport, matches, directory):
                     break
                 cursor = page.nextCursor
             if not tool:
-                return ["当前 Pixso MCP 未提供 get_screenshot"]
+                return ["当前设计 MCP 未提供 get_screenshot"]
             for i, match in enumerate(matches, 1):
                 node_id = match["node_id"]
                 if not node_id:
@@ -345,6 +347,10 @@ async def capture_regions(endpoint, transport, matches, directory):
                 if not key and not match.get("design_url"):
                     continue
                 args = tool_arguments(schema, match.get("design_url"), {key: node_id} if key else {})
+                pattern = schema.get("properties", {}).get(key, {}).get("pattern") if key else None
+                if pattern and not re.fullmatch(pattern, node_id):
+                    notes.append(f"截图工具不支持该图层 ID：{node_id}")
+                    continue
                 res = await session.call_tool(tool.name, args)
                 image = next((b for b in res.content if b.type == "image" and
                               b.mimeType in {"image/png", "image/jpeg"}), None)

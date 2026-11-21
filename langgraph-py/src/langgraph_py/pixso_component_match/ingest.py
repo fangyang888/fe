@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import tempfile
+from contextlib import closing, contextmanager
 from time import monotonic
 from pathlib import Path
 from typing import TypedDict
@@ -32,11 +33,41 @@ from langsmith import tracing_context
 from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 from openai import OpenAI
 from pymilvus import DataType, MilvusClient
+from pymilvus.exceptions import ConnectionConfigException
 
 if __package__:
     from .catalog import digest, discover
 else:
     from catalog import digest, discover
+
+
+@contextmanager
+def component_database(uri):
+    """Share a local index between CLI and Studio workers for the duration of each operation."""
+    if "://" in uri or not uri.endswith(".db"):
+        with closing(MilvusClient(uri=uri)) as client:
+            yield client
+        return
+
+    from milvus_lite.server_manager import server_manager_instance
+
+    path = Path(uri).expanduser().resolve()
+    # Milvus Lite keeps its embedded server (and database lock) after client.close().
+    # Serialize its full lifetime per database, including startup and shutdown.
+    with path.with_name(path.name + ".access.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            try:
+                client = MilvusClient(uri=str(path), dedicated=True)
+            except ConnectionConfigException as exc:
+                raise RuntimeError(
+                    f"无法打开本机 Milvus Lite 数据库 {path}。请检查目录权限及其他进程的占用情况。"
+                    f"底层错误：{exc}"
+                ) from exc
+            with closing(client):
+                yield client
+        finally:
+            server_manager_instance.release_server(str(path))
 
 
 def encoded(value):
@@ -185,9 +216,8 @@ def publish(catalog, rows, args):
     build = digest(encoded([manifest, rows]))
     manifest["build_id"] = build
     progress("正在连接 Milvus 并加载组件集合…")
-    client = MilvusClient(uri=args.uri)
     scope = f'build_id == "{build}"'
-    try:
+    with component_database(args.uri) as client:
         ensure_collection(client, collection, dim)
         written = 0
         last_update = monotonic()
@@ -223,8 +253,6 @@ def publish(catalog, rows, args):
             raise ValueError(f"构建记录数不匹配：预期 {len(rows)}，实际 {count}")
         hit = client.query(collection_name=collection, filter=scope + ' and mode == "evidence"', limit=1,
                            output_fields=["component_id", "ref"], consistency_level="Strong")[0]
-    finally:
-        client.close()
     for path, source in sources.items():
         if digest((output / source["snapshot"]).read_bytes()) != source["sha256"]:
             raise ValueError(f"快照校验失败：{path}")

@@ -10,7 +10,7 @@ from concurrent.futures import Future
 from threading import Lock
 from uuid import uuid4
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from dotenv import load_dotenv
@@ -18,10 +18,10 @@ from langgraph.graph import END, START, StateGraph
 from langchain_core.runnables.config import get_executor_for_config
 from langsmith import tracing_context
 from llama_index.embeddings.openai_like import OpenAILikeEmbedding
-from pymilvus import MilvusClient
 
+from .figma import DEFAULT_FIGMA_MCP_URL, fetch_metadata, is_figma_url
 from .catalog import digest
-from .ingest import atomic_write, collection_for_model, encoded, model_settings, progress
+from .ingest import atomic_write, collection_for_model, component_database, encoded, model_settings, progress
 from .pixso import capture_regions, design_roots, fetch_dsl, visible_nodes
 from .regions import is_navigation_name, partition
 from .proof import ask_json, confirmed_match, markdown_report
@@ -109,7 +109,11 @@ PROJECT = Path(__file__).resolve().parents[3]
 DEFAULT_MCP_URL = "http://127.0.0.1:3667/mcp"
 
 
+DesignType = Literal["pixso", "figma"]
+
+
 class Request(TypedDict, total=False):
+    type: DesignType
     design_json: dict | list
     json_path: str
     design_url: str
@@ -133,6 +137,7 @@ class MatchInput(TypedDict):
 
 class StudioInput(TypedDict):
     design_url: str
+    type: NotRequired[DesignType]
 
 
 class MatchOutput(TypedDict):
@@ -156,10 +161,9 @@ def input_options(request):
     return index, uri or str(index / "components.db")
 
 
-def read_design(state):
+def prepare_request(state: MatchInput):
     req = state["request"]
     index, _ = input_options(req)
-    builds = active_builds(index, req.get("library"), req.get("release"))
     if req.get("mode", "text_image") not in {"text", "text_image"} or not 1 <= req.get("top_k", 3) <= 100:
         raise ValueError("mode 应为 text 或 text_image，top_k 范围为 1–100")
     if not isinstance(req.get("tool_args", {}), dict) or req.get("transport") not in (None, "http", "sse"):
@@ -167,34 +171,70 @@ def read_design(state):
     local = [k for k in ("design_json", "json_path") if req.get(k) is not None]
     if len(local) > 1 or local and (req.get("design_url") or req.get("tool_args")):
         raise ValueError("请选择一种设计输入：design_json、json_path 或 MCP 图层")
-    if "design_json" in local:
-        data = req["design_json"]
-    elif "json_path" in local:
-        data = json.loads(Path(req["json_path"]).expanduser().read_text(encoding="utf-8-sig"))
-    else:
-        endpoint = req.get("mcp_url") or os.getenv("PIXSO_MCP_URL") or DEFAULT_MCP_URL
-        req = dict(req, mcp_url=endpoint)
-        if not endpoint or urlsplit(endpoint).scheme not in {"http", "https"}:
-            raise ValueError("请提供 mcp_url 或配置 PIXSO_MCP_URL，也可传 design_json / json_path")
-        transport = req.get("transport") or ("sse" if urlsplit(endpoint).path.rstrip("/").endswith("/sse") else "http")
-        data = asyncio.run(fetch_dsl(endpoint, req.get("design_url"), req.get("tool_args", {}), transport))
+    if not local:
+        url = req.get("design_url") or ""
+        inferred = "figma" if is_figma_url(url) else "pixso"
+        source = req.get("type", inferred)
+        if source not in {"figma", "pixso"} or (url and source != inferred):
+            raise ValueError("type 请填写与设计链接对应的 figma 或 pixso")
+        req = dict(req, type=source)
+    builds = active_builds(index, req.get("library"), req.get("release"))
+    return dict(request=req, manifest_paths=[str(p) for _, p in builds], run_key=str(uuid4()))
+
+
+def prepare_studio_request(state: StudioInput):
+    url = state.get("design_url")
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("请填写 Pixso 或 Figma 设计图层链接 design_url")
+    return prepare_request({"request": dict(state, design_url=url.strip())})
+
+
+def reader_for_request(state):
+    req = state["request"]
+    if req.get("design_json") is not None or req.get("json_path") is not None:
+        return "local"
+    return req["type"]
+
+
+def save_design_snapshot(req, data):
+    index, _ = input_options(req)
     raw = encoded(data)
     snapshot = index / "designs" / f"{digest(raw)}.json"
     atomic_write(snapshot, raw)
-    return dict(request=req, snapshot=str(snapshot), manifest_paths=[str(p) for _, p in builds], run_key=str(uuid4()))
+    return dict(request=req, snapshot=str(snapshot))
 
 
-def read_design_url(state: StudioInput):
-    url = state.get("design_url")
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("请填写 Pixso 设计图层链接 design_url")
-    return read_design({"request": {"design_url": url.strip()}})
+def read_mcp_design(state, fetch, default_endpoint):
+    req = state["request"]
+    endpoint = req.get("mcp_url") or default_endpoint
+    if urlsplit(endpoint).scheme not in {"http", "https"}:
+        raise ValueError(f"{req['type']} MCP 地址需要使用 http 或 https")
+    transport = req.get("transport") or ("sse" if urlsplit(endpoint).path.rstrip("/").endswith("/sse") else "http")
+    data = asyncio.run(fetch(endpoint, req.get("design_url") or "", req.get("tool_args", {}), transport))
+    return save_design_snapshot(dict(req, mcp_url=endpoint), data)
+
+
+def read_pixso(state):
+    return read_mcp_design(state, fetch_dsl, os.getenv("PIXSO_MCP_URL") or DEFAULT_MCP_URL)
+
+
+def read_figma(state):
+    return read_mcp_design(state, fetch_metadata, os.getenv("FIGMA_MCP_URL") or DEFAULT_FIGMA_MCP_URL)
+
+
+def read_local(state):
+    req = state["request"]
+    data = req.get("design_json")
+    if data is None:
+        data = json.loads(Path(req["json_path"]).expanduser().read_text(encoding="utf-8-sig"))
+    return save_design_snapshot(req, data)
 
 
 def split_regions(state):
     snapshot = state["snapshot"]
     try:
-        roots = design_roots(json.loads(Path(snapshot).read_bytes()), state["request"].get("design_url"))
+        data = json.loads(Path(snapshot).read_bytes())
+        roots = design_roots(data, state["request"].get("design_url"))
         nodes = visible_nodes(roots)
     except (ValueError, RecursionError) as exc:
         raise ValueError(f"设计树解析失败：{exc}。已保存至 {snapshot}") from exc
@@ -203,15 +243,19 @@ def split_regions(state):
         c["name"] for path in state["manifest_paths"]
         for c in json.loads(Path(path).read_bytes())["components"].values()
     }
-    regions, notes = partition(nodes, req.get("structure_only", False), names_in_index)
+    source = req.get("type") or (data.get("source") if isinstance(data, dict) else None)
+    regions, notes = partition(nodes, req.get("structure_only", False), names_in_index, source)
     if req.get("design_url"):
         parsed = urlsplit(req["design_url"])
         for region in regions:
             for observation in region["observations"]:
                 if observation["node_id"]:
                     query = parse_qs(parsed.query)
-                    query.pop("node-id", None)
-                    query["item-id"] = [observation["node_id"]]
+                    if req.get("type") == "figma":
+                        query["node-id"] = [observation["node_id"].replace(":", "-")]
+                    else:
+                        query.pop("node-id", None)
+                        query["item-id"] = [observation["node_id"]]
                     observation["url"] = parsed._replace(query=urlencode(query, doseq=True)).geturl()
     incomplete = [n["node_id"] or n["path"] for n in nodes if n["facts"].get("incomplete_children")]
     if incomplete:
@@ -243,11 +287,10 @@ def retrieve(state):
     if "://" not in uri and not Path(uri).exists():
         raise ValueError(f"本机 Milvus 数据库不存在：{uri}")
     embed = OpenAILikeEmbedding(model_name=model, api_base=base.rstrip("/"), api_key=secret)
-    client = MilvusClient(uri=uri)
     regions = []
     previous = {}
     limit, mode = req.get("top_k", 3), req.get("mode", "text_image")
-    try:
+    with component_database(uri) as client:
         for collection in {m["collection"] for m in manifests}:
             if not client.has_collection(collection):
                 raise ValueError(f"Milvus 中缺少集合 {collection}")
@@ -281,8 +324,6 @@ def retrieve(state):
                 unique.setdefault((c["build_id"], c["component_id"]), c)
             previous[key] = list(unique.values())[:limit]
             regions.append(dict(region, retrieval_query=query, candidates=previous[key]))
-    finally:
-        client.close()
     return {"regions": regions}
 
 
@@ -336,7 +377,7 @@ def save_report(state):
             cause = exc
             while isinstance(cause, BaseExceptionGroup):
                 cause = cause.exceptions[0]
-            notes.append(f"Pixso 区域截图未全部获取：{type(cause).__name__} {cause}")
+            notes.append(f"设计区域截图未全部获取：{type(cause).__name__} {cause}")
             progress(notes[-1])
     report = dict(matches=matches, saved_to=str(destination), markdown=str(destination.with_suffix(".md")))
     atomic_write(destination.with_suffix(".md"), markdown_report(report).encode())
@@ -346,18 +387,31 @@ def save_report(state):
 
 def build_graph(*, studio=True):
     graph = StateGraph(MatchState, input_schema=StudioInput if studio else MatchInput, output_schema=MatchOutput)
-    steps = [
-        ("read_pixso", "读取 Pixso 设计稿", read_design_url if studio else read_design),
-        ("partition_regions", "拆分区域与嵌套控件", split_regions),
-        ("retrieve_components", "检索候选组件", retrieve),
-        ("verify_evidence", "核验组件推荐依据", verify_regions),
-        ("save_report", "保存报告与区域截图", save_report),
+    def label(key, chinese):
+        return f"{key} · {chinese}" if studio else key
+
+    router = label("route_design", "判断设计稿类型")
+    readers = {"pixso": label("read_pixso", "读取 Pixso 设计稿"), "figma": label("read_figma", "读取 Figma 设计稿")}
+    graph.add_node(router, prepare_studio_request if studio else prepare_request)
+    graph.add_node(readers["pixso"], read_pixso)
+    graph.add_node(readers["figma"], read_figma)
+    if not studio:
+        readers["local"] = "read_local"
+        graph.add_node(readers["local"], read_local)
+
+    sequence = [
+        (label("partition_regions", "拆分区域与嵌套控件"), split_regions),
+        (label("retrieve_components", "检索候选组件"), retrieve),
+        (label("verify_evidence", "核验组件推荐依据"), verify_regions),
+        (label("save_report", "保存报告与区域截图"), save_report),
     ]
-    sequence = [(f"{key} · {label}" if studio else key, node) for key, label, node in steps]
     graph.add_sequence(sequence)
-    graph.add_edge(START, sequence[0][0])
+    graph.add_edge(START, router)
+    graph.add_conditional_edges(router, reader_for_request, readers)
+    for reader in readers.values():
+        graph.add_edge(reader, sequence[0][0])
     graph.add_edge(sequence[-1][0], END)
-    return graph.compile(name="Pixso 组件推荐凭证")
+    return graph.compile(name="设计稿组件推荐凭证")
 
 
 graph = build_graph()
@@ -367,6 +421,7 @@ def main():
     load_dotenv(PROJECT / ".env")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("design_url", nargs="?")
+    parser.add_argument("--type", choices=("pixso", "figma"), help="设计来源，默认按链接识别")
     parser.add_argument("--mcp-url")
     parser.add_argument("--transport", choices=("http", "sse"))
     parser.add_argument("--tool-args", type=json.loads)
@@ -407,6 +462,6 @@ if __name__ == "__main__":
         cause = exc
         while isinstance(cause, BaseExceptionGroup):
             cause = cause.exceptions[0]
-        sys.exit(f"Pixso MCP 调用失败：{cause}")
+        sys.exit(f"设计 MCP 调用失败：{cause}")
     except (OSError, ValueError, TimeoutError) as exc:
         sys.exit(str(exc))

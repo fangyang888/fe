@@ -47,12 +47,23 @@ uv run python -m langgraph_py.pixso_component_match.match \
 
 桌面端的紧凑 DSL 从 `roots` 读取，完整 DSL 从 `pixTreeNodes` 和 `childNode` 读取。提供带 `item-id` 的链接时，查询会核对响应中的图层 ID；如果根节点或子树都找不到该 ID，先激活对应 Pixso 文件，再从 `read_pixso` 重新运行。
 
-**回放 JSON** 时，给 `--json` 传导出的图层树，或上次运行 `read_pixso` 节点里 `snapshot` 对应的文件。MCP 响应保存在索引目录的 `designs/` 下。回放会重新分区、检索，仍需 embedding 服务。
+**回放 JSON** 时，给 `--json` 传导出的图层树，或上次运行对应读取节点里 `snapshot` 对应的文件。MCP 响应保存在索引目录的 `designs/` 下。回放会重新分区、检索，仍需 embedding 服务。
 
 ```bash
 uv run python -m langgraph_py.pixso_component_match.match \
   --json /path/to/design.json --structure-only --top-k 3
 ```
+
+## 运行 Figma 查询
+
+打开目标文件并启用 Figma 桌面 MCP。运行时默认连接 `http://127.0.0.1:3845/mcp`，也可通过 `FIGMA_MCP_URL` 或 CLI 的 `--mcp-url` 指定地址。桌面版按当前文件中的节点 ID 读取图层，请保持链接对应的文件处于活动状态。[Figma 桌面 MCP 设置](https://developers.figma.com/docs/figma-mcp-server/local-server-installation/)
+
+```bash
+uv run python -m langgraph_py.pixso_component_match.match --type figma \
+  'https://www.figma.com/design/EeMX4Dd7H6pVo9hOKB2TMH/?node-id=23-2&m=dev'
+```
+
+流程将链接中的 `23-2` 转成 MCP 节点 ID `23:2`，通过 `get_metadata` 读取 XML 层级、名称和几何位置。文本层仅返回图层名称时，保留其名称作为设计依据。检索和凭证核验复用同一组件库，报告使用 Figma 子图层链接与 `get_screenshot` 返回的截图。
 
 ## 在 LangSmith Studio 查看匹配结果
 
@@ -70,7 +81,9 @@ uv run --env-file .env langgraph dev --config langgraph.pixso.json --host 127.0.
 
 | 节点 | 在 Studio 中可以检查什么 |
 | --- | --- |
-| read_pixso · 读取 Pixso 设计稿 | 设计快照和本次选定的组件库构建清单。|
+| route_design · 判断设计稿类型 | 检查输入并固定组件库构建，按 `type` 选择读取分支。省略类型时根据链接识别。|
+| read_pixso · 读取 Pixso 设计稿 | 通过 Pixso MCP 读取图层树并保存设计快照。|
+| read_figma · 读取 Figma 设计稿 | 通过 Figma MCP 读取节点元数据并保存设计快照。|
 | partition_regions · 拆分区域与嵌套控件 | 每个区域的节点、可见文案与检索描述。优先识别具备标题与返回图标的导航容器。对于缺少命名的容器，也参考顶部位置和宽高。递归检查可见子树中的实例和具名控件，分别为容器和内部控件建立区域。超过 180 个可见节点时同样执行嵌套识别。|
 | retrieve_components · 检索候选组件 | 按库、版本、构建和摘要模式过滤后执行 Milvus COSINE 检索。导航区域额外召回 Nav、NavBar 等导出名，并保留语义候选。|
 | verify_evidence · 核验组件推荐依据 | 最多同时核验三个区域。每个推荐需要能定位的设计图层、组件库的原文引用和可回读的版本快照。|
@@ -78,7 +91,7 @@ uv run --env-file .env langgraph dev --config langgraph.pixso.json --host 127.0.
 
 最后的 `report.matches` 每项包含区域名称、图层 ID、图层链接、组件和导入路径、版本、推荐理由与可追溯的文档或代码行号。没有通过核验的匹配时返回空数组。Markdown、JSON 及可用的区域截图保存在 `.component-index/reports/`。中间候选可在 Studio 的检索节点评估。CLI 加 `--trace` 可将同一流程发送到 LangSmith。
 
-默认查询已入库的活动组件库。对已同时入库的发布包和包内源码目录，优先使用发布包的导出。使用 `--library` 限定项目允许使用的包，使用 `--release` 固定版本。Studio 只需填写设计图层链接 `design_url`。选择 `--mode text` 可与默认的 `text_image` 摘要对照。CLI 可用 `--no-screenshots` 关闭截图。
+默认查询已入库的活动组件库。对已同时入库的发布包和包内源码目录，优先使用发布包的导出。使用 `--library` 限定项目允许使用的包，使用 `--release` 固定版本。Studio 中 `design_url` 必填；可选的 `type` 可取 `figma` 或 `pixso`，省略时按链接自动识别。选择 `--mode text` 可与默认的 `text_image` 摘要对照。CLI 可用 `--no-screenshots` 关闭截图。
 
 ### 嵌套组件
 

@@ -128,17 +128,24 @@ def navigation_claim(nav, options, sources):
                                   r"\s*(?:children|title)\??:[^;\n]+", source["text"], re.I)
                 if title:
                     checks["title"] = [dict(id=key, quote=title.group())]
+                    if nav.get("badge_path") and "ReactNode" in title.group():
+                        checks["title_content"] = checks["title"]
             if source["kind"] in {"overview", "api", "example"} and source["path"].lower().endswith((".md", ".mdx")):
                 back = re.search(r"^(?!.*(?:隐藏|关闭|禁用|不显示|hide|disable)).*"
                                  r"(?:单箭头返回|默认.{0,16}返回箭头|back arrow by default).*$",
                                  source["text"], re.M | re.I)
                 if back:
                     checks["back"] = [dict(id=key, quote=back.group().strip())]
-        if checks.keys() == {"title", "back"}:
-            matches.append(dict(component=option["component_id"], checks=checks,
-                                paths=[nav["path"], nav["title_path"], nav["back_path"]],
-                                reason=f"此导航区域包含返回图标和标题「{nav['title']}」。"
-                                       f"{option['name']} 可承载导航标题，组件文档也给出了返回箭头的用法。"))
+        required = {"title", "back", "title_content"} if nav.get("badge_path") else {"title", "back"}
+        if checks.keys() == required:
+            paths = [nav["path"], nav["title_path"], nav["back_path"]]
+            title_label = "标题图层" if nav.get("title_from_layer_name") else "标题"
+            reason = (f"此区域包含返回入口和{title_label}「{nav['title']}」。"
+                      f"{option['name']} 提供返回箭头和导航标题。")
+            if nav.get("badge_path"):
+                paths.append(nav["badge_path"])
+                reason += f"标题支持 ReactNode，可将标题与「{nav['badge']}」标识一起传入。"
+            matches.append(dict(component=option["component_id"], checks=checks, paths=paths, reason=reason))
     return matches[0] if len(matches) == 1 else None
 
 
@@ -155,9 +162,11 @@ def confirmed_match(region, supplied, manifests, index, judge=None):
         return None
     nav = region.get("navigation")
     needs = {"title": "展示页面标题", "back": "展示返回箭头"} if nav else {"main": "实现该区域主要可见功能"}
+    if nav and nav.get("badge_path"):
+        needs["title_content"] = "导航标题可组合文字与徽标元素"
     needs.update({f"u{i}": t for i, t in enumerate(supplied)})
     nodes = region["observations"]
-    important = ([n for n in nodes if n["path"] in (nav["path"], nav["title_path"], nav["back_path"])]
+    important = ([n for n in nodes if n["path"] in (nav["path"], nav["title_path"], nav["back_path"], nav.get("badge_path"))]
                  if nav else [n for n in nodes if n["text"] or n["type"].upper() in {"INSTANCE", "COMPONENT"}])
     anchors = [n for n in nodes if n["path"] in region["anchors"]]
     evidence_nodes = {n["path"]: n for n in [*anchors, *important[:28]]}
@@ -274,7 +283,7 @@ def markdown_report(report):
         if parent:
             lines += ["", f"所在区域：{text(parent)}"]
         if match["design_url"]:
-            lines += ["", link("打开对应 Pixso 图层", match["design_url"])]
+            lines += ["", link("打开对应设计图层", match["design_url"])]
         if match.get("screenshot"):
             lines += ["", "!" + link("该区域的设计截图", match["screenshot"])]
         for ref in match["sources"]:

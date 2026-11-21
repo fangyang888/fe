@@ -1,5 +1,11 @@
-export const ZODIACS = ['鼠', '牛', '虎', '兔', '龙', '蛇', '马', '羊', '猴', '鸡', '狗', '猪'] as const;
-export type Zodiac = (typeof ZODIACS)[number];
+import {ZODIACS, isZodiac} from './zodiacLabels';
+import type {Zodiac} from './zodiacLabels';
+import {buildVectorZodiacPredictions} from './vectorZodiacObservation';
+import type {VectorZodiacDraw, VectorZodiacPrediction} from './vectorZodiacObservation';
+import {summarizeMissStreaks} from './likely32Tracker';
+
+export {ZODIACS};
+export type {Zodiac};
 export type ZodiacModel = 'stable' | 'recent';
 
 const YEAR = 2026;
@@ -8,14 +14,11 @@ const BACKTEST_START = 151;
 const LOOKBACK = 15;
 const SWITCH_MARGIN = 1;
 const PRIOR_STRENGTH = 12;
-const ZODIAC_SET = new Set<string>(ZODIACS);
 const PRIOR = ZODIACS.map(zodiac => (zodiac === '马' ? 5 : 4) / 49);
 
-type ZodiacDraw = {
+type ZodiacDraw = VectorZodiacDraw & {
   year: number;
-  No: number;
   specialNumber: number;
-  zodiac: Zodiac;
 };
 
 type ModelConfig = {
@@ -41,6 +44,8 @@ export type ZodiacObservationRow = {
   selected: Zodiac[];
   twoSuccess: boolean | null;
   threeSuccess: boolean | null;
+  vector: VectorZodiacPrediction | null;
+  vectorSuccess: boolean | null;
   modelResults: Record<ZodiacModel, { twoSuccess: boolean | null; threeSuccess: boolean | null }>;
 };
 
@@ -51,6 +56,22 @@ export type ZodiacBacktestSummary = {
   threeSuccessCount: number;
   threeSuccessRate: number;
 };
+export type VectorZodiacSummary = {count: number; successCount: number; successRate: number};
+
+function parseRegularZodiacs(record: Record<string, unknown>, numberInfos: unknown, special: number): Zodiac[] | null {
+  if (!Array.isArray(numberInfos)) return null;
+  const seen = new Set([special]);
+  const zodiacs: Zodiac[] = [];
+  for (let index = 0; index < 6; index++) {
+    const number = record[`n${index + 1}`];
+    const info = numberInfos[index];
+    if (typeof number !== 'number' || !Number.isInteger(number) || number < 1 || number > 49 || seen.has(number)
+        || !info || typeof info !== 'object' || info.number !== number || !isZodiac(info.zodiac)) return null;
+    seen.add(number);
+    zodiacs.push(info.zodiac);
+  }
+  return zodiacs;
+}
 
 function parseHistory(input: unknown) {
   if (!Array.isArray(input)) throw new Error('历史接口返回格式错误，应为记录数组');
@@ -89,8 +110,7 @@ function parseHistory(input: unknown) {
       specialNumber >= 1 &&
       specialNumber <= 49 &&
       validInfo?.number === specialNumber &&
-      typeof zodiac === 'string' &&
-      ZODIAC_SET.has(zodiac);
+      isZodiac(zodiac);
 
     if (!valid) {
       rejected += 1;
@@ -100,7 +120,8 @@ function parseHistory(input: unknown) {
         year: YEAR,
         No: record.No,
         specialNumber,
-        zodiac: zodiac as Zodiac,
+        zodiac,
+        regularZodiacs: parseRegularZodiacs(record, numberInfos, specialNumber),
       });
     }
     buckets.set(record.No, periodEntries);
@@ -124,6 +145,7 @@ function parseHistory(input: unknown) {
       rejected,
       duplicatePeriods,
       missingOrInvalidPeriods: latestNo === null ? 0 : latestNo - draws.length,
+      vectorMissingMetadata: draws.filter(draw => !draw.regularZodiacs).length,
     },
   };
 }
@@ -212,15 +234,24 @@ function summarize(
   };
 }
 
+function summarizeVector(rows: ZodiacObservationRow[]): VectorZodiacSummary {
+  const settled = rows.filter(row => row.vectorSuccess !== null);
+  const successCount = settled.filter(row => row.vectorSuccess).length;
+  return {count: settled.length, successCount, successRate: settled.length ? successCount / settled.length : 0};
+}
+
 export function buildAdaptiveZodiacObservation(input: unknown) {
   const history = parseHistory(input);
   const byNo = new Map(history.draws.map(draw => [draw.No, draw]));
   const rows: ZodiacObservationRow[] = [];
   const finalTarget = history.latestNo === null ? BACKTEST_START : history.latestNo + 1;
+  const firstTarget = Math.min(BACKTEST_START, finalTarget);
+  const targets = Array.from({length: finalTarget - firstTarget + 1}, (_, index) => firstTarget + index);
+  const vectorPredictions = buildVectorZodiacPredictions(history.draws, targets);
 
-  for (let targetNo = BACKTEST_START; targetNo <= finalTarget; targetNo += 1) {
-    const stable = modelRanking(byNo, targetNo, ZODIAC_MODELS.stable);
-    const recent = modelRanking(byNo, targetNo, ZODIAC_MODELS.recent);
+  for (const targetNo of targets) {
+    const stable = targetNo >= BACKTEST_START ? modelRanking(byNo, targetNo, ZODIAC_MODELS.stable) : null;
+    const recent = targetNo >= BACKTEST_START ? modelRanking(byNo, targetNo, ZODIAC_MODELS.recent) : null;
     const rankings = stable && recent ? {stable, recent} : null;
     const eligibleHistory = rows
       .filter(row => row.actual && row.rankings)
@@ -234,6 +265,7 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
       : null;
     const selected = choice && rankings ? rankings[choice].slice(0, 3) : [];
     const actual = byNo.get(targetNo) ?? null;
+    const vector = vectorPredictions.get(targetNo) ?? null;
     const previousChoice = [...rows].reverse().find(row => row.choice)?.choice ?? null;
     const result = (ranking: Zodiac[] | null, take: number) =>
       actual && ranking ? !ranking.slice(0, take).includes(actual.zodiac) : null;
@@ -249,6 +281,8 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
       selected,
       twoSuccess: actual && selected.length === 3 ? !selected.slice(0, 2).includes(actual.zodiac) : null,
       threeSuccess: actual && selected.length === 3 ? !selected.includes(actual.zodiac) : null,
+      vector,
+      vectorSuccess: actual && vector ? !vector.selected.includes(actual.zodiac) : null,
       modelResults: {
         stable: {twoSuccess: result(stable, 2), threeSuccess: result(stable, 3)},
         recent: {twoSuccess: result(recent, 2), threeSuccess: result(recent, 3)},
@@ -263,10 +297,14 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
     {label: '近期回看 · 201～254期', min: 201, max: 254},
     {label: '后续观察 · 255期起', min: 255, max: Infinity},
   ];
-  const windows = [15, 30, 54, 104].map(window => ({
-    window,
-    ...summarize(settledRows.slice(-window)),
-  }));
+  const windows = [15, 30, 54, 104].map(window => {
+    const sample = settledRows.slice(-window);
+    return {window, ...summarize(sample), vector: summarizeVector(sample)};
+  });
+  const vectorRows = rows.slice(0, -1).map(row => ({...row, year: YEAR, No: row.targetNo}));
+  const vectorStreak = summarizeMissStreaks(vectorRows, row => row.vectorSuccess === true, row => row.vectorSuccess !== null);
+  const vectorRecentStreak = summarizeMissStreaks(vectorRows.slice(-20), row => row.vectorSuccess === true, row => row.vectorSuccess !== null);
+  const paired = settledRows.filter(row => row.vectorSuccess !== null && row.threeSuccess !== null);
 
   return {
     year: YEAR,
@@ -278,10 +316,16 @@ export function buildAdaptiveZodiacObservation(input: unknown) {
     total: summarize(settledRows),
     stableTotal: summarize(settledRows, 'stable'),
     recentTotal: summarize(settledRows, 'recent'),
-    ranges: rangeDefinitions.map(range => ({
-      label: range.label,
-      ...summarize(settledRows.filter(row => row.targetNo >= range.min && row.targetNo <= range.max)),
-    })),
+    vectorTotal: summarizeVector(settledRows),
+    vectorPaired: {count: paired.length, vectorWins: paired.filter(row => row.vectorSuccess).length,
+      adaptiveWins: paired.filter(row => row.threeSuccess).length},
+    vectorStreak: {current: vectorStreak.eligibleCount && vectorRows.at(-1)?.vectorSuccess != null ? vectorStreak.current : null,
+      recentLongest: vectorRecentStreak.eligibleCount ? vectorRecentStreak.longest : null,
+      allLongest: vectorStreak.eligibleCount ? vectorStreak.longest : null},
+    ranges: rangeDefinitions.map(({label, min, max}) => {
+      const sample = settledRows.filter(row => row.targetNo >= min && row.targetNo <= max);
+      return {label, ...summarize(sample), vector: summarizeVector(sample)};
+    }),
     windows,
     settings: {lookback: LOOKBACK, switchMargin: SWITCH_MARGIN, backtestStart: BACKTEST_START},
   };

@@ -12,6 +12,21 @@
   background: #102520;
 }
 .azo-vector-hero h2 { margin: 8px 0 14px; font-size: clamp(24px, 4vw, 34px); }
+.azo-vector-version { margin: 0 0 12px; color: #b3cbc4; font-size: 13px; }
+.azo-history-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.azo-history-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #e8edf1;
+  background: #161e24;
+  border: 1px solid #45515c;
+  border-radius: 9px;
+  padding: 10px 14px;
+  text-decoration: none;
+}
+.azo-history-actions a:hover { border-color: #71e1c1; }
+.azo-history-actions a:focus-visible { outline: 2px solid #71e1c1; outline-offset: 3px; }
 .azo-vector-picks { display: flex; gap: 10px; }
 .azo-vector-picks strong {
   display: flex;
@@ -63,6 +78,7 @@
   .azo-overall-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media(max-width:460px) {
+  .azo-history-actions > * { flex: 1; }
   .azo-vector-ranking { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .azo-vector-picks strong { min-width: 0; flex: 1; }
 }

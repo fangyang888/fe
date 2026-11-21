@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {buildAdaptiveZodiacObservation, ZODIACS} from './adaptiveZodiacObservation';
-import {ZODIAC_VECTOR_CONFIG} from './vectorZodiacObservation';
+import {ZODIAC_VECTOR_CONFIG, ZODIAC_VECTOR_WINDOWS} from './vectorZodiacObservation';
 
 function history(count: number) {
   let seed = 1677;
@@ -29,7 +29,8 @@ describe('independent zodiac vector replay', () => {
     expect(new Set(forecast?.selected).size).toBe(3);
     expect(forecast?.scores).toHaveLength(12);
     expect(forecast?.scores.reduce((sum, row) => sum + row.score, 0)).toBeCloseTo(1);
-    expect(forecast?.nearest.every(row => row.No < 166 - ZODIAC_VECTOR_CONFIG.lookback)).toBe(true);
+    expect(forecast?.windows.map(window => window.lookback)).toEqual(ZODIAC_VECTOR_WINDOWS.map(window => window.lookback));
+    expect(forecast?.windows.every(window => window.nearest.every(row => row.No < 166 - window.lookback))).toBe(true);
     const settled = after.rows.find(row => row.targetNo === 166);
     expect(settled?.vector).toEqual(forecast);
     expect(settled?.vectorSuccess).toBe(!forecast?.selected.includes(input[165].numberInfos[6].zodiac));
@@ -43,5 +44,13 @@ describe('independent zodiac vector replay', () => {
     expect(observation.integrity.vectorMissingMetadata).toBe(1);
     expect(observation.current?.vector).toBeNull();
     expect(observation.current?.selected).toHaveLength(3);
+  });
+
+  it('uses the original vector window when the long window is unavailable', () => {
+    const input = history(165);
+    input[135].numberInfos[0].number = 0;
+    const observation = buildAdaptiveZodiacObservation(input);
+    expect(observation.current?.vector?.windows.map(window => window.lookback)).toEqual([ZODIAC_VECTOR_CONFIG.lookback]);
+    expect(observation.current?.vector?.selected).toHaveLength(3);
   });
 });

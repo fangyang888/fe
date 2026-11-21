@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   buildAdaptiveZodiacObservation,
   ZODIAC_MODELS,
@@ -8,7 +9,7 @@ import {
   type ZodiacObservationRow,
   type VectorZodiacSummary,
 } from './lib/adaptiveZodiacObservation';
-import {ZODIAC_VECTOR_CONFIG} from './lib/vectorZodiacObservation';
+import {ZODIAC_VECTOR_CONFIG, ZODIAC_VECTOR_TRIAL_START, ZODIAC_VECTOR_WINDOWS} from './lib/vectorZodiacObservation';
 import type {VectorZodiacPrediction} from './lib/vectorZodiacObservation';
 import './PeakShapeObservation.css';
 import './AdaptiveZodiacObservation.css';
@@ -62,17 +63,19 @@ function ResultText({value, settled = false}: {value: boolean | null; settled?: 
 function VectorDetails({vector}: {vector: VectorZodiacPrediction}) {
   return <details className="azo-vector-details">
     <summary>查看 12 肖得分与相似历史</summary>
-    <p className="pso-muted">得分由历史近邻加权得到，用于排序。</p>
+    <p className="pso-muted">{vector.windows.length === ZODIAC_VECTOR_WINDOWS.length
+      ? '各窗口的近邻加权得分取平均，用于排序。'
+      : '本期使用 24 期窗口的近邻加权得分。'}</p>
     <ol className="azo-vector-ranking" aria-label="本期向量得分，从低到高">
       {vector.scores.map(row => <li key={row.zodiac} className={vector.selected.includes(row.zodiac) ? 'is-excluded' : undefined}>
         <b>{row.zodiac}肖</b><span>{percentage(row.score, 1)}</span>
       </li>)}
     </ol>
-    <div className="pso-table-wrap azo-neighbor-table" tabIndex={0} aria-label="最相似的 5 期">
-      <table><thead><tr><th>历史目标期</th><th>余弦相似度</th><th>随后特别码生肖</th><th>权重</th></tr></thead>
-        <tbody>{vector.nearest.map(row => <tr key={row.No}>
-          <td>第 {row.No} 期</td><td>{row.similarity.toFixed(3)}</td><td>{row.zodiac}肖</td><td>{row.weight.toFixed(2)}</td>
-        </tr>)}</tbody>
+    <div className="pso-table-wrap azo-neighbor-table" tabIndex={0} aria-label="各窗口最相似的历史">
+      <table><thead><tr><th>窗口</th><th>历史目标期</th><th>余弦相似度</th><th>随后特别码生肖</th><th>权重</th></tr></thead>
+        <tbody>{vector.windows.flatMap(window => window.nearest.map(row => <tr key={`${window.lookback}-${row.No}`}>
+          <td>{window.lookback} 期</td><td>第 {row.No} 期</td><td>{row.similarity.toFixed(3)}</td><td>{row.zodiac}肖</td><td>{row.weight.toFixed(2)}</td>
+        </tr>))}</tbody>
       </table>
     </div>
   </details>;
@@ -95,7 +98,7 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
   const rollingLead = current.rolling.recentWins - current.rolling.stableWins;
   const currentConfig = current.choice ? ZODIAC_MODELS[current.choice] : null;
   const integrity = data.integrity;
-  const {lookback, shortWindow, dimensions, neighbors, minimumNeighbors} = ZODIAC_VECTOR_CONFIG;
+  const {lookback, dimensions, neighbors, minimumNeighbors} = ZODIAC_VECTOR_CONFIG;
   const streakValue = (value: number | null) => value === null ? '—' : `${value} 期`;
 
   return <>
@@ -110,6 +113,9 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
         <div>
           <span className="pso-eyebrow">第 {current.targetNo} 期 · 待开奖</span>
           <h2 id="azo-vector-current">向量杀 3 肖</h2>
+          {current.vector ? <p className="azo-vector-version">{current.vector.windows.length === ZODIAC_VECTOR_WINDOWS.length
+            ? '12 / 24 / 36 期多尺度向量'
+            : '多尺度数据不足，本期使用 24 期向量'}</p> : null}
           {current.vector ? <div className="azo-vector-picks" role="group" aria-label="向量排除的三个生肖">
             {current.vector.selected.map(zodiac => <strong key={zodiac}>{zodiac}<small>肖</small></strong>)}
           </div> : <p className="azo-empty-pick">需要前 {lookback} 期完整生肖数据及至少 {minimumNeighbors} 个历史近邻。</p>}
@@ -155,9 +161,9 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
           <span>本期实际参数</span><strong>{currentConfig ? `${currentConfig.neighbors}个相似样本` : '暂不可用'}</strong><p>{current.switched ? '本期发生模型切换。' : '本期延续当前判断。'} 排名只使用目标期之前的数据。</p>
         </article>
         <article className="azo-vector-model">
-          <span>独立向量杀 3 肖</span><strong>{dimensions} 维 · 余弦相似度</strong>
-          <p>以此前 {shortWindow}、{lookback} 期的生肖频次和 {lookback} 期内遗漏构建状态，匹配最多 {neighbors} 个与当前窗口隔开的历史近邻。按近邻的特别码生肖加权，排除得分最低的 3 肖。</p>
-          {current.vector ? <p>本期采用 {current.vector.neighborCount} 个近邻，最高相似度 {current.vector.nearest[0].similarity.toFixed(3)}。</p> : null}
+          <span>独立向量杀 3 肖</span><strong>多尺度余弦相似度 · 每个窗口 {dimensions} 维</strong>
+          <p>12、24、36 期分别构建生肖频次与遗漏向量，各自匹配最多 {neighbors} 个历史近邻。三个窗口等权平均，排除得分最低的 3 肖。</p>
+          {current.vector ? <p>本期近邻 {current.vector.windows.map(window => `${window.lookback} 期窗口采用 ${window.neighborCount} 个`).join('，')}。</p> : null}
         </article>
       </div>
       {current.vector ? <VectorDetails vector={current.vector}/> : null}
@@ -168,7 +174,11 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
       <p className="pso-muted">当期特别码生肖落在所排除的生肖之外，记为成功。每期使用该期之前的开奖记录回放。</p>
       <div className="azo-summary-grid azo-overall-grid">
         <article className="azo-stat azo-vector-model">
-          <span>向量杀 3 肖 · 151 期起</span><VectorScore data={data.vectorTotal}/>
+          <span>多尺度向量杀 3 肖 · 151 期起</span><VectorScore data={data.vectorTotal}/>
+          {data.vectorComparison.count ? <p>向量同期 {data.vectorComparison.count} 期，多尺度成功 {data.vectorComparison.vectorWins} 期，原 24 期向量成功 {data.vectorComparison.baselineWins} 期。</p> : null}
+          <p>{data.vectorTrial.count
+            ? `从第 ${ZODIAC_VECTOR_TRIAL_START} 期起已对照 ${data.vectorTrial.count} 期，多尺度成功 ${data.vectorTrial.vectorWins} 期，原向量成功 ${data.vectorTrial.baselineWins} 期。`
+            : `从第 ${ZODIAC_VECTOR_TRIAL_START} 期起单独对照，目前待开奖入库。`}</p>
           {data.vectorPaired.count ? <p>同期 {data.vectorPaired.count} 期，向量成功 {data.vectorPaired.vectorWins} 期，自适应 3 肖成功 {data.vectorPaired.adaptiveWins} 期。</p> : null}
         </article>
         <SummaryCard label="15期自适应 · 151期起" data={data.total} note="页面当前采用的完整规则" />
@@ -200,7 +210,7 @@ function ObservationContent({data}: {data: AdaptiveZodiacObservation}) {
           <td>稳定 {row.rolling.stableWins}/{row.rolling.count} · 近期 {row.rolling.recentWins}/{row.rolling.count}</td>
           <td className="azo-table-picks">{row.selected.slice(0, 2).join(' · ') || '—'}</td><td className="azo-table-plus">{row.selected[2] ?? '—'}</td>
           <td>{row.actual ? `${String(row.actual.specialNumber).padStart(2, '0')} · ${row.actual.zodiac}肖` : '待开奖'}</td><td><ResultText value={row.twoSuccess} /></td><td><ResultText value={row.threeSuccess} /></td>
-          <td className="azo-vector-cell">{row.vector?.selected.join(' · ') ?? '—'}{row.vector ? <small>{row.vector.neighborCount} 个近邻</small> : null}</td>
+          <td className="azo-vector-cell">{row.vector?.selected.join(' · ') ?? '—'}{row.vector ? <small>{row.vector.windows.map(window => window.lookback).join(' / ')} 期窗口</small> : null}</td>
           <td><ResultText value={row.vectorSuccess} settled={!!row.actual}/></td>
         </tr>)}
         {visibleRows.length === 0 ? <tr><td colSpan={11}>当前范围暂无记录。</td></tr> : null}
@@ -216,36 +226,61 @@ export default function AdaptiveZodiacObservationPage() {
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [updatedAt, setUpdatedAt] = useState('');
+  const lastSnapshot = useRef<string | null>(null);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') setRefreshKey(value => value + 1);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 60_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort('timeout'), 15_000);
     async function load() {
       setLoading(true);
       setError('');
       try {
         const response = await fetch('/api/history?year=2026', {cache: 'no-store', signal: controller.signal});
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const observation = buildAdaptiveZodiacObservation(await response.json());
+        const snapshot = await response.text();
         if (!controller.signal.aborted) {
-          setData(observation);
+          if (snapshot !== lastSnapshot.current) {
+            setData(buildAdaptiveZodiacObservation(JSON.parse(snapshot)));
+            lastSnapshot.current = snapshot;
+          }
           setUpdatedAt(new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
         }
       } catch (reason) {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '读取失败');
+        if (controller.signal.reason === 'timeout') setError('读取超时');
+        else if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '读取失败');
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        window.clearTimeout(timeout);
+        if (!controller.signal.aborted || controller.signal.reason === 'timeout') setLoading(false);
       }
     }
     void load();
-    return () => controller.abort();
+    return () => {window.clearTimeout(timeout); controller.abort();};
   }, [refreshKey]);
 
   return <main className="pso-page azo-page"><div className="pso-shell">
-    <header className="pso-head"><div><span className="pso-eyebrow">2026 · 特别码生肖</span><h1>生肖观察 · 向量杀 3 肖</h1><p>查看下一期排除生肖，以及独立向量与自适应方案的同期回测。</p></div><button disabled={loading} onClick={() => setRefreshKey(value => value + 1)}>{loading ? '加载中…' : '刷新数据'}</button></header>
-    {loading ? <div className="pso-message" role="status">正在读取 2026 年开奖记录并逐期回算…</div> : null}
+    <header className="pso-head">
+      <div><span className="pso-eyebrow">2026 · 特别码生肖</span><h1>生肖观察 · 向量杀 3 肖</h1><p>查看下一期排除生肖，以及独立向量与自适应方案的同期回测。</p></div>
+      <nav className="azo-history-actions" aria-label="开奖更新">
+        <Link to="/history">去同步开奖</Link>
+        <button disabled={loading} onClick={() => setRefreshKey(value => value + 1)}>{loading ? '检查中…' : '刷新数据'}</button>
+      </nav>
+    </header>
+    {loading && !data ? <div className="pso-message" role="status">正在读取 2026 年开奖记录并逐期回算…</div> : null}
     {error ? <div className="pso-message pso-error" role="alert">加载失败：{error}。可点击刷新数据重试。</div> : null}
     {data && data.validCount === 0 ? <div className="pso-message">暂无有效的2026年特别码生肖数据。</div> : null}
     {data && data.validCount > 0 ? <ObservationContent data={data} /> : null}
-    {data ? <footer className="pso-footer">更新 {updatedAt} · 有效数据 {data.validCount} 期 · 最新接口期号 {data.latestNo ?? '—'} · 向量已回测 {data.vectorTotal.count} 期</footer> : null}
+    {data ? <footer className="pso-footer">最近检查 {updatedAt} · 页面可见时每 60 秒检查开奖 · 最新接口期号 {data.latestNo ?? '—'} · 向量已回测 {data.vectorTotal.count} 期</footer> : null}
   </div></main>;
 }

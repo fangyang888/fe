@@ -31,6 +31,12 @@
 >
 > 注:数据库建表用 `server/sql/init-tables.sql`(幂等),首批演示数据可登录服务器手动跑 `seed-test-data.sql`。
 
+## 32 码追踪页的 Qwen 报告
+
+访问 `/fe/kill/likely32-vector-tracker`。发布包会包含仓库里的 `public/likely32-embedding-report.json`，线上通过 `/fe/likely32-embedding-report.json` 读取。可直接访问报告地址核对响应是否为 JSON。
+
+新开奖入库后，在保存向量缓存和预测留档的工作区运行 `pnpm likely32:embedding <历史接口 URL>`。提交生成的报告并重新部署即可更新线上结果。Qwen 配置、向量缓存和留档原件保存在生成报告的环境中，云端页面只读取部署包里的 JSON。
+
 
 ## 1. 购买 ECS
 

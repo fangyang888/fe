@@ -37,6 +37,8 @@ jobs:
         run: |
           pnpm install
           pnpm run build
+          test -s dist/likely32-embedding-report.json
+          cmp public/likely32-embedding-report.json dist/likely32-embedding-report.json
 
       - name: Build Backend
         run: |
@@ -241,3 +243,8 @@ jobs:
             curl --fail --show-error --max-time 15 \
               --header 'Host: 47.106.103.79' \
               http://127.0.0.1/api/agent/health
+            curl --fail --silent --show-error --max-time 15 \
+              --header 'Host: 47.106.103.79' \
+              --header 'Accept: application/json' \
+              http://127.0.0.1/fe/likely32-embedding-report.json |
+              node -e 'const report = JSON.parse(require("node:fs").readFileSync(0, "utf8")); if (report.version !== 1 || !report.historyDigest || !report.fusionGate) process.exit(1)'

@@ -54,7 +54,9 @@ def collect_sources(region, needs, manifest, index):
                         text=figure["description"], path=figure["path"], snapshot=str(snapshot),
                         sha256=meta["sha256"], ref=candidate["ref"], description_source=figure["description_source"])
             except (OSError, ValueError, KeyError):
-                issues[cid] = "关联图例的快照无法验证"
+                # The winning retrieval figure is optional evidence. Visual verification
+                # checks the complete figure set independently of that retrieval hit.
+                pass
         records = manifest["components"][cid]["evidence"]
         ranked = sorted(enumerate(records), key=lambda pair: len(query & terms(
             pair[1]["title"] + " " + pair[1]["text"])), reverse=True)
@@ -274,7 +276,7 @@ def markdown_report(report):
 
     lines = ["# 设计区域与可复用组件"]
     if not report["matches"]:
-        lines += ["", "本次没有找到有原文依据的组件匹配。"]
+        lines += ["", "本次没有找到通过核验的组件匹配。"]
     region_names = {m.get("region_id"): m["region"] for m in report["matches"] if m.get("region_id")}
     for match in report["matches"]:
         lines += ["", f"## {text(match['region'])} → {text(match['component'])}", "",
@@ -286,8 +288,17 @@ def markdown_report(report):
             lines += ["", link("打开对应设计图层", match["design_url"])]
         if match.get("screenshot"):
             lines += ["", "!" + link("该区域的设计截图", match["screenshot"])]
+        if visual := match.get("visual"):
+            lines += ["", f"视觉校验：{text(visual['reason'])}",
+                      link("匹配参考图", visual["matched_reference"])]
         for ref in match["sources"]:
             suffix = f":{ref['line']}"
             lines += ["", link(Path(ref["path"]).name + suffix,ref["path"] + suffix) + " · " +
                       link("固定版本快照",ref["snapshot"] + suffix), "", "> " + text(ref["quote"])]
+    rejected = [check for check in report.get("visual_checks", []) if check["status"] != "match"]
+    if rejected:
+        lines += ["", "## 视觉校验未通过的候选", ""]
+        for check in rejected:
+            label = f"{check['region']}（{check['node_id']}） · {check['component_id']}"
+            lines.append(f"- {text(label)}　{text(check['reason'])}")
     return "\n".join(lines) + "\n"

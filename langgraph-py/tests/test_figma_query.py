@@ -29,6 +29,23 @@ class FigmaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "目标图层"):
             metadata_tree(blocks, "99:9")
 
+    def test_descriptive_button_layer_gets_its_own_region_in_structural_partition(self):
+        from langgraph_py.pixso_component_match.regions import partition
+
+        markup = """<frame id="23:2" name="Page">
+          <frame id="2012:2" name="宝宝睡眠测评">
+            <text id="2012:3" name="宝宝睡眠测评"/>
+            <frame id="2012:9" name="开始测评按钮" width="90" height="44">
+              <text id="2012:10" name="开始测评 ›"/>
+            </frame>
+          </frame>
+        </frame>"""
+        root = metadata_tree([SimpleNamespace(type="text", text=markup)], "23:2")
+        regions, _ = partition(visible_nodes([root]), structure_only=True, source="figma")
+        button = next(r for r in regions if r["component_role"] == "Button")
+        self.assertEqual(button["name"], "开始测评按钮")
+        self.assertEqual({n["node_id"] for n in button["observations"]}, {"2012:9", "2012:10"})
+
     def test_studio_accepts_explicit_source_and_url_only(self):
         schema = graph.get_input_jsonschema()
         self.assertEqual(schema["required"], ["design_url"])

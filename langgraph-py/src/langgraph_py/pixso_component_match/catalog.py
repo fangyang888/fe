@@ -140,12 +140,17 @@ def resolve_demo(document, ref, roots, output):
 
 
 def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
+    root, output = root.resolve(), output.resolve()
+    docs = docs.resolve() if docs is not None else None
+    images = images.resolve() if images is not None else None
     meta_path = root / "package.json"
     meta = json.loads(meta_path.read_text()) if meta_path.is_file() else {}
     library = meta.get("name") or root.name
     components, sources, skips = {}, {}, []
     allowed = [p for p in (root, docs, images) if p]
     by_name = defaultdict(set)
+    image_owners = defaultdict(set)
+    figures_by_hash = defaultdict(dict)
 
     def snapshot(path):
         path = path.resolve()
@@ -158,7 +163,19 @@ def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
         import_path = library if module == "." else f"{library}/{module.removeprefix('./')}"
         identity = f"{import_path}#{exported or name}"
         by_name[key(name)].add(identity)
-        return components.setdefault(identity, dict(name=name, import_path=import_path, evidence=[], figures=[]))
+        components.setdefault(identity, dict(name=name, import_path=import_path, evidence=[], figures=[]))
+        return identity
+
+    def add_figure(identity, path, **metadata):
+        checksum = snapshot(path)["hash"]
+        figures = figures_by_hash[identity]
+        if checksum in figures:
+            if metadata["caption"] and not figures[checksum]["caption"]:
+                figures[checksum].update(metadata)
+            return
+        figure = dict(path=str(path), **metadata)
+        figures[checksum] = figure
+        components[identity]["figures"].append(figure)
 
     def evidence(c, path, lines, start, end, kind, title=""):
         # Bound embedding inputs by line groups; keep exact source lines in the snapshot.
@@ -193,9 +210,12 @@ def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
                                     hint=hint))
     records = exports(root, entries)
     for rec in records:
-        c = register(rec["name"], rec["module"], rec["exportName"])
+        identity = register(rec["name"], rec["module"], rec["exportName"])
+        c = components[identity]
         for span in rec["spans"]:
             p = Path(span["file"])
+            if span["kind"] == "code":
+                image_owners[p.parent / "images"].add(identity)
             lines = snapshot(p)["data"].decode("utf-8-sig").splitlines()
             evidence(c, p, lines, span["start"]-1, min(len(lines), span["end"]), span["kind"])
     if entries and not records:
@@ -215,7 +235,7 @@ def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
         if not matches:
             matches = set().union(*(by_name[key(s)] for s in labels))
         if len(matches) == 1:
-            c = components[next(iter(matches))]
+            identity = next(iter(matches))
         elif matches or (records and meta):
             skips.append(f"{p}：文档未能唯一对应公开导出")
             continue
@@ -223,7 +243,10 @@ def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
             skips.append(f"{p}：缺少组件标题")
             continue
         else:
-            c = register(title.split()[0] if title else stem)
+            identity = register(title.split()[0] if title else stem)
+        c = components[identity]
+        if p.stem.casefold() == "readme":
+            image_owners[p.parent / "images"].add(identity)
         snap = snapshot(p)
         # Parse the same immutable bytes that the evidence will reference.
         lines = snap["data"].decode("utf-8-sig").splitlines()
@@ -258,19 +281,31 @@ def discover(root: Path, docs: Path | None, images: Path | None, output: Path):
                 if not pic:
                     skips.append(f"{p}：图例无法读取 {rel}")
                     continue
-                snapshot(pic)
                 document_images.add(pic)
-                c["figures"].append(dict(path=str(pic), caption=m[1].strip(), title=heading,
-                                         source=str(p), line=a+1+body.count("\n", 0, m.start())))
-    for pic in files(images or root, IMAGE, output):
-        if pic in document_images:
-            continue
-        matches = by_name.get(key(pic.stem)) or by_name.get(key(pic.parent.name))
-        if matches and len(matches) == 1:
-            snapshot(pic)
-            components[next(iter(matches))]["figures"].append(dict(path=str(pic), caption="", title=pic.stem))
-        else:
-            skips.append(f"{pic}：无法唯一关联组件")
+                add_figure(identity, pic, caption=m[1].strip(), title=heading,
+                           source=str(p), line=a+1+body.count("\n", 0, m.start()))
+    # Scan owned directories even when the caller also supplies a separate image root.
+    for folder in dict.fromkeys(p for p in (root, docs, images) if p is not None):
+        for pic in files(folder, IMAGE, output):
+            owners = None
+            for directory in pic.parents:
+                if directory == folder:
+                    break
+                if directory.name == "images":
+                    owners = image_owners.get(directory) or by_name.get(key(directory.parent.name))
+                    if owners:
+                        break
+            if not owners:
+                if pic in document_images or folder != (images or root):
+                    continue
+                owners = by_name.get(key(pic.stem)) or by_name.get(key(pic.parent.name))
+                if not owners and images:
+                    owners = next((by_name[key(p.name)] for p in pic.parents
+                                   if p.is_relative_to(folder) and by_name.get(key(p.name))), None)
+            if owners and len(owners) == 1:
+                add_figure(next(iter(owners)), pic, caption="", title=pic.stem)
+            elif pic not in document_images:
+                skips.append(f"{pic}：无法唯一关联组件")
     components = {k: c for k, c in components.items() if c["evidence"]}
     if not components:
         raise ValueError("未发现可入库组件。请指定单个包根目录或带组件页的 Markdown/MDX 目录。")

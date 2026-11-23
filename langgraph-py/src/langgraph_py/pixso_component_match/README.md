@@ -22,7 +22,7 @@ uv run python -m langgraph_py.pixso_component_match.ingest "/path/to/component-l
 
 - **组件来源**：优先传单个包目录，包括已安装的 `node_modules/@scope/ui`。解析器从公开 JS/TS 入口跟踪 PascalCase 值导出和声明里引用的 Props。无包清单的源码目录可按 PascalCase 的 TSX/JSX 文件入口发现组件。只有文档时，按组件页文件名或一级标题识别。通配符子路径、Vue 单文件组件和仅有在线站点的文档尚需相应适配。
 - **组件 README**：自动收集组件目录中的 `README.md` 或 `README.mdx`，包括同时指定 `--docs` 的情况。例如 `src/badge/README.md` 的章节进入 Badge 的检索摘要，正文按章节保存。遇到 `<code src='./demos/demo-dot' />` 会读取对应的本地 JS/TS/JSX/TSX 示例，同时记录示例源码行号和 README 的引用行。报告中的 `readme_files` 是实际收集的 README 文件数。
-- **图例关联**：优先读取 Markdown 行内图片引用，支持本地 PNG、JPEG、WebP。独立图片可使用组件名命名，或放在以组件名命名的目录下。使用 `--no-vision` 或未配置模型名时，使用文档已有图片说明；只有图片没有说明时，仍保留图例引用，并在报告中标出。视觉输出以图片内容和模型为键缓存。
+- **图例关联**：支持本地 PNG、JPEG、WebP。优先读取 README/Markdown/MDX 的行内图片及说明。自动递归收集组件自己的 `images/` 下的所有参考图（例如 `src/button/images/primary.png`、`src/button/images/variants/plain.png`），文件名可自由命名。独立图例也可用组件名命名，或放在能唯一对应组件的目录下。`--images` 可以和组件自己的 `images/` 一起用。每个组件按图片内容去重，同图保留可用的文档说明。使用 `--no-vision` 时仍保存图例及快照，供匹配阶段读取。视觉描述以图片内容和模型为键缓存。
 - **模型与存储**：脚本读取仓库根目录的 `.env`。文本 embedding 沿用 `EDU_EMBED_BASE_URL`、`EDU_EMBED_MODEL`、`EDU_EMBED_API_KEY`。视觉模型名优先读取 `COMPONENT_VISION_MODEL`，缺省沿用 `OPENAI_DEFAULT_MODEL`，地址与密钥可用 `COMPONENT_VISION_BASE_URL`、`COMPONENT_VISION_API_KEY`，缺省沿用聊天服务配置。Milvus 地址按 `--uri`、`COMPONENT_MILVUS_URI`、`EDU_MILVUS_URI` 的顺序选择，未配置时在输出目录建立本地库。
 - **结果**：默认输出到仓库的 `.component-index/`，可用 `--output` 改位置。报告列出组件数、证据片段数、关联图片数、记录总数、跳过原因和从 Milvus 回读核对过的样例。构建清单保存原始路径、行号、原文和快照引用。重复导入会复用同一构建的记录，所有记录与快照校验通过后才更新活动清单。
 - **后续检索**：读取 `active/` 清单取得 `collection` 与 `build_id`，加载集合。查询时固定构建，用 `mode == "text_image"` 搜索含图例说明的摘要，或用 `mode == "text"` 搜索相同变体的文本摘要。按 `component_id` 和 `mode == "evidence"` 回查证据。Milvus 的 `ref` 对应构建清单中该组件的证据或图例序号。
@@ -86,10 +86,12 @@ uv run --env-file .env langgraph dev --config langgraph.pixso.json --host 127.0.
 | read_figma · 读取 Figma 设计稿 | 通过 Figma MCP 读取节点元数据并保存设计快照。|
 | partition_regions · 拆分区域与嵌套控件 | 每个区域的节点、可见文案与检索描述。优先识别具备标题与返回图标的导航容器。对于缺少命名的容器，也参考顶部位置和宽高。递归检查可见子树中的实例和具名控件，分别为容器和内部控件建立区域。超过 180 个可见节点时同样执行嵌套识别。|
 | retrieve_components · 检索候选组件 | 按库、版本、构建和摘要模式过滤后执行 Milvus COSINE 检索。导航区域额外召回 Nav、NavBar 等导出名，并保留语义候选。|
-| verify_evidence · 核验组件推荐依据 | 最多同时核验三个区域。每个推荐需要能定位的设计图层、组件库的原文引用和可回读的版本快照。|
+| verify_evidence · 核验组件推荐依据 | 最多同时核验三个区域。先核对设计图层及组件库原文。有参考图的候选还会抓取对应节点截图，用视觉模型分批对比该版本的参考图。|
 | save_report · 保存报告与区域截图 | 自动保存通过核验的匹配。在线查询按图层获取截图，截图不可用时仍可通过设计链接定位。|
 
 最后的 `report.matches` 每项包含区域名称、图层 ID、图层链接、组件和导入路径、版本、推荐理由与可追溯的文档或代码行号。没有通过核验的匹配时返回空数组。Markdown、JSON 及可用的区域截图保存在 `.component-index/reports/`。中间候选可在 Studio 的检索节点评估。CLI 加 `--trace` 可将同一流程发送到 LangSmith。
+
+对比以节点本身的轮廓、背景覆盖、图标和文字排列为准，允许文案、颜色和缩放变化。任一参考变体相符即可通过；所有参考图明确不符时拒绝该候选，截图、快照或模型结果不足时记录证据不足。两种情况均可继续核验其他候选。使用 `--json` 回放或 `--no-screenshots` 时，带参考图的候选会记录视觉证据不足。没有入库参考图的组件沿用原有核验流程。JSON 的 `visual_checks` 保存对比结果、参考图和判断依据。新增图片后需要重新运行入库。
 
 默认查询已入库的活动组件库。对已同时入库的发布包和包内源码目录，优先使用发布包的导出。使用 `--library` 限定项目允许使用的包，使用 `--release` 固定版本。Studio 中 `design_url` 必填；可选的 `type` 可取 `figma` 或 `pixso`，省略时按链接自动识别。选择 `--mode text` 可与默认的 `text_image` 摘要对照。CLI 可用 `--no-screenshots` 关闭截图。
 

@@ -98,11 +98,20 @@ class State(TypedDict, total=False):
     report: dict
 
 
+def component_vision_model():
+    return os.getenv("COMPONENT_VISION_MODEL") or os.getenv("OPENAI_DEFAULT_MODEL")
+
+
+def vision_client(**options):
+    return OpenAI(api_key=os.getenv("COMPONENT_VISION_API_KEY") or os.getenv("OPENAI_API_KEY"),
+                  base_url=os.getenv("COMPONENT_VISION_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+                  **options)
+
+
 def describe_figures(catalog, output, vision_model):
     client = None
     if vision_model:
-        client = OpenAI(api_key=os.getenv("COMPONENT_VISION_API_KEY") or os.getenv("OPENAI_API_KEY"),
-                        base_url=os.getenv("COMPONENT_VISION_BASE_URL") or os.getenv("OPENAI_BASE_URL"))
+        client = vision_client()
     for component in catalog["components"].values():
         for fig in component["figures"]:
             fig["description"] = fig["caption"]
@@ -313,7 +322,7 @@ def main():
     parser.add_argument("--uri", default=os.getenv("COMPONENT_MILVUS_URI") or os.getenv("EDU_MILVUS_URI"),
                         help="Milvus 地址，默认在输出目录创建 components.db")
     vision = parser.add_mutually_exclusive_group()
-    vision.add_argument("--vision-model", default=os.getenv("COMPONENT_VISION_MODEL") or os.getenv("OPENAI_DEFAULT_MODEL"),
+    vision.add_argument("--vision-model", default=component_vision_model(),
                         help="读取组件图例的模型，默认沿用仓库聊天模型")
     vision.add_argument("--no-vision", dest="vision_model", action="store_const", const=None,
                         help="图例仅使用文档中已有的图片说明")

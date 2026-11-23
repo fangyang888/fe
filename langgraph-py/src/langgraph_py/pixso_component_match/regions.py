@@ -177,6 +177,9 @@ def nested_controls(nodes, component_names):
             continue
         role = layer_role(n["name"])
         export = roles.get(role.casefold())
+        if not export and role.endswith("按钮") and any(
+                nodes[child]["type"].upper() == "TEXT" for child in n["children"]):
+            export = "Button"
         if export:
             controls[n["index"]] = export
         elif n["type"].upper() == "INSTANCE" and n["node_id"] and role and not (

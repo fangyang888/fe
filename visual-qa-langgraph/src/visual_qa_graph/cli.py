@@ -22,6 +22,9 @@ def main() -> int:
     parser.add_argument("--cache-dir", type=Path, help="Shared content cache across runs")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[3])
     parser.add_argument("--browser-endpoint", help="Optional CDP HTTP/WebSocket or Playwright endpoint; otherwise launch Chrome directly")
+    parser.add_argument("--design-type", choices=("pixso", "figma"), help="Design provider (or set case.designType)")
+    parser.add_argument("--design-url", help="Link to a Figma node or Pixso frame (or set case.designUrl)")
+    parser.add_argument("--figma-endpoint", help="Figma Desktop MCP endpoint (default: http://127.0.0.1:3845/mcp)")
     parser.add_argument("--pixso-endpoint", help="Pixso MCP HTTP endpoint, for example http://127.0.0.1:3667/mcp")
     parser.add_argument("--pixso-revision", help="Explicit design revision used for remote cache invalidation")
     parser.add_argument("--pixso-refresh", action="store_true", help="Ignore cached Pixso design and assets")
@@ -45,8 +48,6 @@ def main() -> int:
         parser.error("--pixso-endpoint requires --pixso-revision")
     if args.resume and not args.run_dir:
         parser.error("--resume requires --run-dir")
-    if args.annotated_image and not args.pixso_endpoint and not args.resume:
-        parser.error("--annotated-image requires --pixso-endpoint")
     if (args.image_map or args.image_html or args.annotated_frame) and not args.annotated_image and not args.resume:
         parser.error("--image-map, --image-html and --annotated-frame require --annotated-image")
     run_dir = args.run_dir or Path(__file__).resolve().parents[2] / "runs" / datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -61,7 +62,8 @@ def main() -> int:
                                source_paths=args.source, annotated_image=args.annotated_image,
                                image_map=args.image_map, image_html=args.image_html,
                                annotated_frame=args.annotated_frame,
-                               project_skill=args.project_skill)
+                               project_skill=args.project_skill, design_type=args.design_type,
+                               design_url=args.design_url, figma_endpoint=args.figma_endpoint)
     except Exception as exc:
         print(json.dumps({"status": "error", "complete": False, "error": str(exc)},
                          ensure_ascii=False), file=sys.stderr)

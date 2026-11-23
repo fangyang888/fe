@@ -257,10 +257,11 @@ class WorkflowTests(unittest.TestCase):
             root_path = Path(root)
             source = root_path / "styles.css"
             source.write_text("#box { color: red; }\n", encoding="utf-8")
+            Image.new("RGB", (16, 16), "white").save(root_path / "design.png")
             case = root_path / "case.json"
             case.write_text(json.dumps({
                 "platform": "web",
-                "designImage": str(repo_root / "visual-qa-benchmark" / "design.png"),
+                "designImage": "design.png",
             }), encoding="utf-8")
 
             def fake_verify(state: dict) -> dict:
@@ -382,9 +383,10 @@ class WorkflowTests(unittest.TestCase):
             root_path = Path(root)
             source = root_path / "styles.css"
             source.write_text("#box { color: red; }\n", encoding="utf-8")
+            Image.new("RGB", (16, 16), "white").save(root_path / "design.png")
             case = root_path / "case.json"
             case.write_text(json.dumps({
-                "platform": "web", "designImage": str(repo_root / "visual-qa-benchmark" / "design.png"),
+                "platform": "web", "designImage": "design.png",
             }), encoding="utf-8")
 
             def fake_verify(_state: dict) -> dict:

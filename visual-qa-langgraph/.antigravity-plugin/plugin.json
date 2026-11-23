@@ -5,9 +5,9 @@
   "version": "0.1.0",
   "description": "使用 Python + LangGraph 完成 Web 设计还原、Playwright 截图、视觉对比与可选修正。",
   "author": {"name": "yang"},
-  "keywords": ["pixso", "visual-qa-langgraph", "playwright", "langgraph", "frontend"],
+  "keywords": ["pixso", "figma", "visual-qa-langgraph", "playwright", "langgraph", "frontend"],
   "suggestedPrompts": [
     "使用 visual-qa-langgraph 验收当前 Web 页面",
-    "使用 visual-qa-langgraph 根据 Pixso 设计实现页面并完成视觉验收"
+    "使用 visual-qa-langgraph 按 Figma 或 Pixso 设计稿链接验收页面"
   ]
 }

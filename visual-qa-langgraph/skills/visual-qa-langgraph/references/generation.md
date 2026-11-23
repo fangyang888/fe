@@ -2,11 +2,16 @@
 
 ## 输入来源
 
-优先使用用户提供的 Pixso 文件、设计版本和本地设计图。需要远端读取时，确认 Pixso MCP endpoint、目标文件已在 Pixso 中打开，并提供稳定 revision。MCP 不可用时使用已有设计 PNG 和素材继续，不猜测设计，也不宣称读取成功。
+使用用户给定的设计类型和节点链接，通过 `--design-type` 和 `--design-url` 传给完整图，也可在 case 中填写 `designType`、`designUrl`。读取前在对应的桌面客户端打开目标文件并启用 MCP。
+
+- Figma 链接含 `node-id`，默认服务为 `http://127.0.0.1:3845/mcp`，可传 `--figma-endpoint`。流程调用 `get_screenshot` 获取目标节点 PNG，作为当前验收基准。
+- Pixso 链接含 `item-id`，默认服务为 `http://127.0.0.1:3667/mcp`，可传 `--pixso-endpoint`。追加 `--pixso-revision`，并在设计变化时更新版本或加 `--pixso-refresh`。case 没有 `designImage` 时导出模式为 1× PNG。
+
+已有本地设计 PNG 时，可使用纯本地的 `verify` 验收。红框定位及 3× 素材绑定使用 Pixso。
 
 Python 图通过 `query_nodes` 的 `readDepth: 1` 分批读取非图片节点，通过 `get_export_image` 导出图片。它不再调用旧 `design-batch`、`generation-context`、`export-manifest` 或 `generate-scaffold`。不要在流程外重复发明这些中间命令。
 
-Pixso MCP 读取要求 case 中有 ready `intentPlan`。没有图片意图时，可使用已导出的设计图和本地素材完成实现与验收；只有用户给出红框、已有 intent plan 或明确节点映射时才读取设计树。
+Pixso 链接模式在未提供图片标注或 `intentPlan` 时会用链接节点生成空图片计划。已有整图边界时使用包含该边界的计划；通过旧 `--pixso-endpoint` 模式直接读取 Pixso 时，继续提供 ready `intentPlan` 或红框标注。
 
 ## 红框和单图
 

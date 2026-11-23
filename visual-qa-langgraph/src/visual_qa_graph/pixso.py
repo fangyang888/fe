@@ -6,69 +6,24 @@ import base64
 import hashlib
 import json
 import re
-import threading
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
 from PIL import Image
 
 from .design import generation_context, read_design_tree
+from .mcp_http import McpClient
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+DEFAULT_PIXSO_ENDPOINT = "http://127.0.0.1:3667/mcp"
 
 
-class PixsoMcpClient:
-    def __init__(self, endpoint: str):
-        self.endpoint = endpoint
-        self.http = httpx.Client(timeout=45, trust_env=False)
-        self.session_id: str | None = None
-        self.next_id = 1
-        self.lock = threading.Lock()
-
-    def __enter__(self) -> "PixsoMcpClient":
-        self._rpc("initialize", {
-            "protocolVersion": "2025-03-26", "capabilities": {},
-            "clientInfo": {"name": "visual-qa-langgraph", "version": "0.1.0"},
-        })
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        self.http.close()
-
-    def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        with self.lock:
-            request_id = self.next_id
-            self.next_id += 1
-            headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-            if self.session_id:
-                headers["Mcp-Session-Id"] = self.session_id
-            response = self.http.post(self.endpoint, headers=headers, json={
-                "jsonrpc": "2.0", "id": request_id, "method": method, "params": params,
-            })
-            response.raise_for_status()
-            self.session_id = self.session_id or response.headers.get("mcp-session-id")
-            if "text/event-stream" in response.headers.get("content-type", ""):
-                messages = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
-                payload = next((item for item in messages if item.get("id") == request_id), None)
-            else:
-                payload = response.json()
-            if not isinstance(payload, dict):
-                raise RuntimeError(f"Pixso MCP returned no response for {method}")
-            if payload.get("error"):
-                raise RuntimeError(f"Pixso MCP {method}: {payload['error']}")
-            return payload
-
-    def call(self, name: str, args: dict[str, Any]) -> list[dict[str, Any]]:
-        payload = self._rpc("tools/call", {"name": name, "arguments": args})
-        result = payload.get("result") or {}
-        if result.get("isError"):
-            message = next((part.get("text", "") for part in result.get("content", []) if part.get("type") == "text"), "")
-            raise RuntimeError(f"Pixso {name}: {message[:500]}")
-        return result.get("content") or []
+class PixsoMcpClient(McpClient):
+    server_name = "Pixso"
+    send_initialized = False
 
     def query_nodes(self, node_ids: list[str], fields: list[str]) -> list[dict[str, Any]]:
         content = self.call("query_nodes", {
@@ -199,8 +154,8 @@ def resolve_red_image_nodes(endpoint: str, plan: dict[str, Any]) -> dict[str, An
 
 
 def fetch_design(
-    *, endpoint: str, revision: str, plan_path: Path, design_hash: str,
-    cache_dir: Path, scale: int, refresh: bool,
+    *, endpoint: str, revision: str, plan_path: Path, design_hash: str | None,
+    cache_dir: Path, scale: int, refresh: bool, design_url: str | None = None,
 ) -> dict[str, Any]:
     """Read shallow design batches in Python and cache pruned local evidence."""
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
@@ -211,12 +166,16 @@ def fetch_design(
     cache_plan = {key: value for key, value in plan.items() if key != "generatedAt"}
     key = hashlib.sha256(json.dumps({
         "engine": "python-v1", "revision": revision, "plan": cache_plan, "designHash": design_hash, "scale": scale,
+        **({"designUrl": design_url} if design_url else {}),
+        **({"referenceScale": 1} if design_hash is None else {}),
     }, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     folder = cache_dir / "pixso" / key
     marker = folder / "metadata.json"
     if marker.is_file() and not refresh:
         cached = json.loads(marker.read_text(encoding="utf-8"))
         paths = [Path(cached["contextPath"]), *(Path(item["path"]) for item in cached["assets"])]
+        if design_hash is None:
+            paths.append(Path(cached["designPath"]))
         if all(path.is_file() for path in paths) and all(
             item.get("scale") == scale and item.get("pixelWidth") and item.get("pixelHeight")
             for item in cached["assets"]
@@ -227,7 +186,12 @@ def fetch_design(
     state_path = folder / "read-state.json"
     responses_path = folder / "responses.json"
     image_ids = _node_ids(plan)
+    reference_path = None
     with PixsoMcpClient(endpoint) as client:
+        if design_hash is None:
+            data = client.export_png(plan["source"]["nodeId"], 1)
+            reference_path = folder / f"reference-{hashlib.sha256(data).hexdigest()}.png"
+            reference_path.write_bytes(data)
         tree, queried, responses = read_design_tree(client, plan)
         context = generation_context(plan, tree)
         _write(state_path, {"schemaVersion": 1, "tree": tree, "queriedNodeIds": queried})
@@ -251,5 +215,7 @@ def fetch_design(
 
     metadata = {"key": key, "revision": revision, "contextPath": str(context_path),
                 "assets": assets, "queriedNodes": len(queried), "cached": False}
+    if reference_path is not None:
+        metadata["designPath"] = str(reference_path)
     _write(marker, metadata)
     return metadata

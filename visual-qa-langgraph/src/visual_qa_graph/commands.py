@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 from .comparison import compare_images
 from .engine import read_case, verify_case, wait_for_readiness
 from .intent import create_intent_plan
+from .protocols import lookup_protocols, refresh_protocol_cache
 
 
 def capture_page(url: str, output: Path, *, width: int, height: int, dpr: float,
@@ -145,6 +146,13 @@ def main(argv: list[str]) -> int:
     intent.add_argument("--frame")
     intent.add_argument("--output", type=Path, required=True)
     intent.add_argument("--compact", action="store_true")
+    protocols = commands.add_parser("protocols", help="Look up Meiyou WebView URI protocols")
+    protocols.add_argument("queries", nargs="*", metavar="QUERY", help="Action, protocol path, or Uri-Docs link")
+    protocols.add_argument("--scene", choices=("webview", "h5"), help="Page runtime (default: webview)")
+    protocols.add_argument("--project-scene", choices=("webview", "h5"), help="Runtime locked by the project")
+    protocols.add_argument("--include-markdown", action="store_true", help="Include the cached source text")
+    protocols.add_argument("--refresh", action="store_true", help="Download a new local copy of the current catalog")
+    protocols.add_argument("--compact", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "verify":
@@ -164,6 +172,14 @@ def main(argv: list[str]) -> int:
             result = {"status": "offline_review", "mode": "offline", "complete": False, "comparison": comparison}
         elif args.command == "suite":
             result = run_suite(args.suite.resolve(), args.browser_endpoint)
+        elif args.command == "protocols":
+            if args.refresh:
+                if args.queries or args.scene or args.project_scene or args.include_markdown:
+                    raise ValueError("Use protocols --refresh separately from lookup options")
+                result = refresh_protocol_cache()
+            else:
+                result = lookup_protocols(args.queries, scene=args.scene, project_scene=args.project_scene,
+                                          include_markdown=args.include_markdown)
         elif args.command == "intent-plan":
             result = create_intent_plan(annotated=args.annotated.resolve(), node_id=args.node_id,
                 viewport={"width": args.width, "height": args.height}, design_url=args.design_url,
@@ -185,4 +201,4 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"status": "error", "complete": False, "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=None if args.compact else 2))
-    return 2 if result["status"] == "error" else 0 if result["status"] in {"passed", "captured", "ready"} else 1
+    return 2 if result["status"] in {"error", "unavailable"} else 0 if result["status"] in {"passed", "captured", "ready"} else 1

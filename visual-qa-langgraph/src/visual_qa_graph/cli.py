@@ -12,11 +12,11 @@ from .workflow import run_workflow
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] in {"verify", "capture", "compare", "suite", "doctor", "intent-plan"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {"verify", "capture", "compare", "suite", "doctor", "intent-plan", "protocols"}:
         from .commands import main as command_main
         return command_main(sys.argv[1:])
     parser = argparse.ArgumentParser(description="Run visual QA with Python + LangGraph",
-        epilog="Standalone commands: verify, compare, suite, doctor, intent-plan. Use COMMAND --help for options.")
+        epilog="Standalone commands: verify, capture, compare, suite, doctor, intent-plan, protocols. Use COMMAND --help for options.")
     parser.add_argument("--case", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--cache-dir", type=Path, help="Shared content cache across runs")

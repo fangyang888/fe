@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-10",
+  "scope": "host-only research probes; no Harmony device connected",
+  "langgraphVersion": "1.2.14",
+  "probes": {
+    "staleBuildResume": {
+      "status": "stale_build",
+      "nodeCalls": [
+        "apply"
+      ],
+      "checkpointReopened": true
+    },
+    "freshBuildResume": {
+      "status": "verified",
+      "nodeCalls": [
+        "apply",
+        "verify"
+      ],
+      "checkpointReopened": true
+    },
+    "currentRecoveryRollsBackAppliedEdit": {
+      "recoveredCount": 1,
+      "implication": "Intentional awaiting_build must be distinguished from interrupted edits before native repair resumes."
+    }
+  },
+  "sdkDeclarations": {
+    "getFilteredInspectorTree": true,
+    "getFilteredInspectorTreeById": true,
+    "getFrameNodeById": true,
+    "getComponentUtils": true,
+    "getComponentSnapshot": true,
+    "FrameNode.getInspectorInfo": true
+  },
+  "deviceProbe": {
+    "hdcVersion": "3.2.0f",
+    "listTargets": "[Empty]",
+    "nativeCaptureTested": false
+  }
+}

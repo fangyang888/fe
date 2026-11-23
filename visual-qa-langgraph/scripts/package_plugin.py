@@ -47,7 +47,7 @@ def build(source: Path, output: Path, target: str = "codex") -> Path:
         raise ValueError("plugin.json and pyproject.toml must use the same plugin name/version")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?", version):
         raise ValueError("Plugin version must use semantic versioning")
-    files = FILES
+    files = FILES + (".mcp.json",)
     directories = DIRECTORIES
     if antigravity:
         files = tuple(name for name in FILES if name != "build/codex-plugin.py") + (

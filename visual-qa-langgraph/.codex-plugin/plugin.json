@@ -1,11 +1,13 @@
 {
   "name": "visual-qa-langgraph",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "使用 Python + LangGraph 完成 Web 设计还原、Playwright 截图、视觉对比与可选修正。",
   "author": {
     "name": "yang"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
   "keywords": [
     "pixso",
     "figma",
@@ -23,7 +25,8 @@
     "capabilities": [],
     "defaultPrompt": [
       "使用 Visual QA LangGraph 按 Figma 或 Pixso 设计稿链接验收页面。",
-      "使用 Python 截图与 visual-qa-langgraph 检查这个页面的视觉差异。"
+      "使用 Python 截图与 visual-qa-langgraph 检查这个页面的视觉差异。",
+      "查询美柚 App WebView 打开新网页和唤起登录的 URI 协议。"
     ]
   }
 }

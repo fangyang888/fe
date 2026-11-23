@@ -25,7 +25,7 @@ class McpClient:
         try:
             result = self._rpc("initialize", {
                 "protocolVersion": "2025-03-26", "capabilities": {},
-                "clientInfo": {"name": "visual-qa-langgraph", "version": "0.1.0"},
+                "clientInfo": {"name": "visual-qa-langgraph", "version": "0.2.0"},
             })
             if protocol := result.get("protocolVersion"):
                 self.http.headers["MCP-Protocol-Version"] = protocol

@@ -80,6 +80,27 @@ python3 build/antigravity-plugin.py status
 
 安装后刷新 Antigravity，在新对话中输入 `/visual-qa-langgraph`。支持全局和 `--project /path/to/project` 项目安装，完整说明见 [Antigravity 打包与管理](build/ANTIGRAVITY.md)。`--target all` 可以同时打包 Codex 和 Antigravity。
 
+### 单独查询 WebView 协议
+
+在 Codex 中安装或更新插件后，启动本地聊天，直接说「用 `webview_protocols` 查美柚 App 打开新网页和唤起登录的协议」。该 MCP 工具随 Codex 插件注册。首次启动需要 PATH 中有 `uv`，由它准备独立的 MCP 依赖。查询无需视觉用例、设计稿、浏览器或模型 API 凭据。
+
+工具接受最多八个简短动作关键词、准确的协议路径或美柚 Uri-Docs 链接。省略关键词会列出当前协议分类。默认场景是 `webview`，仅在明确做独立浏览器页面时设置 `scene: "h5"`，此时跳过协议查询。项目已指定场景时可通过 `project_scene` 传入，冲突会报错。WebView 的查询失败和待确认结果均保留在 WebView 场景。
+
+首次没有缓存时，工具联网读取 Uri-Docs 的现行分类与协议详情，过滤掉文档站标为「废弃」的目录。之后的关键词查询、详情读取和查不到的条目都只查本地。需要更新时，在 Codex 里说「更新 WebView 协议缓存」，调用 `refresh_webview_protocol_cache`。完整拉取成功后替换缓存，失败时保留旧缓存。 [美柚 Uri-Docs](https://apidoc.seeyouyima.com/uri-docs/#/docs/63e4945e60ff2756af951db9)
+
+MCP 和 CLI 共用 `~/.cache/visual-qa-langgraph/uri-docs.json`。设置了绝对路径 `XDG_CACHE_HOME` 时，缓存写到该目录下的 `visual-qa-langgraph/uri-docs.json`。常规查询只返回匹配状态、路径、调用方式与出处。需要核对参数或回调时，给 MCP 传 `include_markdown: true`。模糊命中和文档占位需要核对候选或项目现有 Bridge 封装。
+
+Codex 和 Antigravity 插件包都可通过随包 CLI 单独查询。在插件目录执行：
+
+```sh
+uv run visual-qa-langgraph protocols "打开新网页" "唤起 App 登录"
+uv run visual-qa-langgraph protocols web/pure --include-markdown
+uv run visual-qa-langgraph protocols --refresh
+uv run visual-qa-langgraph protocols --scene h5
+```
+
+CLI 返回 JSON。退出码 `0` 表示查询已完成，`1` 表示有条目需要确认，`2` 表示输入错误或文档不可用。
+
 ## 从设计稿链接验收
 
 在对应的桌面客户端打开目标设计文件并启用 MCP。完整流程通过 `--design-type figma|pixso` 选择服务，从 `--design-url` 读取目标节点。也可把类型和链接保存到 case JSON 的 `designType` 和 `designUrl`。命令行参数优先。

@@ -1,7 +1,7 @@
 ---
 disable-model-invocation: true
 name: visual-qa-langgraph
-description: 使用 visual-qa-langgraph 的 Python + LangGraph 流程实现和验收 Web 页面，包括 Pixso 设计读取、图片边界、Playwright 截图、DOM/CSS/结构/测量检查、视觉差异与可选自动修正；也用于保持外观不变的 SCSS 重构。当前不支持 Harmony/ArkUI。
+description: 使用 visual-qa-langgraph 的 Python + LangGraph 流程实现和验收 Web 页面，包括 Figma 和 Pixso 设计读取、Pixso 图片边界、Playwright 截图、DOM/CSS/结构/测量检查、视觉差异与可选自动修正；也用于保持外观不变的 SCSS 重构。当前不支持 Harmony/ArkUI。
 metadata:
   short-description: Web 设计还原与 Python 视觉验收
 ---
@@ -18,11 +18,11 @@ metadata:
 
 ## 选择流程
 
-- 验收已有页面时，创建项目内的 case，运行 `doctor`，再运行 `verify`。多页面或多视口使用 `suite`。
-- 从 Pixso 设计实现页面或处理红框图片时，使用无子命令的完整 LangGraph 入口。它会协调设计与源码准备、图片绑定、最终验收和可选修正；页面代码仍由你按目标框架实现。
+- 已有本地设计图时，创建项目内的 case，运行 `doctor`，再运行 `verify`。多页面或多视口使用 `suite`。
+- 用户提供 Figma 或 Pixso 设计稿链接时，在完整 LangGraph 入口指定 `--design-type figma` 或 `--design-type pixso`，并通过 `--design-url` 传入目标节点链接。使用 Pixso 处理红框图片时也走完整流程。
 - 保持现有 Web 外观的 SCSS 重构读取 [SCSS 重构验收](references/scss-refactor.md)。
 - Web case、就绪检查、视口覆盖和失败诊断读取 [Web 验收](references/web.md)。
-- Pixso 读取、红框图片、CSS 单位策略和生成前图片边界读取 [设计与图片流程](references/generation.md)。
+- Figma 与 Pixso 的链接格式、红框图片和 CSS 单位策略见 [设计与图片流程](references/generation.md)。
 - Harmony、ArkUI 和原生设备截图不受当前 Python 实现支持；不要用 Web 流程或旧 CLI 冒充原生验收。
 
 ## 基本约束
@@ -45,18 +45,19 @@ metadata:
 <qa> suite --suite <项目>/artifacts/visual-qa-langgraph/suite.json --compact
 ```
 
-从 Pixso 设计开始实现时：
+从设计稿链接验收时：
 
 ```sh
 <qa> \
   --case <项目>/artifacts/visual-qa-langgraph/case.json \
   --source <项目>/src/page/index.html \
   --source <项目>/src/page/styles.css \
-  --pixso-endpoint <Pixso-MCP-endpoint> \
-  --pixso-revision <可靠设计版本> \
-  --project-skill <项目>/SKILL.md \
+  --design-type figma \
+  --design-url 'https://www.figma.com/design/FILE_KEY/Design?node-id=23-2' \
   --run-dir <项目>/artifacts/visual-qa-langgraph/runs/page-1
 ```
+
+使用 Pixso 时改用 `--design-type pixso` 和带 `item-id` 的链接，并追加 `--pixso-revision <可靠设计版本>`。在对应桌面客户端打开目标文件。默认 Figma 和 Pixso MCP 端口分别为 3845 和 3667。
 
 只有具备模型凭据和真实浏览器时才使用 `--model --auto-fix`。修改范围先通过 `--source` 限定，最多两轮；没有凭据时只报告失败和差异证据。
 

@@ -45,7 +45,7 @@ uv run --with 'langgraph-cli[inmem]' langgraph dev
 }
 ```
 
-离线示例用设计图自身检查流程，结果为 `offline_review`。要验收真实页面，另开终端在同一目录运行 `python3 -m http.server 4174 --directory examples/pixso-2-179511`，删除输入中的 `offline_actual` 并换一个 `run_dir`。其他输入字段与 `RunState` 一致，例如 `source_paths`、`model_name`、`pixso_endpoint` 和 `pixso_revision`；使用 Pixso 时必须提供 revision，自动修正需同时提供 `model_name`、`auto_fix: true` 和模型 API 凭据。每次独立验收使用新的 Studio thread 和运行目录，避免混用轮次及证据。
+离线示例用设计图自身检查流程，结果为 `offline_review`。要验收真实页面，另开终端在同一目录运行 `python3 -m http.server 4174 --directory examples/pixso-2-179511`，删除输入中的 `offline_actual` 并换一个 `run_dir`。在 Studio 中传入设计稿链接时，使用 `design_type` 和 `design_url`，或在 case 填写 `designType` 和 `designUrl`。可用 `figma_endpoint` 或 `pixso_endpoint` 指定服务，Pixso 还需要 `pixso_revision`。自动修正需同时提供 `model_name`、`auto_fix: true` 和模型 API 凭据。每次独立验收使用新的 Studio thread 和运行目录，避免混用轮次及证据。
 
 开发服务直接运行图节点，结果保存在 Studio 状态及 `run_dir` 的逐轮证据中。CLI 的 `summary.json` 汇总、SQLite 断点恢复和异常事务恢复由 `run_workflow()` 管理；需要这些完整运行保障时，使用 CLI。
 
@@ -80,7 +80,59 @@ python3 build/antigravity-plugin.py status
 
 安装后刷新 Antigravity，在新对话中输入 `/visual-qa-langgraph`。支持全局和 `--project /path/to/project` 项目安装，完整说明见 [Antigravity 打包与管理](build/ANTIGRAVITY.md)。`--target all` 可以同时打包 Codex 和 Antigravity。
 
-## 新 Pixso 用例
+### 单独查询 WebView 协议
+
+在 Codex 中安装或更新插件后，启动本地聊天，直接说「用 `webview_protocols` 查美柚 App 打开新网页和唤起登录的协议」。该 MCP 工具随 Codex 插件注册。首次启动需要 PATH 中有 `uv`，由它准备独立的 MCP 依赖。查询无需视觉用例、设计稿、浏览器或模型 API 凭据。
+
+工具接受最多八个简短动作关键词、准确的协议路径或美柚 Uri-Docs 链接。省略关键词会列出当前协议分类。默认场景是 `webview`，仅在明确做独立浏览器页面时设置 `scene: "h5"`，此时跳过协议查询。项目已指定场景时可通过 `project_scene` 传入，冲突会报错。WebView 的查询失败和待确认结果均保留在 WebView 场景。
+
+首次没有缓存时，工具联网读取 Uri-Docs 的现行分类与协议详情，过滤掉文档站标为「废弃」的目录。之后的关键词查询、详情读取和查不到的条目都只查本地。需要更新时，在 Codex 里说「更新 WebView 协议缓存」，调用 `refresh_webview_protocol_cache`。完整拉取成功后替换缓存，失败时保留旧缓存。 [美柚 Uri-Docs](https://apidoc.seeyouyima.com/uri-docs/#/docs/63e4945e60ff2756af951db9)
+
+MCP 和 CLI 共用 `~/.cache/visual-qa-langgraph/uri-docs.json`。设置了绝对路径 `XDG_CACHE_HOME` 时，缓存写到该目录下的 `visual-qa-langgraph/uri-docs.json`。常规查询只返回匹配状态、路径、调用方式与出处。需要核对参数或回调时，给 MCP 传 `include_markdown: true`。模糊命中和文档占位需要核对候选或项目现有 Bridge 封装。
+
+Codex 和 Antigravity 插件包都可通过随包 CLI 单独查询。在插件目录执行：
+
+```sh
+uv run visual-qa-langgraph protocols "打开新网页" "唤起 App 登录"
+uv run visual-qa-langgraph protocols web/pure --include-markdown
+uv run visual-qa-langgraph protocols --refresh
+uv run visual-qa-langgraph protocols --scene h5
+```
+
+CLI 返回 JSON。退出码 `0` 表示查询已完成，`1` 表示有条目需要确认，`2` 表示输入错误或文档不可用。
+
+## 从设计稿链接验收
+
+在对应的桌面客户端打开目标设计文件并启用 MCP。完整流程通过 `--design-type figma|pixso` 选择服务，从 `--design-url` 读取目标节点。也可把类型和链接保存到 case JSON 的 `designType` 和 `designUrl`。命令行参数优先。
+
+### Figma
+
+```sh
+uv run visual-qa-langgraph \
+  --case path/to/case.json \
+  --design-type figma \
+  --design-url 'https://www.figma.com/design/FILE_KEY/Design?node-id=23-2' \
+  --run-dir path/to/run
+```
+
+默认连接 `http://127.0.0.1:3845/mcp`，可用 `--figma-endpoint` 覆盖。Figma 桌面服务从当前打开的文件读取 `node-id` 指定的节点，所以运行前要切换到链接对应的文件。流程使用 `get_screenshot` 返回的 PNG 作为验收基准，可省略 case 的 `designImage`。用例的视口、DPR 和页面裁切需与基准图尺寸匹配。每次新运行或 `--resume` 都会重新取图，同次修正的各轮共用这张基准。红框图片导出使用下方的 Pixso 流程。
+
+### Pixso
+
+```sh
+uv run visual-qa-langgraph \
+  --case examples/pixso-2-179511/case.json \
+  --design-type pixso \
+  --design-url 'https://pixso.cn/app/design/qywt_bYlzqjdJdNrHVnluA?item-id=2:179511' \
+  --pixso-revision node-2-179511-v1 \
+  --run-dir runs/pixso-link
+```
+
+默认连接 `http://127.0.0.1:3667/mcp`，可用 `--pixso-endpoint` 覆盖。链接须包含 `item-id`。若 case 提供了 `designImage`，使用该 PNG；省略时通过 MCP 导出目标节点的 1× PNG。若提供了 `intentPlan`，其根节点应与链接节点一致。
+
+CLI 的 `summary.json` 中，`designSource` 记录所选类型、链接、节点 ID 和验收基准图路径。独立 `verify` 和 `suite` 可复用完整流程生成的 `effective-case.json`。
+
+### 兼容已有 Pixso 用例
 
 示例位于 [examples/pixso-2-179511](examples/pixso-2-179511/README.md)，对应 [Pixso 节点 2:179511](https://pixso.cn/app/design/qywt_bYlzqjdJdNrHVnluA?item-id=2:179511&editMode=coder)。已从该节点导出 375 × 106 的设计基准图，完成真实 MCP 读取和浏览器最终验收。
 

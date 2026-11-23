@@ -78,7 +78,10 @@ class DistributionTests(unittest.TestCase):
             path.write_text("fixture\n", encoding="utf-8")
         for directory in packager.DIRECTORIES:
             (self.source / directory).mkdir(parents=True, exist_ok=True)
-        self.write(".codex-plugin/plugin.json", json.dumps({"name": packager.NAME, "version": "0.1.0"}))
+        self.write(".codex-plugin/plugin.json", json.dumps({
+            "name": packager.NAME, "version": "0.1.0", "mcpServers": "./.mcp.json",
+        }))
+        self.write(".mcp.json", '{"mcpServers": {}}')
         self.write("pyproject.toml", '[project]\nname = "visual-qa-langgraph"\nversion = "0.1.0"\n')
         self.write("skills/visual-qa-langgraph/SKILL.md", "# Skill\n")
         self.write("src/visual_qa_graph/cli.py", "# CLI\n")
@@ -104,6 +107,7 @@ class DistributionTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as bundle:
             names = bundle.namelist()
             self.assertTrue(any(name.endswith("/src/visual_qa_graph/cli.py") for name in names))
+            self.assertTrue(any(name.endswith("/.mcp.json") for name in names))
             self.assertTrue(any(name.endswith("/.env.example") for name in names))
             self.assertFalse(any("private data" in bundle.read(name).decode(errors="replace") for name in names))
 

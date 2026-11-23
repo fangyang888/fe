@@ -11,10 +11,10 @@
 | 图中节点 | 作用 | 主要结果或行为 |
 | --- | --- | --- |
 | `__start__` | 图的入口。 | 将 Studio 提交的输入状态送入 `load_case`。 |
-| `load_case` | 读取 case JSON，检查 Web 平台和设计图配置；传入 `project_skill` 时读取 CSS 单位、Flex 等项目策略并应用到 case。 | `case`、`project_policy`；有项目策略时保存策略及 scaffold 配置。 |
+| `load_case` | 读取 case JSON，校验 Web 平台和设计来源。有设计链接时按 Figma 或 Pixso 类型解析节点。传入 `project_skill` 时应用 CSS 单位、Flex 等项目策略。 | `case`、`design_source`、`project_policy`。 |
 | `prepare_intent` | 传入 `annotated_image` 时识别红框，生成“这些区域应作为整张图片”的意图计划。未传标注图时直接继续。 | `red-image-intent.json`；此阶段识别意图，Pixso 节点匹配在设计准备阶段完成。 |
 | `preparation` | 准备设计、素材和源码上下文的子图，内部两条分支并行执行，最后汇合。 | `design`、`source` 和本轮输入指纹 `fingerprint`。 |
-| `bind_images` | 有红框图片任务时，将导出的 3x PNG 绑定到静态 HTML 对应元素，并刷新源码指纹。没有这类任务时跳过图片写入。 | 更新 HTML、图片资源；有项目策略或标注图时生成 `effective-case.json`。 |
+| `bind_images` | 有红框图片任务时，将 Pixso 导出的 3× PNG 绑定到静态 HTML 对应元素，并刷新源码指纹。 | 有设计链接、项目策略或标注图时，生成包含实际基准图路径的 `effective-case.json`。 |
 | `qa` | 执行验收并整理修正包的子图。 | `verification` 和精简后的 `packet`，以及截图、差异图等证据。 |
 | `record_round` | 记录本轮状态、像素差异、SSIM 和源码哈希，并与上一轮比较，判断是否需要回滚。 | 更新 `rounds`，保存 `rounds.json`，设置 `rollback_requested`。 |
 | `diagnose` | 调用 `model_name` 指定的模型解释失败原因。启用 `auto_fix` 时，还让模型提出限定文件内的精确修改。 | `diagnosis`、`edits`、模型用量，以及 `diagnosis.md`。 |
@@ -22,7 +22,7 @@
 | `rollback` | 恢复刚才导致指标恶化的那次修改，然后回到 `preparation`。 | 文件恢复后重新准备上下文、绑定图片并验收。 |
 | `__end__` | 本次图执行结束。 | 是否通过仍要检查 `verification.status` 和 `verification.mode`。 |
 
-这些节点通过同一个 `RunState` 传递数据：前面的节点写入设计、源码和验收结果，后面的节点读取并补充状态。模型调用集中在 `diagnose`；其余节点执行本地代码、浏览器操作或 Pixso 工具读取。`bind_images` 的图片写入由标注图任务触发，`auto_fix` 控制的是模型提出的源码修改。
+这些节点通过同一个 `RunState` 传递设计、源码和验收结果。模型调用集中在 `diagnose`，其余节点执行本地代码、浏览器操作或 Figma 与 Pixso MCP 读取。`bind_images` 的图片写入由标注图任务触发，`auto_fix` 控制模型提出的源码修改。
 
 ## 两个折叠子图里面是什么
 
@@ -37,7 +37,7 @@ qa
   __start__ → verify → make_packet → __end__
 ```
 
-`prepare_design` 检查本地设计图、意图计划及素材；配置 Pixso 后还会匹配图片节点、读取设计并导出素材。`prepare_source` 扫描指定源码，计算文件哈希并检查本地资源引用。两者都完成后，`join` 合成输入指纹。这里并行的是设计和源码准备。
+`prepare_design` 准备视觉基准、意图计划和素材。Figma 链接使用目标节点截图，Pixso 可读取布局并导出设计或素材。`prepare_source` 扫描指定源码，计算文件哈希并检查本地资源引用。两者都完成后，`join` 合成输入指纹。
 
 `verify` 在真实页面模式下启动或连接浏览器，检查截图差异、SSIM、资源加载、布局稳定性、控制台及已配置的 CSS、DOM 和设计测量规则；传入 `offline_actual` 时只进行离线图像比较。随后 `make_packet` 将验收结果整理成有数量和大小限制的修正包，保存为 `repair-packet.json`，供模型诊断使用。
 

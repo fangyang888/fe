@@ -20,12 +20,14 @@ os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
 from langgraph.graph import END, START, StateGraph
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from .pixso import fetch_design, resolve_red_image_nodes
 from .comparison import compare_images
+from .design import design_node_id
 from .engine import verify_case
+from .figma import DEFAULT_FIGMA_ENDPOINT, fetch_screenshot
 from .intent import create_intent_plan
 from .materialize import bind_images
 from .diagnostics import capture_failures
+from .pixso import DEFAULT_PIXSO_ENDPOINT, fetch_design, resolve_red_image_nodes
 from .project_policy import apply_case_policy, read_project_policy
 from .repair import (apply_edits, parse_repair_response, recover_pending_edits,
                      rollback_edits, set_transaction_status, source_context)
@@ -38,6 +40,10 @@ class RunState(TypedDict, total=False):
     cache_dir: str
     repo_root: str
     browser_endpoint: str | None
+    design_type: str | None
+    design_url: str | None
+    design_source: dict[str, str] | None
+    figma_endpoint: str | None
     pixso_endpoint: str | None
     pixso_revision: str | None
     pixso_refresh: bool
@@ -179,7 +185,27 @@ def _load_case(state: RunState) -> dict[str, Any]:
     case = _json(case_path)
     if case.get("platform", "web") != "web":
         raise ValueError("Version 1 currently supports web cases only")
-    if not isinstance(case.get("designImage"), str):
+    provider = state.get("design_type") or case.get("designType")
+    design_url = state.get("design_url") or case.get("designUrl")
+    design_source = None
+    if provider is not None or state.get("design_url") is not None:
+        if provider not in ("pixso", "figma"):
+            raise ValueError("Choose design type pixso or figma with --design-type or case.designType")
+        if not isinstance(design_url, str) or not design_url.strip():
+            raise ValueError("Provide a design URL with --design-url or case.designUrl")
+        design_url = design_url.strip()
+        design_source = {"type": provider, "url": design_url, "nodeId": design_node_id(provider, design_url)}
+    if provider == "figma" and state.get("pixso_endpoint"):
+        raise ValueError("A Figma design uses --figma-endpoint")
+    if provider != "figma" and state.get("figma_endpoint"):
+        raise ValueError("--figma-endpoint requires a Figma design")
+    if (provider == "pixso" or state.get("pixso_endpoint")) and not state.get("pixso_revision"):
+        raise ValueError("Pixso MCP requires an explicit revision")
+    if state.get("annotated_image") and provider != "pixso" and not state.get("pixso_endpoint"):
+        raise ValueError("Red-image export requires a Pixso design or --pixso-endpoint")
+    if not isinstance(case.get("designImage"), str) and not (
+        design_source and (provider == "figma" or "designImage" not in case)
+    ):
         raise ValueError("case.designImage is required")
     policy_started = time.perf_counter()
     policy = read_project_policy(Path(state["project_skill"])) if state.get("project_skill") else None
@@ -189,7 +215,7 @@ def _load_case(state: RunState) -> dict[str, Any]:
         run_dir = Path(state["run_dir"])
         _write_json(run_dir / "project-policy.json", policy)
         _write_json(run_dir / "scaffold-options.json", policy["scaffoldOptions"])
-    return {"case": case, "project_policy": policy,
+    return {"case": case, "design_source": design_source, "design": {}, "project_policy": policy,
             "load_event": _event("load_case", started, state=state),
             "policy_event": policy_event}
 
@@ -201,8 +227,9 @@ def _prepare_intent(state: RunState) -> dict[str, Any]:
     case = state["case"]
     case_path = Path(state["case_path"])
     original = _json(_resolve_case_file(case_path, case["intentPlan"])) if case.get("intentPlan") else {}
-    design_url = original.get("source", {}).get("designUrl") or case.get("designUrl")
-    node_id = original.get("source", {}).get("nodeId") or case.get("pixsoNodeId")
+    source = state.get("design_source") or {}
+    design_url = source.get("url") or original.get("source", {}).get("designUrl") or case.get("designUrl")
+    node_id = source.get("nodeId") or original.get("source", {}).get("nodeId") or case.get("pixsoNodeId")
     if not node_id:
         raise ValueError("Red-image intent needs case.pixsoNodeId or an existing intent plan root node")
     viewport = case.get("viewport") or {}
@@ -222,51 +249,79 @@ def _prepare_design(state: RunState) -> dict[str, Any]:
     started = time.perf_counter()
     case_path = Path(state["case_path"])
     case = state["case"]
-    design_path = _resolve_case_file(case_path, case["designImage"])
-    if not design_path.is_file():
-        raise FileNotFoundError(design_path)
-    paths = [design_path]
+    source = state.get("design_source") or {}
+    provider = source.get("type")
+    run_dir = Path(state["run_dir"]).resolve()
+    cache_dir = Path(state["cache_dir"]).resolve()
+    endpoint = state.get("pixso_endpoint") or (DEFAULT_PIXSO_ENDPOINT if provider == "pixso" else None)
+    design_path = None
+    if provider == "figma":
+        saved = state.get("design", {}).get("designPath")
+        if saved and Path(saved).is_file():
+            design_path = Path(saved)
+        else:
+            data = fetch_screenshot(state.get("figma_endpoint") or DEFAULT_FIGMA_ENDPOINT, source["nodeId"])
+            design_path = run_dir / "design" / f"figma-{hashlib.sha256(data).hexdigest()}.png"
+            design_path.parent.mkdir(parents=True, exist_ok=True)
+            design_path.write_bytes(data)
+    elif "designImage" in case:
+        design_path = _resolve_case_file(case_path, case["designImage"])
+        if not design_path.is_file():
+            raise FileNotFoundError(design_path)
+    design_hash = _sha256(design_path) if design_path else None
+
     plan_path: Path | None = None
     if state.get("intent_plan_path") or case.get("intentPlan"):
         plan_path = Path(state["intent_plan_path"]) if state.get("intent_plan_path") else _resolve_case_file(case_path, case["intentPlan"])
         plan = _json(plan_path)
         if plan.get("status") != "ready":
             raise ValueError(f"Intent plan must be ready: {plan_path}")
-        if state.get("intent_plan_path") and state.get("pixso_endpoint"):
-            plan = resolve_red_image_nodes(state["pixso_endpoint"], plan)
-            resolved = Path(state["run_dir"]) / "red-image-resolved.json"
+        if provider == "pixso" and plan.get("source", {}).get("nodeId") != source["nodeId"]:
+            raise ValueError("Pixso design URL node must match the intent plan root node")
+        if state.get("intent_plan_path") and endpoint:
+            plan = resolve_red_image_nodes(endpoint, plan)
+            resolved = run_dir / "red-image-resolved.json"
             _write_json(resolved, plan)
             plan_path = resolved
-        paths.append(plan_path)
+    elif provider == "pixso":
+        plan_path = run_dir / "pixso-intent-plan.json"
+        plan = {"schemaVersion": 1, "kind": "visual-qa-intent-plan", "status": "ready",
+                "source": {"provider": provider, "nodeId": source["nodeId"], "designUrl": source["url"],
+                           "viewport": case.get("viewport", {})}, "regions": []}
+        _write_json(plan_path, plan)
+
+    pixso = None
+    if endpoint:
+        if not plan_path:
+            raise ValueError("Pixso MCP requires case.intentPlan")
+        pixso = fetch_design(
+            endpoint=endpoint, revision=state["pixso_revision"], plan_path=plan_path,
+            design_hash=design_hash, cache_dir=cache_dir, scale=3,
+            refresh=state.get("pixso_refresh", False), design_url=source.get("url"),
+        )
+        if design_path is None:
+            design_path = Path(pixso["designPath"])
+            design_hash = _sha256(design_path)
+
     asset_dir = case_path.parent / "assets"
-    assets = sorted(asset_dir.glob("**/*")) if asset_dir.is_dir() else []
-    paths.extend(path for path in assets if path.is_file())
-    hashes = {str(path): _sha256(path) for path in paths}
+    assets = [path for path in sorted(asset_dir.glob("**/*")) if path.is_file()]
+    hashes = {str(path): _sha256(path) for path in assets}
+    hashes[str(design_path)] = design_hash
     if plan_path:
         hashes[str(plan_path)] = _key({key: value for key, value in plan.items() if key != "generatedAt"})
-    key = _key({"design": hashes[str(design_path)],
+    key = _key({"design": design_hash,
                 "plan": hashes.get(str(plan_path)) if plan_path else None,
-                "assets": sorted(hashes[str(path)] for path in assets if path.is_file())})
-    value, reused = _cached(Path(state["cache_dir"]), "design", key, lambda: {
+                "assets": sorted(hashes[str(path)] for path in assets),
+                **({"source": source} if source else {})})
+    value, reused = _cached(cache_dir, "design", key, lambda: {
         "designPath": str(design_path),
         "intentPlanPath": str(plan_path) if plan_path else None,
-        "assetCount": len(paths) - 1 - int(plan_path is not None),
+        "assetCount": len(assets),
         "files": hashes,
         "hash": key,
     })
     value = {**value, "designPath": str(design_path),
              "intentPlanPath": str(plan_path) if plan_path else None, "files": hashes}
-    pixso = None
-    if state.get("pixso_endpoint"):
-        if not plan_path:
-            raise ValueError("Pixso MCP requires case.intentPlan")
-
-        pixso = fetch_design(
-            endpoint=state["pixso_endpoint"], revision=state["pixso_revision"],
-            plan_path=plan_path, design_hash=hashes[str(design_path)],
-            cache_dir=Path(state["cache_dir"]), scale=3,
-            refresh=state.get("pixso_refresh", False),
-        )
     return {"design": value, "pixso": pixso,
             "design_event": _event("prepare_design", started,
                                     cached=reused and (pixso is None or pixso["cached"]),
@@ -315,11 +370,12 @@ def _join_preparation(state: RunState, *, phase: str = "parallel") -> dict[str, 
 def _bind_images(state: RunState) -> dict[str, Any]:
     started = time.perf_counter()
     effective_case_path = None
-    if state.get("project_policy") or state.get("annotated_image"):
+    if state.get("project_policy") or state.get("annotated_image") or state.get("design_source"):
         original_path = Path(state["case_path"])
         output_name = state["case"].get("outputDir") or f"./artifacts/{state['case'].get('name', 'visual-qa-langgraph')}"
+        design_path = state["design"].get("designPath")
         effective = {**state["case"],
-                     "designImage": str(_resolve_case_file(original_path, state["case"]["designImage"])),
+                     "designImage": design_path or str(_resolve_case_file(original_path, state["case"]["designImage"])),
                      "outputDir": str(_resolve_case_file(original_path, output_name))}
         plan_path = state["design"].get("intentPlanPath")
         if plan_path:
@@ -353,16 +409,18 @@ def _verify(state: RunState) -> dict[str, Any]:
     run_dir = Path(state["run_dir"])
     actual = state.get("offline_actual")
     if actual:
+        design_path = Path(state.get("design", {}).get("designPath")
+                           or _resolve_case_file(case_path, state["case"]["designImage"]))
         diff_path = run_dir / "evidence" / "offline-diff.png"
         diff_path.parent.mkdir(parents=True, exist_ok=True)
         comparison = compare_images(
-            _resolve_case_file(case_path, state["case"]["designImage"]),
+            design_path,
             Path(actual).resolve(), diff_path, state["case"].get("thresholds"),
             state["case"].get("criticalRegions"),
         )
         verification = {
             "status": "offline_review", "mode": "offline", "comparison": comparison,
-            "artifacts": {"design": str(_resolve_case_file(case_path, state["case"]["designImage"])),
+            "artifacts": {"design": str(design_path),
                           "actual": str(Path(actual).resolve()), "diff": str(diff_path)},
             "note": "Offline comparison is diagnostic evidence, not final acceptance",
         }
@@ -643,7 +701,8 @@ def run_workflow(*, case_path: Path, run_dir: Path, repo_root: Path,
                  source_paths: list[Path] | None = None,
                  annotated_image: Path | None = None, image_map: Path | None = None,
                  image_html: Path | None = None, annotated_frame: str | None = None,
-                 project_skill: Path | None = None) -> dict[str, Any]:
+                 project_skill: Path | None = None, design_type: str | None = None,
+                 design_url: str | None = None, figma_endpoint: str | None = None) -> dict[str, Any]:
     if auto_fix and (offline_actual or (not model_name and not resume)):
         raise ValueError("Auto-fix requires a model and live browser verification")
     if pixso_endpoint and not pixso_revision and not resume:
@@ -663,6 +722,7 @@ def run_workflow(*, case_path: Path, run_dir: Path, repo_root: Path,
         "repo_root": str(repo_root.resolve()),
         "offline_actual": str(offline_actual.resolve()) if offline_actual else None,
         "browser_endpoint": browser_endpoint,
+        "design_type": design_type, "design_url": design_url, "figma_endpoint": figma_endpoint,
         "pixso_endpoint": pixso_endpoint, "pixso_revision": pixso_revision,
         "pixso_refresh": pixso_refresh,
         "auto_fix": bool(auto_fix), "max_fixes": max_fixes if max_fixes is not None else 2, "fix_count": 0,
@@ -697,7 +757,8 @@ def run_workflow(*, case_path: Path, run_dir: Path, repo_root: Path,
             saved = dict(snapshot.values)
             if saved["case_path"] != initial["case_path"]:
                 raise ValueError("--resume requires the original case path; use a new run directory for a different case")
-            for key in ("browser_endpoint", "pixso_endpoint", "pixso_revision", "model_name",
+            for key in ("browser_endpoint", "design_type", "design_url", "figma_endpoint",
+                        "pixso_endpoint", "pixso_revision", "model_name",
                         "offline_actual", "project_skill", "annotated_image", "image_map",
                         "image_html", "annotated_frame"):
                 if initial[key] is not None:
@@ -772,6 +833,8 @@ def run_workflow(*, case_path: Path, run_dir: Path, repo_root: Path,
         "fingerprint": result["fingerprint"],
         "cacheDir": str(cache_dir), "checkpointPath": str(checkpoint_path),
         "threadId": thread_id, "pixso": result.get("pixso"),
+        "designSource": result["design_source"] | {"designPath": result["design"]["designPath"]}
+                        if result.get("design_source") else None,
         "projectPolicy": result.get("project_policy"),
         "effectiveCasePath": result.get("effective_case_path"),
         "rounds": result.get("rounds", []), "fixCount": result.get("fix_count", 0),

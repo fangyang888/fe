@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 
 BOUNDARY_FIELDS = "x y width height size transform absoluteBoundingBox constraints layoutPositioning zIndex isMask blendMode visible".split()
 DESIGN_FIELDS = BOUNDARY_FIELDS + "fillPaints strokePaints strokeWeight cornerRadius opacity nodeText fontSize fontName fontWeight lineHeight letterSpacing textAlignHorizontal textAlignVertical layoutMode itemSpacing paddingTop paddingRight paddingBottom paddingLeft clipsContent".split()
+
+
+def design_node_id(provider: str, url: str) -> str:
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    domains, path, parameter = {
+        "figma": (("figma.com",), r"/(?:design|file|proto)/[a-zA-Z0-9]+(?:/|$)", "node-id"),
+        "pixso": (("pixso.cn", "pixso.net"), r"/app/design/[^/]+(?:/|$)", "item-id"),
+    }[provider]
+    ids = parse_qs(parts.query).get(parameter, [])
+    if (parts.scheme not in {"http", "https"}
+            or not any(host == domain or host.endswith("." + domain) for domain in domains)
+            or not re.match(path, parts.path)
+            or len(ids) != 1 or not re.fullmatch(r"[0-9]+[:-][0-9]+", ids[0])):
+        raise ValueError(f"Provide a {provider.capitalize()} design URL with a valid {parameter}")
+    return ids[0].replace("-", ":")
 
 
 def image_entries(plan: dict) -> list[dict]:

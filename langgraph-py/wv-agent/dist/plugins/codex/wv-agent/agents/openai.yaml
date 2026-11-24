@@ -1,0 +1,4 @@
+interface:
+  display_name: "WV Agent"
+  short_description: "WebView self-testing & MeiYouJSBridge protocol debugging for Android, iOS, and HarmonyOS"
+  default_prompt: "Use $wv-agent to inspect online WebView devices, run UI self-tests, and diff JSBridge protocols."

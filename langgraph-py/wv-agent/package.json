@@ -1,0 +1,32 @@
+{
+  "name": "wv-agent",
+  "version": "0.1.0",
+  "description": "WebView self-testing & MeiYouJSBridge protocol debugging toolkit for AI Agents (Android / iOS / HarmonyOS)",
+  "type": "module",
+  "main": "./src/middleware.cjs",
+  "bin": {
+    "wv-agent": "./bin/wv-agent.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "SKILL.md"
+  ],
+  "exports": {
+    ".": "./src/middleware.cjs",
+    "./middleware": "./src/middleware.cjs",
+    "./client": "./src/client.js"
+  },
+  "scripts": {
+    "hub": "node ./bin/wv-agent.mjs hub",
+    "plugin:build": "node ./bin/wv-agent.mjs plugin build",
+    "plugin:install": "node ./bin/wv-agent.mjs plugin install",
+    "plugin:status": "node ./bin/wv-agent.mjs plugin status",
+    "plugin:uninstall": "node ./bin/wv-agent.mjs plugin uninstall",
+    "test": "node --test ./tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

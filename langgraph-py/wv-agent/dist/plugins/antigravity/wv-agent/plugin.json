@@ -1,0 +1,11 @@
+{
+  "name": "wv-agent",
+  "displayName": "WV Agent (WebView & JSBridge)",
+  "version": "0.1.0",
+  "description": "WebView real-device self-testing and MeiYouJSBridge protocol debugging across Android, iOS, and HarmonyOS.",
+  "suggestedPrompts": [
+    "用 wv-agent 查看当前在线的安卓/iOS/鸿蒙真机并检查页面状态",
+    "帮我用 wv-agent 在安卓和鸿蒙真机上自测当前页面的核心交互与报错",
+    "用 wv-agent bridge diff 对比安卓和鸿蒙的 userInfo/get 协议返回差异"
+  ]
+}

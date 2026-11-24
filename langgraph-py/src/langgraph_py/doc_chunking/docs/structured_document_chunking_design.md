@@ -327,6 +327,8 @@ class ChunkingConfig(BaseModel):
 ```text
 src/langgraph_py/doc_chunking/
 ├── __init__.py
+├── docs/                  # 设计文档与分步实战手册
+├── tests/                 # 各步骤验收测试脚本
 ├── config.py              # 阈值与模型参数配置 (ChunkingConfig)
 ├── schemas.py             # 核心数据模型 (TreeNode, StructuredDocument, Chunk)
 ├── tokenizer.py           # Token 计数工具 (封装 tiktoken)

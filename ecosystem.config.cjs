@@ -53,7 +53,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         WV_AGENT_PORT: 19527,
-        WV_AGENT_PUBLIC_URL: 'https://fzmall.xyz/wv-agent',
+        WV_AGENT_PUBLIC_URL: 'http://47.106.103.79/wv-agent',
       },
       watch: false,
       max_memory_restart: '256M',

@@ -257,8 +257,8 @@ jobs:
               --resolve fzmall.xyz:443:127.0.0.1 \
               https://fzmall.xyz/api/home
             curl --fail --show-error --max-time 15 \
-              --resolve fzmall.xyz:443:127.0.0.1 \
-              https://fzmall.xyz/wv-agent/health
+              --header 'Host: 47.106.103.79' \
+              http://127.0.0.1/wv-agent/health
 
             # 再验证一次公网入口使用的 Nginx 代理链路
             curl --fail --show-error --max-time 45 http://127.0.0.1/api/stock/health

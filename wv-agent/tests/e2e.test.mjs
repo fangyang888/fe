@@ -519,16 +519,16 @@ test('CLI plugin build / install / status / uninstall works for Antigravity & Co
       '--out',
       mcpOutDir,
       '--mcp-url',
-      'https://fzmall.xyz/wv-agent/mcp',
+      'http://47.106.103.79/wv-agent/mcp',
       '--json',
     ]);
     assert.equal(JSON.parse(mcpBuildOut).ok, true);
     const mcpCfg = JSON.parse(
       fs.readFileSync(path.join(mcpOutDir, 'antigravity', 'wv-agent', 'mcp_config.json'), 'utf8')
     );
-    assert.equal(mcpCfg.mcpServers['wv-agent-mcp'].serverUrl, 'https://fzmall.xyz/wv-agent/mcp');
+    assert.equal(mcpCfg.mcpServers['wv-agent-mcp'].serverUrl, 'http://47.106.103.79/wv-agent/mcp');
     const codexToml = fs.readFileSync(path.join(mcpOutDir, 'codex', 'wv-agent', 'codex-mcp.toml'), 'utf8');
-    assert.ok(codexToml.includes('url = "https://fzmall.xyz/wv-agent/mcp"'));
+    assert.ok(codexToml.includes('url = "http://47.106.103.79/wv-agent/mcp"'));
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }

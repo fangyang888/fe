@@ -207,7 +207,7 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 
 ---
 
-## 五、远程 MCP 部署（`feat/v4` → `https://fzmall.xyz/wv-agent`）
+## 五、远程 MCP 部署（`feat/v4` → `http://47.106.103.79/wv-agent`）
 
 `wv-agent` 已内置标准 **MCP Streamable HTTP** 接口（`POST /mcp`）并与本仓库 `feat/v4` 的 PM2（`ecosystem.config.cjs`）、Nginx（`deploy/nginx.conf`）及 GitHub Actions（`.github/workflows/deploy.yml`）打通。
 
@@ -223,16 +223,16 @@ pm2 logs wv-agent-mcp     # 查看连接与调用日志
 ### 2. Antigravity & Codex 接入远程 MCP
 - **一键安装远程 MCP 插件（推荐）：**
   ```bash
-  node ./wv-agent/bin/wv-agent.mjs plugin install --mcp-url https://fzmall.xyz/wv-agent/mcp
+  node ./wv-agent/bin/wv-agent.mjs plugin install --mcp-url http://47.106.103.79/wv-agent/mcp
   ```
   - Antigravity 会自动生成 `~/.gemini/config/plugins/wv-agent/mcp_config.json` + `SKILL.md`；
   - Codex 会自动生成 `~/.codex/skills/wv-agent/SKILL.md` 和 `codex-mcp.toml`（将其中的 `[mcp_servers.wv_agent_mcp]` 粘到 `~/.codex/config.toml` 即可）。
 
 ### 3. 手机页面接入远程服务（无需本机开 Hub）
-- **方式 A（一行 `<script>`）：** 在开发页加 `<script src="https://fzmall.xyz/wv-agent/client.js"></script>`
+- **方式 A（一行 `<script>`）：** 在开发页加 `<script src="http://47.106.103.79/wv-agent/client.js"></script>`
 - **方式 B（Vite / Express 中间件）：**
   ```js
-  wvAgentVitePlugin({ remoteUrl: 'https://fzmall.xyz/wv-agent' })
+  wvAgentVitePlugin({ remoteUrl: 'http://47.106.103.79/wv-agent' })
   ```
 
 ---

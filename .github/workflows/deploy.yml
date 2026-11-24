@@ -64,6 +64,11 @@ jobs:
           uv run pyright
           uv run pytest
 
+      - name: Validate WV Agent
+        run: |
+          cd wv-agent
+          node --test ./tests/*.test.mjs
+
       - name: Package uv for ECS
         run: |
           mkdir -p python-agent/.deploy-bin
@@ -90,7 +95,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           password: ${{ secrets.ECS_PASSWORD }}
-          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/README.md,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,ecosystem.config.cjs,deploy/nginx.conf'
+          source: 'dist/**,server/dist/**,server/package.json,server/pnpm-lock.yaml,server/sql/**,admin/dist/**,python-agent/src/**,python-agent/README.md,python-agent/pyproject.toml,python-agent/uv.lock,python-agent/.python-version,python-agent/.deploy-bin/uv,wv-agent/bin/**,wv-agent/src/**,wv-agent/package.json,wv-agent/README.md,wv-agent/SKILL.md,ecosystem.config.cjs,deploy/nginx.conf'
           target: '/home/deploy/fe'
           strip_components: 0
           timeout: 120s
@@ -188,18 +193,25 @@ jobs:
               --frozen \
               --no-dev
 
-            # 先停掉已经撤出部署的 HTTP MCP，再重启 NestJS 和 Python Agent。
+            # 先停掉已经撤出部署的 HTTP MCP，再重启 NestJS、Python Agent 和 WV Agent MCP。
             pm2 delete component-search-mcp || true
-            pm2 delete fe-server python-agent || true
+            pm2 delete fe-server python-agent wv-agent-mcp || true
             if ! pm2 start ecosystem.config.cjs --env production; then
               pm2 logs --lines 100 --nostream || true
               exit 1
             fi
             pm2 save
 
-            # 确认 NestJS、Python Agent 和三个股票真实数据源都能访问。
+            # 确认 NestJS、Python Agent、WV Agent MCP 和三个股票真实数据源都能访问。
             pm2 describe fe-server
             pm2 describe python-agent
+            pm2 describe wv-agent-mcp
+            if ! WV_HEALTH=$(curl --fail --show-error --max-time 15 --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:19527/health); then
+              pm2 logs wv-agent-mcp --lines 100 --nostream || true
+              exit 1
+            fi
+            echo "$WV_HEALTH"
+            node -e 'const h=JSON.parse(process.argv[1]);if(!h.ok){process.exit(1)}' "$WV_HEALTH"
             HISTORY_YEAR=$(date +%Y)
             if ! HISTORY_SYNC=$(curl --fail --show-error --max-time 90 --retry 5 --retry-delay 3 --retry-connrefused \
               --request POST \
@@ -244,6 +256,9 @@ jobs:
             curl --fail --show-error --max-time 15 \
               --resolve fzmall.xyz:443:127.0.0.1 \
               https://fzmall.xyz/api/home
+            curl --fail --show-error --max-time 15 \
+              --resolve fzmall.xyz:443:127.0.0.1 \
+              https://fzmall.xyz/wv-agent/health
 
             # 再验证一次公网入口使用的 Nginx 代理链路
             curl --fail --show-error --max-time 45 http://127.0.0.1/api/stock/health

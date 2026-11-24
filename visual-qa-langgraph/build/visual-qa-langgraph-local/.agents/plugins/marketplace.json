@@ -1,0 +1,20 @@
+{
+  "name": "visual-qa-langgraph-local",
+  "interface": {
+    "displayName": "Visual QA LangGraph Local"
+  },
+  "plugins": [
+    {
+      "name": "visual-qa-langgraph",
+      "source": {
+        "source": "local",
+        "path": "./plugins/visual-qa-langgraph"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

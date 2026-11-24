@@ -1,0 +1,13 @@
+{
+  "name": "pixso-toolbar-2-179511",
+  "platform": "web",
+  "pixsoNodeId": "2:179511",
+  "designImage": "./design.png",
+  "intentPlan": "./intent-plan.json",
+  "url": "http://127.0.0.1:4174/",
+  "outputDir": "./output",
+  "viewport": { "width": 375, "height": 106, "deviceScaleFactor": 1 },
+  "browserChannel": "chrome",
+  "wait": { "readyExpression": "window.__VISUAL_READY__ === true", "timeoutMs": 10000, "stableFrames": 3 },
+  "thresholds": { "pixelThreshold": 0.1, "maxMismatchPercent": 1.5, "minSsim": 0.98 }
+}

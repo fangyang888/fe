@@ -1,0 +1,5 @@
+interface:
+  display_name: "Visual QA LangGraph"
+  short_description: "Python 页面实现、截图与视觉验收"
+policy:
+  allow_implicit_invocation: false

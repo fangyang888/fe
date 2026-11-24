@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
 import { WvAgentHub, DEFAULT_HUB_PORT } from '../src/hub.mjs';
 import {
   listNativeDevices,
@@ -112,8 +113,8 @@ Usage:
   wv-agent bridge call <path> ['<paramsJson>'] [-d <device>] [--timeout 8000] [--json]
       直接调用 window.MeiYouJSBridge.invoke(path, params, cb)，返回结构化回包/耗时/超时状态
 
-  wv-agent bridge diff <path> ['<paramsJson>'] [--devices android,ios,harmony] [--timeout 8000] [--json]
-      在多个在线端同时执行同一 JSBridge 协议，自动输出字段缺失与类型差异
+  wv-agent bridge diff <path> ['<paramsJson>'] [--devices android,ios,harmony] [--ignore f1,f2] [--check-values] [--schema '<json>' | --schema-file <file>] [--md] [--timeout 8000] [--json]
+      在多个在线端同时执行同一 JSBridge 协议，自动输出字段缺失、类型/空值/格式差异与契约校验结果（加 --md 输出 Markdown 对账单）
 
   wv-agent bridge trace [-d <device>] [--limit 50] [--json]
       查看页面业务交互触发的所有 MeiYouJSBridge.invoke / on 报文记录
@@ -322,12 +323,39 @@ async function main() {
       const params = parseJsonArg(positionals[3], {});
       const timeoutMs = Number(flags.timeout || 8000);
       const devices = flags.devices ? String(flags.devices).split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+      const ignoreFields = flags.ignore ? String(flags.ignore).split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+      const checkValues = Boolean(flags['check-values']);
+      const wantMarkdown = Boolean(flags.md || flags.markdown);
+
+      let contract = null;
+      const schemaStr = flags.schema || flags.contract;
+      const schemaFile = flags['schema-file'] || flags['contract-file'];
+      if (schemaFile) {
+        const raw = fs.readFileSync(String(schemaFile), 'utf8');
+        contract = parseJsonArg(raw, null);
+      } else if (schemaStr) {
+        contract = parseJsonArg(String(schemaStr), null);
+      }
+
       if (!bridgePath) throw new Error('bridge diff requires <path>');
       const res = await hubFetch(baseUrl, '/api/bridge/diff', {
         method: 'POST',
-        body: { path: bridgePath, params, timeoutMs, devices },
+        body: {
+          path: bridgePath,
+          params,
+          timeoutMs,
+          devices,
+          ignoreFields,
+          checkValues,
+          contract,
+          markdown: wantMarkdown,
+        },
       });
-      printOutput(res, asJson);
+      if (wantMarkdown && !asJson && res.markdown) {
+        console.log(res.markdown);
+      } else {
+        printOutput(res, asJson);
+      }
       return;
     }
 

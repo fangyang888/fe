@@ -127,6 +127,9 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
   ```bash
   wv-agent bridge call "userInfo/get" '{}' -d harmony
   wv-agent bridge diff "album/save" '{"images":["https://example.com/a.png"]}'
+  # 进阶：忽略动态字段 / 校验契约 Schema / 直接输出 Markdown 对账单
+  wv-agent bridge diff "userInfo/get" '{}' --ignore traceId --md
+  wv-agent bridge diff "userInfo/get" '{}' --devices harmony --schema '{"nickName":{"type":"string","nonEmpty":true},"avatar":{"type":"string","format":"url:https"}}'
   ```
 - **Windows（PowerShell）：**
   ```powershell

@@ -9,7 +9,12 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { WvAgentHub } from '../src/hub.mjs';
-import { diffBridgeResults } from '../src/diff.mjs';
+import {
+  diffBridgeResults,
+  validateBridgeContract,
+  summarizeBridgeDiff,
+  formatDiffMarkdown,
+} from '../src/diff.mjs';
 import { findAdbBinary, findHdcBinary } from '../src/native.mjs';
 
 const require = createRequire(import.meta.url);
@@ -100,6 +105,179 @@ test('diffBridgeResults detects field missing, type mismatch, and status mismatc
   const fields = diffs.map((d) => `${d.kind}:${d.field}`);
   assert.ok(fields.includes('type_mismatch:success'));
   assert.ok(fields.includes('missing_field:error'));
+});
+
+test('diffBridgeResults detects empty_mismatch, format_mismatch, ignoreFields, and checkValues without false positives', () => {
+  const results = {
+    'android:a1': {
+      status: 'resolved',
+      data: {
+        nickName: '小红',
+        birthday: '2026-11-24',
+        updatedAt: 1732436000,
+        avatar: 'https://cdn.example.com/a.png',
+        tags: ['vip'],
+        flagStr: 'true',
+        env: 'prod',
+        traceId: 'trace-android-1',
+        freeText: '测试账号A',
+      },
+    },
+    'harmony:h1': {
+      status: 'resolved',
+      data: {
+        nickName: '',
+        birthday: '2026/11/24',
+        updatedAt: 1732436000000,
+        avatar: '//cdn.example.com/a.png',
+        tags: [],
+        flagStr: '1',
+        env: 'gray',
+        traceId: 'trace-harmony-2',
+        freeText: '测试账号B',
+      },
+    },
+  };
+
+  const diffs = diffBridgeResults(results, { ignoreFields: ['traceId'] });
+  const keys = diffs.map((d) => `${d.kind}:${d.field}`);
+
+  assert.ok(keys.includes('empty_mismatch:nickName'));
+  assert.ok(keys.includes('empty_mismatch:tags'));
+  assert.ok(keys.includes('format_mismatch:birthday'));
+  assert.ok(keys.includes('format_mismatch:updatedAt'));
+  assert.ok(keys.includes('format_mismatch:avatar'));
+  assert.ok(keys.includes('format_mismatch:flagStr'));
+  // Free text differences should NOT trigger format_mismatch or value_mismatch by default
+  assert.ok(!diffs.some((d) => d.field === 'freeText'));
+  assert.ok(!diffs.some((d) => d.field === 'env'));
+  assert.ok(!diffs.some((d) => d.field === 'traceId'));
+
+  // With checkValues: true, env and freeText should report value_mismatch, traceId still ignored
+  const strictDiffs = diffBridgeResults(results, { ignoreFields: ['traceId'], checkValues: true });
+  assert.ok(strictDiffs.some((d) => d.kind === 'value_mismatch' && d.field === 'env'));
+  assert.ok(strictDiffs.some((d) => d.kind === 'value_mismatch' && d.field === 'freeText'));
+  assert.ok(!strictDiffs.some((d) => d.field === 'traceId'));
+});
+
+test('validateBridgeContract works on a single device with shorthand and JSON Schema formats', () => {
+  const singleResult = {
+    'harmony:h1': {
+      status: 'resolved',
+      data: {
+        nickName: '',
+        avatar: 'http://cdn.example.com/a.png',
+        gender: 9,
+        age: '28',
+      },
+    },
+  };
+
+  // Shorthand contract
+  const violations = validateBridgeContract(singleResult, {
+    nickName: { type: 'string', nonEmpty: true },
+    avatar: { type: 'string', format: 'url:https' },
+    gender: { type: 'number', enum: [0, 1, 2] },
+    age: 'number',
+    uid: { type: 'string', required: true },
+  });
+  const kinds = violations.map((v) => `${v.kind}:${v.field}`);
+  assert.ok(kinds.includes('contract_empty:nickName'));
+  assert.ok(kinds.includes('contract_format_mismatch:avatar'));
+  assert.ok(kinds.includes('contract_enum_mismatch:gender'));
+  assert.ok(kinds.includes('contract_type_mismatch:age'));
+  assert.ok(kinds.includes('contract_missing:uid'));
+
+  // Standard JSON Schema format
+  const jsonSchemaViolations = diffBridgeResults(singleResult, {
+    contract: {
+      type: 'object',
+      required: ['uid', 'nickName'],
+      properties: {
+        uid: { type: 'string' },
+        nickName: { type: 'string', minLength: 1 },
+      },
+    },
+  });
+  assert.ok(jsonSchemaViolations.some((v) => v.kind === 'contract_missing' && v.field === 'uid'));
+  assert.ok(jsonSchemaViolations.some((v) => v.kind === 'contract_empty' && v.field === 'nickName'));
+
+  const summary = summarizeBridgeDiff(singleResult, violations);
+  assert.equal(summary.passed, false);
+  assert.equal(summary.errorCount, 5);
+  const md = formatDiffMarkdown({ path: 'userInfo/get', params: {}, results: singleResult, diffs: violations, summary });
+  assert.ok(md.includes('userInfo/get'));
+  assert.ok(md.includes('contract_empty'));
+});
+
+test('E2E CLI bridge diff supports --schema, --ignore, --check-values, and --md', async () => {
+  const hub = new WvAgentHub({ port: 0, host: '127.0.0.1' });
+  const { port } = await hub.start();
+  let androidPhone;
+  let harmonyPhone;
+
+  try {
+    androidPhone = await connectMockPhone(port, {
+      clientId: 'android-d1',
+      platform: 'android',
+      bridgeResponder: async ({ path: p, params }) => ({
+        status: 'resolved',
+        path: p,
+        params,
+        durationMs: 22,
+        data: { nickName: '小美', birthday: '2026-11-24', reqId: 'r-1', role: 'vip' },
+      }),
+    });
+    harmonyPhone = await connectMockPhone(port, {
+      clientId: 'harmony-d1',
+      platform: 'harmony',
+      bridgeResponder: async ({ path: p, params }) => ({
+        status: 'resolved',
+        path: p,
+        params,
+        durationMs: 31,
+        data: { nickName: '', birthday: '2026/11/24', reqId: 'r-2', role: 'normal' },
+      }),
+    });
+    await new Promise((r) => setTimeout(r, 60));
+
+    // JSON output with --ignore, --check-values, --schema
+    const diffRes = await runCli(
+      [
+        'bridge',
+        'diff',
+        'userInfo/get',
+        '{}',
+        '--ignore',
+        'reqId',
+        '--check-values',
+        '--schema',
+        '{"nickName":{"type":"string","nonEmpty":true}}',
+      ],
+      port
+    );
+    assert.equal(diffRes.ok, true);
+    assert.equal(diffRes.summary.passed, false);
+    assert.ok(diffRes.diffs.some((d) => d.kind === 'empty_mismatch' && d.field === 'nickName'));
+    assert.ok(diffRes.diffs.some((d) => d.kind === 'format_mismatch' && d.field === 'birthday'));
+    assert.ok(diffRes.diffs.some((d) => d.kind === 'value_mismatch' && d.field === 'role'));
+    assert.ok(diffRes.diffs.some((d) => d.kind === 'contract_empty' && d.field === 'nickName'));
+    assert.ok(!diffRes.diffs.some((d) => d.field === 'reqId'));
+
+    // Raw Markdown output with --md (without --json)
+    const { stdout: mdOut } = await execFileAsync(
+      process.execPath,
+      [CLI_PATH, 'bridge', 'diff', 'userInfo/get', '{}', '--md', '--port', String(port)],
+      { timeout: 15000 }
+    );
+    assert.ok(mdOut.includes('### JSBridge 协议对账单：`userInfo/get`'));
+    assert.ok(mdOut.includes('empty_mismatch'));
+    assert.ok(mdOut.includes('format_mismatch'));
+  } finally {
+    androidPhone?.close();
+    harmonyPhone?.close();
+    await hub.stop();
+  }
 });
 
 test('E2E: Hub + 3-platform WebView (Android/iOS/Harmony) + CLI + bridge diff + export-debug', async () => {

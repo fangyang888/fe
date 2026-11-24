@@ -57,9 +57,16 @@ wv-agent inspect -d android
   wv-agent bridge call "userInfo/get" '{}' -d android --timeout 8000
   wv-agent bridge call "tools/babyFeed/getBabyMonth" '{"birthday":"2025-01-01","date":"2025-10-14"}' -d harmony
   ```
-- **三端一致性对比（强烈推荐）：** 当 Android / iOS / 鸿蒙多台测试机同时在线时，一条命令自动对比返回字段与类型差异（例如 Android 返回 `0/1` 而 iOS 返回 `boolean`、鸿蒙缺字段）：
+- **三端一致性对比（强烈推荐）：** 当 Android / iOS / 鸿蒙多台测试机同时在线时，一条命令自动对比返回字段缺失、类型不一致、**空值差异**（如 `""` / `[]` / `{}` vs 有值）、**语义格式差异**（如 `YYYY-MM-DD` vs `YYYY/MM/DD`、秒级 vs 毫秒级时间戳、`https` vs `http`），并支持单端/多端**契约 Schema 校验**与一键输出 Markdown 对账单：
   ```bash
+  # 基础三端对比（自动检出字段缺失、类型、空值、格式差异）
   wv-agent bridge diff "album/save" '{"images":["https://..."]}'
+
+  # 忽略动态字段 + 精确值比对 + 直接输出 Markdown 对账单
+  wv-agent bridge diff "newconfigs/get" '{}' --ignore traceId,meta.* --check-values --md
+
+  # 契约 Schema 校验（即使只有 1 台真机在线也能验收必传/非空/格式/枚举）
+  wv-agent bridge diff "userInfo/get" '{}' --devices harmony --schema '{"nickName":{"type":"string","nonEmpty":true},"avatar":{"type":"string","format":"url:https"}}'
   ```
 - **需要原生界面交互的协议**（如 `album/selector`、`seeyoubaby/cloud/photosV2`、`share/do`、`login`、`album/save` 首次授权弹窗）：
   - 提示用户在真机上完成原生选图/授权，或结合 Midscene 处理原生弹窗，同时放宽 `--timeout 30000`。

@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { attachWebSocketServer } from './ws-server.mjs';
-import { diffBridgeResults } from './diff.mjs';
+import { diffBridgeResults, summarizeBridgeDiff, formatDiffMarkdown } from './diff.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_SCRIPT_PATH = path.join(__dirname, 'client.js');
@@ -456,8 +456,25 @@ export class WvAgentHub {
         for (const entry of settled) {
           resultsMap[entry.key] = entry.result;
         }
-        const diffs = diffBridgeResults(resultsMap);
-        sendJson(res, 200, { ok: true, path: bridgePath, params, results: resultsMap, diffs });
+        const diffOptions = {
+          contract: body.contract || body.schema || null,
+          ignoreFields: Array.isArray(body.ignoreFields) ? body.ignoreFields : [],
+          checkValues: body.checkValues === true,
+        };
+        const diffs = diffBridgeResults(resultsMap, diffOptions);
+        const summary = summarizeBridgeDiff(resultsMap, diffs);
+        const responsePayload = {
+          ok: true,
+          path: bridgePath,
+          params,
+          summary,
+          results: resultsMap,
+          diffs,
+        };
+        if (body.markdown === true) {
+          responsePayload.markdown = formatDiffMarkdown(responsePayload);
+        }
+        sendJson(res, 200, responsePayload);
         return;
       }
 

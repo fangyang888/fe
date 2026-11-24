@@ -624,3 +624,52 @@ test('Remote MCP Streamable HTTP (/mcp) initialize, tools/list, and tools/call e
     await hub.stop();
   }
 });
+
+test('Standalone Antigravity and Codex MCP injection scripts are idempotent and preserve existing config', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-agent-inject-test-'));
+  const agScript = path.resolve(__dirname, '../scripts/install-antigravity-mcp.mjs');
+  const codexScript = path.resolve(__dirname, '../scripts/install-codex-mcp.mjs');
+  const agCfgPath = path.join(tmpRoot, 'mcp_config.json');
+  const codexCfgPath = path.join(tmpRoot, 'config.toml');
+
+  try {
+    // Seed existing configs
+    fs.writeFileSync(
+      agCfgPath,
+      JSON.stringify({ mcpServers: { existing: { serverUrl: 'http://127.0.0.1:9999/mcp' } } }, null, 2)
+    );
+    fs.writeFileSync(
+      codexCfgPath,
+      'model = "gpt-5"\n\n[mcp_servers.pixso-mcp]\nurl = "http://127.0.0.1:3667/mcp"\n'
+    );
+
+    // 1. Antigravity inject twice (idempotent) + remove
+    await execFileAsync(process.execPath, [agScript, '--config', agCfgPath, '--url', 'http://47.106.103.79/wv-agent/mcp']);
+    await execFileAsync(process.execPath, [agScript, '--config', agCfgPath, '--url', 'http://47.106.103.79/wv-agent/mcp', '--api-key', 'secret1']);
+    const agAfter = JSON.parse(fs.readFileSync(agCfgPath, 'utf8'));
+    assert.equal(agAfter.mcpServers.existing.serverUrl, 'http://127.0.0.1:9999/mcp');
+    assert.equal(agAfter.mcpServers['wv-agent-mcp'].serverUrl, 'http://47.106.103.79/wv-agent/mcp');
+    assert.equal(agAfter.mcpServers['wv-agent-mcp'].headers.Authorization, 'Bearer secret1');
+
+    await execFileAsync(process.execPath, [agScript, '--config', agCfgPath, '--remove']);
+    const agRemoved = JSON.parse(fs.readFileSync(agCfgPath, 'utf8'));
+    assert.equal(agRemoved.mcpServers['wv-agent-mcp'], undefined);
+    assert.equal(agRemoved.mcpServers.existing.serverUrl, 'http://127.0.0.1:9999/mcp');
+
+    // 2. Codex inject twice (idempotent, no duplicate section) + remove
+    await execFileAsync(process.execPath, [codexScript, '--config', codexCfgPath, '--url', 'http://47.106.103.79/wv-agent/mcp']);
+    await execFileAsync(process.execPath, [codexScript, '--config', codexCfgPath, '--url', 'http://47.106.103.79/wv-agent/mcp', '--api-key', 'secret2']);
+    const codexAfter = fs.readFileSync(codexCfgPath, 'utf8');
+    assert.equal((codexAfter.match(/\[mcp_servers\.wv-agent-mcp\]/g) || []).length, 1);
+    assert.ok(codexAfter.includes('url = "http://47.106.103.79/wv-agent/mcp"'));
+    assert.ok(codexAfter.includes('Authorization = "Bearer secret2"'));
+    assert.ok(codexAfter.includes('[mcp_servers.pixso-mcp]'));
+
+    await execFileAsync(process.execPath, [codexScript, '--config', codexCfgPath, '--remove']);
+    const codexRemoved = fs.readFileSync(codexCfgPath, 'utf8');
+    assert.ok(!codexRemoved.includes('[mcp_servers.wv-agent-mcp]'));
+    assert.ok(codexRemoved.includes('[mcp_servers.pixso-mcp]'));
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});

@@ -15,7 +15,11 @@
 
 ---
 
-## 第 1 步：AI 工具接入远程 MCP（选你用的客户端）
+## 第 1 步：AI 工具接入远程 MCP（一键脚本 / 手动配置）
+
+> 仓库内置了两个**独立零依赖单文件脚本**（兼容 macOS & Windows，自动备份原配置，可重复执行，不含任何服务端源码，可直接单独发给同事运行）：
+> - **一键注入 Antigravity：** `node scripts/install-antigravity-mcp.mjs`（移除加 `--remove`）
+> - **一键注入 Codex：** `node scripts/install-codex-mcp.mjs`（移除加 `--remove`）
 
 ### 方式 A：Antigravity（推荐：配置一次，全局生效）
 打开 `~/.gemini/antigravity/mcp_config.json`（或插件目录 `~/.gemini/config/plugins/wv-agent/mcp_config.json`），在 `mcpServers` 里加入：

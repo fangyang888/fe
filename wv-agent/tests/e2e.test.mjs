@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
@@ -9,6 +11,7 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { WvAgentHub } from '../src/hub.mjs';
+import { WsConnection } from '../src/ws-server.mjs';
 import { diffBridgeResults } from '../src/diff.mjs';
 import { findAdbBinary, findHdcBinary } from '../src/native.mjs';
 
@@ -18,70 +21,145 @@ const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(__dirname, '../bin/wv-agent.mjs');
 
-function connectMockPhone(port, { clientId, platform, bridgeResponder }) {
+/**
+ * Masked RFC 6455 client frame encoder (works on Node 18/20/22/24 without global WebSocket).
+ */
+function encodeClientTextFrame(text) {
+  const data = Buffer.from(String(text), 'utf8');
+  const mask = crypto.randomBytes(4);
+  const len = data.length;
+  let header;
+  if (len < 126) {
+    header = Buffer.alloc(6);
+    header[0] = 0x81;
+    header[1] = 0x80 | len;
+    mask.copy(header, 2);
+  } else if (len < 65536) {
+    header = Buffer.alloc(8);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(len, 2);
+    mask.copy(header, 4);
+  } else {
+    header = Buffer.alloc(14);
+    header[0] = 0x81;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(len), 2);
+    mask.copy(header, 10);
+  }
+  const masked = Buffer.alloc(len);
+  for (let i = 0; i < len; i++) masked[i] = data[i] ^ mask[i & 3];
+  return Buffer.concat([header, masked]);
+}
+
+function openRawWsClient(port) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-    ws.addEventListener('open', () => {
+    const key = crypto.randomBytes(16).toString('base64');
+    const socket = net.connect(port, '127.0.0.1', () => {
+      socket.write(
+        [
+          'GET /ws HTTP/1.1',
+          `Host: 127.0.0.1:${port}`,
+          'Upgrade: websocket',
+          'Connection: Upgrade',
+          `Sec-WebSocket-Key: ${key}`,
+          'Sec-WebSocket-Version: 13',
+          '',
+          '',
+        ].join('\r\n')
+      );
+    });
+    let handshakeBuf = Buffer.alloc(0);
+    const onHandshake = (chunk) => {
+      handshakeBuf = Buffer.concat([handshakeBuf, chunk]);
+      const endIdx = handshakeBuf.indexOf('\r\n\r\n');
+      if (endIdx === -1) return;
+      socket.off('data', onHandshake);
+      const headerStr = handshakeBuf.subarray(0, endIdx).toString('utf8');
+      if (!headerStr.startsWith('HTTP/1.1 101')) {
+        socket.destroy();
+        reject(new Error(`WS handshake failed: ${headerStr}`));
+        return;
+      }
+      const rest = handshakeBuf.subarray(endIdx + 4);
+      const conn = new WsConnection(socket, null);
+      if (rest.length > 0) conn._onData(rest);
+      resolve({
+        send(text) {
+          if (!socket.destroyed) socket.write(encodeClientTextFrame(text));
+        },
+        onMessage(fn) {
+          conn.on('message', fn);
+        },
+        close() {
+          conn.close(1000);
+        },
+      });
+    };
+    socket.on('data', onHandshake);
+    socket.once('error', reject);
+  });
+}
+
+async function connectMockPhone(port, { clientId, platform, bridgeResponder }) {
+  const ws = await openRawWsClient(port);
+  ws.send(
+    JSON.stringify({
+      type: 'register',
+      meta: {
+        clientId,
+        platform,
+        ua: `Mock-${platform}-WebView`,
+        url: `http://192.168.1.10:1234/index.html`,
+        title: 'Puzzle Test',
+        hasBridge: true,
+        viewport: { width: 390, height: 844, dpr: 3 },
+      },
+    })
+  );
+  ws.onMessage(async (raw) => {
+    const msg = JSON.parse(String(raw));
+    if (msg.type !== 'command') return;
+    if (msg.cmd === 'snapshot') {
       ws.send(
         JSON.stringify({
-          type: 'register',
-          meta: {
-            clientId,
-            platform,
-            ua: `Mock-${platform}-WebView`,
-            url: `http://192.168.1.10:1234/index.html`,
-            title: 'Puzzle Test',
-            hasBridge: true,
-            viewport: { width: 390, height: 844, dpr: 3 },
+          type: 'response',
+          reqId: msg.reqId,
+          ok: true,
+          result: {
+            meta: { clientId, platform, url: 'http://192.168.1.10:1234/index.html', hasBridge: true },
+            elementCount: 2,
+            elements: [
+              { ref: 'e1', tag: 'button', text: '保存相册', rect: { x: 10, y: 700, w: 120, h: 44 } },
+              { ref: 'e2', tag: 'input', placeholder: '输入标题', value: '', rect: { x: 10, y: 100, w: 300, h: 40 } },
+            ],
+            bodyTextPreview: '拼图测试页 保存相册',
           },
         })
       );
-      resolve({
-        ws,
-        emit(eventType, payload) {
-          ws.send(JSON.stringify({ type: 'event', eventType, clientId, ts: Date.now(), payload }));
-        },
-        close() {
-          ws.close();
-        },
-      });
-    });
-    ws.addEventListener('error', (err) => reject(err));
-    ws.addEventListener('message', async (ev) => {
-      const msg = JSON.parse(String(ev.data));
-      if (msg.type !== 'command') return;
-      if (msg.cmd === 'snapshot') {
-        ws.send(
-          JSON.stringify({
-            type: 'response',
-            reqId: msg.reqId,
-            ok: true,
-            result: {
-              meta: { clientId, platform, url: 'http://192.168.1.10:1234/index.html', hasBridge: true },
-              elementCount: 2,
-              elements: [
-                { ref: 'e1', tag: 'button', text: '保存相册', rect: { x: 10, y: 700, w: 120, h: 44 } },
-                { ref: 'e2', tag: 'input', placeholder: '输入标题', value: '', rect: { x: 10, y: 100, w: 300, h: 40 } },
-              ],
-              bodyTextPreview: '拼图测试页 保存相册',
-            },
-          })
-        );
-      } else if (msg.cmd === 'bridge.call') {
-        const res = await bridgeResponder(msg.payload);
-        ws.send(JSON.stringify({ type: 'response', reqId: msg.reqId, ok: true, result: res }));
-      } else if (msg.cmd === 'act') {
-        ws.send(
-          JSON.stringify({
-            type: 'response',
-            reqId: msg.reqId,
-            ok: true,
-            result: { ok: true, action: msg.payload.action, ref: msg.payload.ref },
-          })
-        );
-      }
-    });
+    } else if (msg.cmd === 'bridge.call') {
+      const res = await bridgeResponder(msg.payload);
+      ws.send(JSON.stringify({ type: 'response', reqId: msg.reqId, ok: true, result: res }));
+    } else if (msg.cmd === 'act') {
+      ws.send(
+        JSON.stringify({
+          type: 'response',
+          reqId: msg.reqId,
+          ok: true,
+          result: { ok: true, action: msg.payload.action, ref: msg.payload.ref },
+        })
+      );
+    }
   });
+  return {
+    ws,
+    emit(eventType, payload) {
+      ws.send(JSON.stringify({ type: 'event', eventType, clientId, ts: Date.now(), payload }));
+    },
+    close() {
+      ws.close();
+    },
+  };
 }
 
 async function runCli(args, port) {

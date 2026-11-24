@@ -504,27 +504,15 @@ const routes = [
   // { path: '/hot-pick', label: 'HotPick', section: '选号', element: <HotPickPredictor /> },
   // { path: '/hot-pick/opt', label: 'HotPick Opt', section: '选号', element: <HotPickPredictorOpt /> },
   // { path: '/crawler', label: '数据抓取', section: '管理', element: <Crawler /> },
-  { path: '/history', label: '历史数据管理', section: '管理', element: <HistoryRoute /> },
+  { path: '/history', label: '历史数据管理', section: '管理', element: <HistoryManager /> },
 ];
 
-function isHistoryRoute(pathname: string) {
-  return pathname.replace(/\/+$/, '') === '/history';
-}
-
-function hasHistoryAccess(search: string) {
+function hasAccess(search: string) {
   return new URLSearchParams(search).get('name') === 'fy';
 }
 
 function BlankWhitePage() {
   return <div style={{ position: 'fixed', inset: 0, backgroundColor: '#ffffff' }} />;
-}
-
-function HistoryRoute() {
-  const location = useLocation();
-  if (!hasHistoryAccess(location.search)) {
-    return <BlankWhitePage />;
-  }
-  return <HistoryManager />;
 }
 
 function MenuIcon() {
@@ -540,7 +528,7 @@ function MenuIcon() {
 function AppShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const hideShell = isHistoryRoute(location.pathname) && !hasHistoryAccess(location.search);
+  const allowed = hasAccess(location.search);
   const sections = [...new Set(routes.map((route) => route.section))];
 
   useEffect(() => {
@@ -548,12 +536,12 @@ function AppShell({ children }: { children: ReactNode }) {
   }, [location.pathname, location.search]);
 
   useEffect(() => {
-    document.body.classList.toggle('app-drawer-open', open && !hideShell);
+    document.body.classList.toggle('app-drawer-open', open && allowed);
     return () => document.body.classList.remove('app-drawer-open');
-  }, [open, hideShell]);
+  }, [open, allowed]);
 
-  if (hideShell) {
-    return <>{children}</>;
+  if (!allowed) {
+    return <BlankWhitePage />;
   }
 
   return (
@@ -600,7 +588,7 @@ function AppShell({ children }: { children: ReactNode }) {
                 .map((route) => (
                   <NavLink
                     key={route.path}
-                    to={route.path}
+                    to={{ pathname: route.path, search: '?name=fy' }}
                     end={route.path === '/'}
                     className={({ isActive }) => `app-drawer-link ${isActive ? 'is-active' : ''}`}
                   >

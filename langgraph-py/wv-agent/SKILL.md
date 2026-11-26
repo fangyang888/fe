@@ -84,8 +84,9 @@ wv-agent inspect -d android
   ```
   然后使用 `read_file` 查看截图文件并给出视觉验收结论。
 
-### 第 5 步（可选）：同步真机协议数据到 `meetyou.bridge-debug`
-如果项目已挂载 `meetyou.bridge-debug`（如 `nodejs-user/modules/subscribe`），可将真机录得的真实协议数据同步过去，供 PC 浏览器 `?bridgeDebug=replay` 极速回放：
+### 第 5 步（可选）：在 PC 浏览器复用真机 JSBridge 返回值
+- **方式 A — 实时透传（Live Proxy，免录制）**：PC 浏览器访问本地开发页时追加 `&bridgeDebug=live&bridgeDevice=android`（或具体 `clientId`，也支持简写 `&bridgeProxy=android` / `&bridgeProxy=1`），页面调用 `window.MeiYouJSBridge.invoke` 时会通过 Hub 实时转发到在线真机执行并把真机返回值回传给浏览器。
+- **方式 B — 录制回放（同步到 `meetyou.bridge-debug`）**：如果项目已挂载 `meetyou.bridge-debug`（如 `nodejs-user/modules/subscribe`），可将真机录得的真实协议数据同步过去，供 PC 浏览器 `?bridgeDebug=replay` 极速回放：
 ```bash
 wv-agent bridge export-debug -d android --target http://127.0.0.1:1234/__bridge-debug__
 ```

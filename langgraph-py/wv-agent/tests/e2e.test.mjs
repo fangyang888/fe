@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
+import vm from 'node:vm';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
@@ -611,5 +612,129 @@ test('CLI plugin build / install / status / uninstall works for Antigravity & Co
     assert.equal(status2.codex.installed, false);
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test('PC browser live proxy (?bridgeDebug=live & ?bridgeProxy=1) forwards MeiYouJSBridge.invoke to online Android device in real time', async () => {
+  const hub = new WvAgentHub({ port: 0, host: '127.0.0.1' });
+  const { port } = await hub.start();
+
+  const mw = createWvAgentMiddleware({ hubPort: port });
+  const appServer = http.createServer((req, res) => {
+    mw(req, res, () => {
+      res.statusCode = 404;
+      res.end('not found');
+    });
+  });
+  await new Promise((r) => appServer.listen(0, '127.0.0.1', r));
+  const appPort = appServer.address().port;
+  const appOrigin = `http://127.0.0.1:${appPort}`;
+
+  let androidPhone;
+  let testClosed = false;
+  const timers = [];
+  const abortController = new AbortController();
+
+  function runBrowserClient(search) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const jsResp = await fetch(`${appOrigin}/__wv_agent__/client.js`);
+        const jsText = await jsResp.text();
+
+        const sandbox = {
+          console: { log() {}, warn() {}, error() {} },
+          Event: class Event {
+            constructor(type) { this.type = type; }
+          },
+          setTimeout: (fn, ms) => {
+            if (testClosed) return 0;
+            const t = setTimeout(() => { if (!testClosed) fn(); }, ms);
+            t.unref?.();
+            timers.push(t);
+            return t;
+          },
+          clearTimeout,
+          setInterval: () => 0,
+          clearInterval: () => {},
+          navigator: {
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36',
+          },
+          location: {
+            protocol: 'http:',
+            hostname: '127.0.0.1',
+            href: `${appOrigin}/family.html${search}`,
+            search,
+          },
+          document: {
+            title: '家庭会员',
+            hidden: false,
+            addEventListener() {},
+          },
+          fetch: (url, init) => {
+            if (testClosed) return Promise.reject(new Error('closed'));
+            const fullUrl = String(url).startsWith('http') ? url : `${appOrigin}${url}`;
+            return fetch(fullUrl, { ...(init || {}), signal: abortController.signal });
+          },
+          addEventListener() {},
+          dispatchEvent() {},
+          innerWidth: 1280,
+          innerHeight: 800,
+          devicePixelRatio: 2,
+        };
+        sandbox.window = sandbox;
+        vm.runInNewContext(jsText, sandbox);
+        resolve(sandbox);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  try {
+    androidPhone = await connectMockPhone(port, {
+      clientId: 'android-live1',
+      platform: 'android',
+      bridgeResponder: async ({ path: p, params }) => ({
+        status: 'resolved',
+        path: p,
+        cbPath: p,
+        params,
+        durationMs: 18,
+        data: { nickName: '安卓真机用户', fromParams: params },
+      }),
+    });
+    await new Promise((r) => setTimeout(r, 60));
+
+    // 1. Explicit device (?bridgeDebug=live&bridgeDevice=android-live1)
+    const pcWin1 = await runBrowserClient('?bridgeDebug=live&bridgeDevice=android-live1&bridgeDebugLog=0');
+    assert.ok(pcWin1.MeiYouJSBridge && typeof pcWin1.MeiYouJSBridge.invoke === 'function');
+    assert.equal(pcWin1.__WV_AGENT_API__.getMeta().hasBridge, false);
+
+    const res1 = await new Promise((resolve) => {
+      pcWin1.MeiYouJSBridge.invoke('userInfo/get', { scene: 'family' }, (cbPath, data) => {
+        resolve({ cbPath, data });
+      });
+    });
+    assert.equal(res1.cbPath, 'userInfo/get');
+    assert.equal(res1.data.nickName, '安卓真机用户');
+    assert.deepEqual(res1.data.fromParams, { scene: 'family' });
+
+    // 2. Auto-pick shorthand (?bridgeProxy=1)
+    const pcWin2 = await runBrowserClient('?bridgeProxy=1&bridgeDebugLog=0');
+    const res2 = await new Promise((resolve) => {
+      pcWin2.MeiYouJSBridge.invoke('appInfo/get', {}, (cbPath, data) => {
+        resolve({ cbPath, data });
+      });
+    });
+    assert.equal(res2.cbPath, 'appInfo/get');
+    assert.equal(res2.data.nickName, '安卓真机用户');
+  } finally {
+    testClosed = true;
+    abortController.abort();
+    for (const t of timers) clearTimeout(t);
+    androidPhone?.close();
+    appServer.closeAllConnections?.();
+    appServer.close();
+    await hub.stop();
   }
 });

@@ -205,8 +205,13 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 ### 9. 视觉验收（需插 USB 或无线 ADB/HDC）
 > 用 `wv-agent screenshot` 分别截取安卓和鸿蒙真机当前屏幕并查看图片，帮我检查有没有白屏、文字截断、弹窗错位，以及顶部状态栏/底部安全区遮挡问题。
 
-### 10. 真机录协议 → 同步到 PC 浏览器回放
-> 把安卓真机刚才录到的 JSBridge 协议数据通过 `wv-agent bridge export-debug` 同步到 `http://127.0.0.1:1234/__bridge-debug__`，方便我等会在 PC 浏览器用 `?bridgeDebug=replay` 调试样式。
+### 10. 真机录协议 → 同步到 PC 浏览器回放 / 实时透传
+- **回放模式**：把安卓真机刚才录到的 JSBridge 协议数据通过 `wv-agent bridge export-debug` 同步到 `http://127.0.0.1:1234/__bridge-debug__`，方便在 PC 浏览器用 `?bridgeDebug=replay` 调试样式。
+- **实时透传模式（免录制）**：PC 浏览器访问页面时直接追加 URL 参数，所有 `MeiYouJSBridge.invoke` 会通过本机 Hub 实时转发给在线真机执行并回传真实返回值：
+  - 指定具体设备：`&bridgeDebug=live&bridgeDevice=android-8dgb6e`（或简写 `&bridgeProxy=android-8dgb6e`）
+  - 跟随最新在线平台：`&bridgeDebug=live&bridgeDevice=android`（或 `&bridgeProxy=android` / `&bridgeProxy=harmony`）
+  - 自动选择在线真机：`&bridgeDebug=live`（或 `&bridgeProxy=1`）
+  - 可选参数：`&bridgeTimeout=10000`、`&bridgeDebugLog=0`（默认开启控制台日志）
 
 ---
 

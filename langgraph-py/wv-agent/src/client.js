@@ -65,17 +65,108 @@
     return 'web';
   }
 
-  function getOrCreateClientId() {
-    var key = '__wv_agent_client_id__';
-    var plat = detectPlatform(navigator.userAgent);
+  function sanitizeModelToken(raw) {
+    var cleaned = String(raw || '')
+      .replace(/\s+Build\/.*$/i, '')
+      .replace(/^\s+|\s+$/g, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    return cleaned.slice(0, 32);
+  }
+
+  function detectDeviceModel(ua, plat) {
+    var s = String(ua || '');
+    var m;
+    if (plat === 'harmony') {
+      // e.g. (Linux; HarmonyOS 4.0; ALN-AL00 Build/...) or (Phone; OpenHarmony 7.0)
+      m = s.match(/(?:HarmonyOS|OpenHarmony)[^;)]*;\s*([^;)]+)/i);
+      if (m && m[1]) {
+        var hm = sanitizeModelToken(m[1]);
+        if (hm && !/^(wv|K|Mobile|zh-cn|en-us)$/i.test(hm)) return hm;
+      }
+      m = s.match(/\(([^;)]+);\s*(?:OpenHarmony|HarmonyOS)/i);
+      if (m && m[1]) {
+        var formFactor = sanitizeModelToken(m[1]);
+        if (formFactor && !/^(Linux|U)$/i.test(formFactor)) return formFactor;
+      }
+      return 'Phone';
+    }
+    if (plat === 'android') {
+      // e.g. (Linux; Android 11; PCAM10 Build/RP1A.200720.011; wv)
+      m = s.match(/Android[^;)]*;\s*([^;)]+)/i);
+      if (m && m[1]) {
+        var am = sanitizeModelToken(m[1]);
+        if (am && !/^(wv|K|Mobile|zh-cn|en-us)$/i.test(am)) return am;
+      }
+      return 'Device';
+    }
+    if (plat === 'ios') {
+      if (/iPad/i.test(s)) return 'iPad';
+      if (/iPod/i.test(s)) return 'iPod';
+      return 'iPhone';
+    }
+    if (/Macintosh|Mac OS X/i.test(s)) return 'Mac';
+    if (/Windows/i.test(s)) return 'Win';
+    if (/Linux/i.test(s)) return 'Linux';
+    return 'Browser';
+  }
+
+  function formatPlatformLabel(plat) {
+    if (plat === 'android') return 'Android';
+    if (plat === 'ios') return 'iOS';
+    if (plat === 'harmony') return 'Harmony';
+    return 'Web';
+  }
+
+  function getOrCreateInstanceId() {
+    var key = '__wv_agent_instance_id__';
     try {
       var existing = sessionStorage.getItem(key);
-      if (existing && existing.indexOf(plat + '-') === 0) return existing;
-      var id = plat + '-' + Math.random().toString(36).slice(2, 8);
+      if (existing) return existing;
+      var id = 'inst-' + Math.random().toString(36).slice(2, 10);
       sessionStorage.setItem(key, id);
       return id;
     } catch (e) {
-      return plat + '-' + Math.random().toString(36).slice(2, 8);
+      return 'inst-' + Math.random().toString(36).slice(2, 10);
+    }
+  }
+
+  function computeBaseDeviceName() {
+    var search = String(location.search || '');
+    var customMatch = search.match(/[?&]wvDeviceName=([^&]+)/);
+    var customName = (customMatch ? decodeURIComponent(customMatch[1]) : '') || cfg.deviceName || '';
+    if (customName) {
+      var cleanCustom = sanitizeModelToken(customName);
+      if (cleanCustom) return cleanCustom;
+    }
+    var plat = detectPlatform(navigator.userAgent);
+    var model = detectDeviceModel(navigator.userAgent, plat);
+    return formatPlatformLabel(plat) + '-' + model;
+  }
+
+  function getOrCreateClientId(baseName) {
+    var key = '__wv_agent_client_id__';
+    try {
+      var existing = sessionStorage.getItem(key);
+      if (existing && (existing === baseName || existing.indexOf(baseName + '-') === 0)) {
+        return existing;
+      }
+      sessionStorage.setItem(key, baseName);
+      return baseName;
+    } catch (e) {
+      return baseName;
+    }
+  }
+
+  function saveAssignedClientId(newId) {
+    if (!newId || newId === clientId) return;
+    clientId = String(newId);
+    try {
+      sessionStorage.setItem('__wv_agent_client_id__', clientId);
+    } catch (e) {}
+    for (var i = 0; i < pendingEvents.length; i++) {
+      pendingEvents[i].clientId = clientId;
     }
   }
 
@@ -126,8 +217,11 @@
     }
   }
 
-  var clientId = cfg.clientId || getOrCreateClientId();
   var platform = detectPlatform(navigator.userAgent);
+  var deviceModel = detectDeviceModel(navigator.userAgent, platform);
+  var baseName = computeBaseDeviceName();
+  var instanceId = getOrCreateInstanceId();
+  var clientId = cfg.clientId || getOrCreateClientId(baseName);
   var ws = null;
   var pendingEvents = [];
   var flushTimer = null;
@@ -187,6 +281,9 @@
   function getDeviceMeta() {
     return {
       clientId: clientId,
+      baseName: baseName,
+      model: deviceModel,
+      instanceId: instanceId,
       platform: platform,
       ua: navigator.userAgent,
       url: location.href,
@@ -916,11 +1013,14 @@
     var polling = false;
 
     function registerAndPoll() {
-      httpRequest('POST', proxyPath + '/poll/register', { meta: getDeviceMeta() }, function (err) {
+      httpRequest('POST', proxyPath + '/poll/register', { meta: getDeviceMeta() }, function (err, data) {
         if (err) {
           setTimeout(registerAndPoll, retryDelay);
           retryDelay = Math.min(retryDelay * 1.5, 4000);
           return;
+        }
+        if (data && data.clientId) {
+          saveAssignedClientId(data.clientId);
         }
         retryDelay = 500;
         flushHttpEvents();
@@ -975,6 +1075,10 @@
         try {
           msg = JSON.parse(ev.data);
         } catch (e) {
+          return;
+        }
+        if (msg && msg.type === 'registered' && msg.clientId) {
+          saveAssignedClientId(msg.clientId);
           return;
         }
         if (msg && msg.type === 'command') {

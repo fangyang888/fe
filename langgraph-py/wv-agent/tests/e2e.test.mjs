@@ -738,3 +738,97 @@ test('PC browser live proxy (?bridgeDebug=live & ?bridgeProxy=1) forwards MeiYou
     await hub.stop();
   }
 });
+
+test('Devices are named by model (e.g. Android-PCAM10) and deduplicated as -1, -2 when same model connects concurrently', async () => {
+  const hub = new WvAgentHub({ port: 0, host: '127.0.0.1' });
+  const { port } = await hub.start();
+  const base = `http://127.0.0.1:${port}`;
+
+  try {
+    // 1. Verify client.js derives model-based names from UA (Android-PCAM10, Harmony-Phone, custom Android-ps)
+    const jsResp = await fetch(`${base}/client.js?port=${port}&proxyPath=%2F__wv_agent__`);
+    const jsText = await jsResp.text();
+
+    async function bootClient(ua, search = '', storageMap = new Map()) {
+      const registered = [];
+      let resolveReg;
+      const regDone = new Promise((r) => { resolveReg = r; });
+
+      const sandbox = {
+        console: { log() {}, warn() {}, error() {} },
+        Event: class Event { constructor(t) { this.type = t; } },
+        sessionStorage: {
+          getItem: (k) => (storageMap.has(k) ? storageMap.get(k) : null),
+          setItem: (k, v) => { storageMap.set(k, String(v)); },
+        },
+        setTimeout: () => 0,
+        clearTimeout: () => {},
+        setInterval: () => 0,
+        clearInterval: () => {},
+        navigator: { userAgent: ua },
+        location: { protocol: 'http:', hostname: '127.0.0.1', href: `http://127.0.0.1:1234/family.html${search}`, search },
+        document: { title: '家庭会员', hidden: false, addEventListener() {} },
+        fetch: async (url, init) => {
+          const pathOnly = String(url).replace(/^\/__wv_agent__/, '');
+          if (pathOnly.startsWith('/poll/register')) {
+            const resp = await fetch(`${base}${pathOnly}`, init);
+            const clone = resp.clone();
+            const json = await clone.json();
+            registered.push(json);
+            resolveReg(json);
+            return resp;
+          }
+          // Ignore poll/next in unit test to keep event loop clean
+          return new Response(JSON.stringify({ ok: true, commands: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        },
+        addEventListener() {},
+        dispatchEvent() {},
+        innerWidth: 360,
+        innerHeight: 780,
+        devicePixelRatio: 3,
+      };
+      sandbox.window = sandbox;
+      vm.runInNewContext(jsText, sandbox);
+      await regDone;
+      return { sandbox, reg: registered[0], storageMap };
+    }
+
+    const androidUa = 'Mozilla/5.0 (Linux; Android 11; PCAM10 Build/RP1A.200720.011; wv) AppleWebKit/537.36 Chrome/83.0 Mobile Safari/537.36';
+    const harmonyUa = 'Mozilla/5.0 (Phone; OpenHarmony 7.0) AppleWebKit/537.36 ArkWeb/7.0.0.111 Mobile';
+
+    // Three concurrent Android PCAM10 devices -> Android-PCAM10, Android-PCAM10-1, Android-PCAM10-2
+    const a1 = await bootClient(androidUa);
+    const a2 = await bootClient(androidUa);
+    const a3 = await bootClient(androidUa);
+    assert.equal(a1.reg.clientId, 'Android-PCAM10');
+    assert.equal(a1.sandbox.__WV_AGENT_API__.getClientId(), 'Android-PCAM10');
+    assert.equal(a2.reg.clientId, 'Android-PCAM10-1');
+    assert.equal(a2.sandbox.__WV_AGENT_API__.getClientId(), 'Android-PCAM10-1');
+    assert.equal(a3.reg.clientId, 'Android-PCAM10-2');
+
+    // Same tab reloads (same sessionStorage / instanceId) -> keeps Android-PCAM10-1 instead of creating -3
+    const a2Reload = await bootClient(androidUa, '', a2.storageMap);
+    assert.equal(a2Reload.reg.clientId, 'Android-PCAM10-1');
+
+    // Harmony phone -> Harmony-Phone, second one -> Harmony-Phone-1
+    const h1 = await bootClient(harmonyUa);
+    const h2 = await bootClient(harmonyUa);
+    assert.equal(h1.reg.clientId, 'Harmony-Phone');
+    assert.equal(h2.reg.clientId, 'Harmony-Phone-1');
+
+    // Custom ?wvDeviceName=Android-ps -> Android-ps, Android-ps-1
+    const ps1 = await bootClient(androidUa, '?wvDeviceName=Android-ps');
+    const ps2 = await bootClient(androidUa, '?wvDeviceName=Android-ps');
+    assert.equal(ps1.reg.clientId, 'Android-ps');
+    assert.equal(ps2.reg.clientId, 'Android-ps-1');
+
+    // Case-insensitive lookup works on hub
+    const resolved = hub.resolveDevice('android-pcam10-1');
+    assert.equal(resolved.clientId, 'Android-PCAM10-1');
+  } finally {
+    await hub.stop();
+  }
+});

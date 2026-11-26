@@ -71,10 +71,11 @@ export class WvAgentHub {
     if (!s) {
       s = {
         clientId,
+        instanceId: '',
         transport: 'ws', // 'ws' | 'http'
         conn: null,
         connected: false,
-        meta: { clientId, platform: 'unknown', url: '', title: '', hasBridge: false },
+        meta: { clientId, platform: 'unknown', model: '', url: '', title: '', hasBridge: false },
         connectedAt: null,
         lastSeenAt: Date.now(),
         traces: [],
@@ -87,6 +88,57 @@ export class WvAgentHub {
       this.sessions.set(clientId, s);
     }
     return s;
+  }
+
+  _allocateClientId(meta = {}) {
+    const rawBase = String(meta.baseName || meta.clientId || 'device').trim();
+    const instanceId = meta.instanceId ? String(meta.instanceId) : '';
+    const escapedBase = rawBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sameFamilyRe = new RegExp(`^${escapedBase}(?:-(\\d+))?$`);
+
+    // 1. Same browser/WebView tab reconnecting -> keep its previously assigned name
+    if (instanceId) {
+      for (const s of this.sessions.values()) {
+        if (s.instanceId === instanceId && sameFamilyRe.test(s.clientId)) {
+          return { clientId: s.clientId, reclaimed: false };
+        }
+      }
+    }
+
+    // 2. If neither baseName nor instanceId is provided, preserve legacy exact-clientId replacement behavior
+    if (!meta.baseName && !instanceId) {
+      return { clientId: rawBase, reclaimed: false };
+    }
+
+    // 3. Allocate baseName, then baseName-1, baseName-2, ... skipping currently online sessions owned by other instances
+    for (let idx = 0; idx < 1000; idx++) {
+      const candidate = idx === 0 ? rawBase : `${rawBase}-${idx}`;
+      const existing = this.sessions.get(candidate);
+      if (!existing) {
+        return { clientId: candidate, reclaimed: false };
+      }
+      if (instanceId && existing.instanceId === instanceId) {
+        return { clientId: candidate, reclaimed: false };
+      }
+      if (!this._isSessionOnline(existing)) {
+        return { clientId: candidate, reclaimed: true };
+      }
+    }
+    return { clientId: `${rawBase}-${Date.now().toString(36)}`, reclaimed: false };
+  }
+
+  _reclaimOfflineSession(session) {
+    if (session.conn) {
+      try { session.conn.close(1000, 'reclaimed'); } catch {}
+      session.conn = null;
+    }
+    if (session.httpPollWaiter) {
+      clearTimeout(session.httpPollWaiter.timer);
+      try { sendJson(session.httpPollWaiter.res, 200, { ok: true, commands: [] }); } catch {}
+      session.httpPollWaiter = null;
+    }
+    session.httpCommandQueue = [];
+    session.connectedAt = Date.now();
   }
 
   _isSessionOnline(session) {
@@ -139,13 +191,14 @@ export class WvAgentHub {
         if (list.length === 1) return list[0];
         return null;
       }
-      const exact = list.find((s) => s.clientId === deviceFilter);
+      const filterLower = deviceFilter.toLowerCase();
+      const exact = list.find((s) => s.clientId === deviceFilter) || list.find((s) => s.clientId.toLowerCase() === filterLower);
       if (exact) return exact;
-      const byPlatform = list.filter((s) => s.meta.platform === deviceFilter.toLowerCase());
+      const byPlatform = list.filter((s) => s.meta.platform === filterLower);
       if (byPlatform.length > 0) {
         return byPlatform.sort((a, b) => (b.traces.length - a.traces.length) || (b.lastSeenAt - a.lastSeenAt))[0];
       }
-      const prefix = list.find((s) => s.clientId.startsWith(deviceFilter));
+      const prefix = list.find((s) => s.clientId.startsWith(deviceFilter)) || list.find((s) => s.clientId.toLowerCase().startsWith(filterLower));
       if (prefix) return prefix;
       return null;
     }
@@ -220,18 +273,23 @@ export class WvAgentHub {
         return;
       }
 
-      if (msg.type === 'register' && msg.meta && msg.meta.clientId) {
-        boundClientId = msg.meta.clientId;
+      if (msg.type === 'register' && msg.meta && (msg.meta.clientId || msg.meta.baseName)) {
+        const { clientId: assignedId, reclaimed } = this._allocateClientId(msg.meta);
+        boundClientId = assignedId;
         const session = this._getOrCreateSession(boundClientId);
-        if (session.conn && session.conn !== conn) {
+        if (reclaimed) {
+          this._reclaimOfflineSession(session);
+        } else if (session.conn && session.conn !== conn) {
           try { session.conn.close(1000, 'replaced'); } catch {}
         }
+        session.instanceId = msg.meta.instanceId ? String(msg.meta.instanceId) : session.instanceId;
         session.transport = 'ws';
         session.conn = conn;
         session.connected = true;
         session.connectedAt = Date.now();
         session.lastSeenAt = Date.now();
-        session.meta = { ...session.meta, ...msg.meta };
+        session.meta = { ...session.meta, ...msg.meta, clientId: boundClientId };
+        conn.sendJson({ type: 'registered', clientId: boundClientId });
         console.error(`[wv-agent hub] [ws] device connected: ${boundClientId} (${session.meta.platform}) hasBridge=${session.meta.hasBridge} url=${session.meta.url}`);
         return;
       }
@@ -292,18 +350,23 @@ export class WvAgentHub {
       if (req.method === 'POST' && pathname === '/poll/register') {
         const body = await readJsonBody(req);
         const meta = body.meta || {};
-        if (!meta.clientId) {
-          sendJson(res, 400, { ok: false, error: 'meta.clientId is required' });
+        if (!meta.clientId && !meta.baseName) {
+          sendJson(res, 400, { ok: false, error: 'meta.clientId or meta.baseName is required' });
           return;
         }
-        const session = this._getOrCreateSession(meta.clientId);
+        const { clientId: assignedId, reclaimed } = this._allocateClientId(meta);
+        const session = this._getOrCreateSession(assignedId);
+        if (reclaimed) {
+          this._reclaimOfflineSession(session);
+        }
+        session.instanceId = meta.instanceId ? String(meta.instanceId) : session.instanceId;
         session.transport = 'http';
         session.connected = true;
         session.connectedAt = session.connectedAt || Date.now();
         session.lastSeenAt = Date.now();
-        session.meta = { ...session.meta, ...meta };
-        console.error(`[wv-agent hub] [http] device connected: ${meta.clientId} (${session.meta.platform}) hasBridge=${session.meta.hasBridge} url=${session.meta.url}`);
-        sendJson(res, 200, { ok: true, clientId: meta.clientId });
+        session.meta = { ...session.meta, ...meta, clientId: assignedId };
+        console.error(`[wv-agent hub] [http] device connected: ${assignedId} (${session.meta.platform}) hasBridge=${session.meta.hasBridge} url=${session.meta.url}`);
+        sendJson(res, 200, { ok: true, clientId: assignedId });
         return;
       }
 
@@ -385,6 +448,7 @@ export class WvAgentHub {
           transport: s.transport,
           connected: this._isSessionOnline(s),
           platform: s.meta.platform,
+          model: s.meta.model || '',
           url: s.meta.url,
           title: s.meta.title,
           hasBridge: s.meta.hasBridge,

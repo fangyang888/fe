@@ -33,7 +33,24 @@ npm install -D wv-agent
 
 ## 二、快速上手（3 步）
 
-### 第 1 步：启动本机调度中心（Hub）
+### 第 1 步：启动本机调度中心（Hub）或一键合并启动
+
+#### 方式 A（推荐）：一条命令同时启动 Hub 与前端 dev 服务
+在前端项目的 `package.json` 中加一行 script（零额外依赖，无需 `concurrently` / `cross-env`）：
+
+```json
+{
+  "scripts": {
+    "dev": "vite",
+    "dev:wv": "wv-agent dev -- npm run dev"
+  }
+}
+```
+
+> - 默认自动注入 `WV_AGENT=1`（适配 `{ onlyWhenEnv: true }`），自动复用已运行的 Hub（不冲突），`Ctrl+C` 同时关闭两个服务。
+> - 也支持透传参数，例如在 `bbj` 中配 `"dev:wv": "wv-agent dev -- yarn dev"` 后执行 `yarn dev:wv curve`；即使在 **Node 14** 终端下运行，`wv-agent` 也会自动探测本机 Node 18+ 拉起 Hub，同时保持业务 `yarn dev` 继续运行在 Node 14 下（也可通过 `WV_AGENT_NODE` 指定 Node 18+ 路径）。
+
+#### 方式 B：单独终端启动 Hub
 单开一个终端运行（保持开启，需要 Node 18+）：
 
 ```bash

@@ -14,6 +14,7 @@ import {
   uninstallPlugins,
   getPluginStatus,
 } from './plugin.mjs';
+import { runDevCommand } from './dev.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_JSON_PATH = path.resolve(__dirname, '../package.json');
@@ -121,6 +122,9 @@ Usage:
       启动本机 WebSocket + HTTP 调试中心（手机扫码打开带探针的页面后自动连入）
       电脑浏览器打开 http://127.0.0.1:19527/observe 查看手机实时操作
 
+  wv-agent dev [--port 19527] [--no-env] [-- <dev_command...>]
+      一键同时启动本机 Hub 与前端 dev 服务（默认执行 npm run dev，自动注入 WV_AGENT=1，已运行 Hub 时自动复用，Node 14 老项目会自动桥接本机 Node 18+ 运行 Hub）
+
   wv-agent devices [--json] [--port 19527]
       列出在线的 WebView 会话（Android / iOS / 鸿蒙）以及本机连接的 USB/模拟器设备
 
@@ -175,6 +179,12 @@ Usage:
 }
 
 export async function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'dev') {
+    const code = await runDevCommand(argv.slice(1));
+    if (code !== 0) process.exit(code);
+    return;
+  }
+
   const { positionals, flags } = parseArgs(argv);
   const cmd = positionals[0];
   const asJson = Boolean(flags.json);

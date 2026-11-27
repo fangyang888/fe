@@ -117,6 +117,7 @@ import AdaptiveAnchorSuite from './AdaptiveAnchorSuite.jsx';
 import PeakShapeObservation from './PeakShapeObservation';
 import ThreePathObservation from './ThreePathObservation';
 import AdaptiveZodiacObservation from './AdaptiveZodiacObservation';
+import ColorParityObservation from './ColorParityObservation';
 import Likely32Lab from './Likely32Lab';
 import Likely32VectorTracker from './Likely32VectorTracker';
 import OnlineRiskRanking from './OnlineRiskRanking.jsx';
@@ -431,6 +432,12 @@ const routes = [
     label: '15期自适应生肖',
     section: '杀码',
     element: <AdaptiveZodiacObservation />,
+  },
+  {
+    path: '/kill/color-parity-observation',
+    label: '第7码波色单双排除',
+    section: '杀码',
+    element: <ColorParityObservation />,
   },
   {
     path: '/kill/online-risk-ranking',

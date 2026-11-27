@@ -108,6 +108,7 @@ def test_markdown_parser() -> None:
 
     print("[PASS] MarkdownParser 全部结构断言通过！\n")
     print("解析出的标准结构树可视化预览：\n")
+    print(tree)
     print(format_tree(tree))
 
 

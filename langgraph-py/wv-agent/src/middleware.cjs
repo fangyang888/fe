@@ -9,6 +9,34 @@
  * Zero external dependencies. Safe to mount only inside dev() / configureServer().
  */
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+// The toolbox SDK supports both immediate calls and deferred calls on BridgeReady.
+// Instrument both dispatch paths when Vite bundles the CommonJS SDK for development.
+function toolboxBridgePlugin() {
+  return {
+    name: 'wv-agent-toolbox-bridge',
+    setup: function (build) {
+      build.onLoad({ filter: /[\\/]@meetyou[\\/]toolbox[\\/]lib[\\/]jssdk[\\/]index\.js$/ }, async function (args) {
+        const original = await fs.promises.readFile(args.path, 'utf8');
+        const contents = original
+          .replace(/\bwindow\.MeiYouJSBridge\.invoke(?=\s*\()/g, 'wvAgentBridgeInvoker(window.MeiYouJSBridge)')
+          .replace(/\((\w+)\s*=\s*window\.MeiYouJSBridge\)\.invoke(?=\s*\.apply\s*\()/g, 'wvAgentBridgeInvoker($1 = window.MeiYouJSBridge)');
+        if (contents === original) return;
+        const helper = `
+function wvAgentBridgeInvoker(bridge) {
+    var probe = window.__WV_AGENT_API__;
+    return probe && typeof probe.getBridgeInvoker === 'function'
+        ? probe.getBridgeInvoker(bridge)
+        : bridge.invoke.bind(bridge);
+}
+`;
+        return { contents: contents + helper, loader: 'js', resolveDir: path.dirname(args.path) };
+      });
+    },
+  };
+}
 
 function createWvAgentMiddleware(options) {
   const opts = options || {};
@@ -26,6 +54,12 @@ function createWvAgentMiddleware(options) {
     const reqUrl = String(req.url || '/');
     if (reqUrl === mountPath || reqUrl.indexOf(mountPath + '/') === 0) {
       const targetPath = reqUrl.slice(mountPath.length) || '/';
+      const targetPathname = new URL('http://localhost' + targetPath).pathname;
+      if (targetPathname === '/observe' || targetPathname.indexOf('/observe/') === 0) {
+        res.statusCode = 403;
+        res.end('Open the observer directly on the local wv-agent hub.');
+        return;
+      }
       const isClientScript = targetPath === '/client.js' || targetPath.indexOf('/client.js?') === 0;
       const proxyPath = isClientScript
         ? '/client.js?port=' + hubPort + '&proxyPath=' + encodeURIComponent(mountPath)
@@ -162,6 +196,10 @@ function wvAgentVitePlugin(options) {
   return {
     name: 'wv-agent-dev-middleware',
     apply: 'serve',
+    config: function () {
+      if (onlyWhenEnv && process.env.WV_AGENT !== '1') return;
+      return { optimizeDeps: { esbuildOptions: { plugins: [toolboxBridgePlugin()] } } };
+    },
     configureServer: function (server) {
       server.middlewares.use(middleware);
     },

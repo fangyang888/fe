@@ -506,6 +506,200 @@ test('Same-origin HTTP long-poll transport through middleware works end-to-end',
   }
 });
 
+test('Vite toolbox instrumentation captures immediate and deferred calls on a read-only Bridge', async () => {
+  const sdkPath = path.join(os.tmpdir(), 'wv-agent-sdk-fixture-' + process.pid + '.js');
+  const sdk = `
+    var pending = [];
+    window.addEventListener('MeiYouJSBridgeReady', function () {
+      pending.forEach(function (calls) {
+        var _a;
+        (_a = window.MeiYouJSBridge).invoke.apply(_a, calls);
+      });
+    });
+    window.sdkCall = function (path, params, callback) {
+      if (window.MeiYouJSBridge && window.MeiYouJSBridge.invoke) {
+        return window.MeiYouJSBridge.invoke(path, params, callback);
+      }
+      pending.push([path, params, callback]);
+    };
+  `;
+  fs.writeFileSync(sdkPath, sdk);
+  let transformed;
+  try {
+    const plugin = createWvAgentMiddleware.wvAgentVitePlugin().config().optimizeDeps.esbuildOptions.plugins[0];
+    let load;
+    plugin.setup({ onLoad: (_options, handler) => { load = handler; } });
+    transformed = await load({ path: sdkPath });
+  } finally {
+    fs.unlinkSync(sdkPath);
+  }
+
+  const probe = fs.readFileSync(path.resolve(__dirname, '../src/client.js'), 'utf8');
+  for (const writable of [false, true]) {
+    const listeners = [];
+    const messages = [];
+    let socket;
+    const sandbox = {
+      __WV_AGENT_CONFIG__: { wsUrl: 'ws://127.0.0.1:19527/ws' },
+      WebSocket: class {
+        constructor() { socket = this; }
+        send(body) { messages.push(JSON.parse(body)); }
+      },
+      console: { log() {}, warn() {}, error() {} },
+      navigator: { userAgent: 'OpenHarmony ArkWeb' },
+      location: { href: 'http://phone.test/family.html', search: '', protocol: 'http:' },
+      document: { addEventListener() {} },
+      addEventListener(name, handler) {
+        if (name === 'MeiYouJSBridgeReady') listeners.push(handler);
+      },
+      setInterval: () => 0,
+      clearInterval() {},
+    };
+    sandbox.window = sandbox;
+    vm.runInNewContext(probe, sandbox);
+    socket.readyState = 1;
+    socket.onopen();
+    vm.runInNewContext(transformed.contents, sandbox);
+
+    const results = [];
+    const onReply = (replyPath, data) => results.push({ path: replyPath, data });
+    sandbox.sdkCall('startup/deferred', { test: 1 }, onReply);
+    const bridge = {};
+    const nativeInvoke = function (bridgePath, params, callback) {
+      assert.equal(this, bridge);
+      callback(bridgePath, params.test);
+    };
+    Object.defineProperty(bridge, 'invoke', { value: nativeInvoke, writable });
+    Object.defineProperty(sandbox, 'MeiYouJSBridge', { value: bridge });
+    for (const ready of listeners) ready();
+    sandbox.sdkCall('startup/immediate', { test: 2 }, onReply);
+
+    assert.equal(bridge.invoke === nativeInvoke, !writable);
+    assert.equal(sandbox.__WV_AGENT_API__.getMeta().bridgeCapture, writable ? 'native' : 'sdk');
+    assert.deepEqual(results, [{ path: 'startup/deferred', data: 1 }, { path: 'startup/immediate', data: 2 }]);
+    const traces = messages.filter(({ eventType }) => ['bridge_start', 'bridge_trace'].includes(eventType));
+    assert.deepEqual(traces.map(({ eventType, payload }) => [eventType, payload.path]), [
+      ['bridge_start', 'startup/deferred'],
+      ['bridge_trace', 'startup/deferred'],
+      ['bridge_start', 'startup/immediate'],
+      ['bridge_trace', 'startup/immediate'],
+    ]);
+    assert.equal(traces[0].payload.documentId, traces[1].payload.documentId);
+    assert.equal(traces[0].payload.id, traces[1].payload.id);
+  }
+});
+
+test('Observer streams H5 activity for the selected phone and keeps existing Bridge traces intact', { timeout: 8000 }, async () => {
+  const hub = new WvAgentHub({ port: 0, host: '127.0.0.1' });
+  const { port } = await hub.start();
+  const origin = `http://127.0.0.1:${port}`;
+  const middleware = createWvAgentMiddleware({ hubPort: port });
+  const appServer = http.createServer((req, res) => middleware(req, res, () => res.writeHead(404).end()));
+  await new Promise((resolve) => appServer.listen(0, '127.0.0.1', resolve));
+  const appOrigin = `http://127.0.0.1:${appServer.address().port}`;
+  const controller = new AbortController();
+  let android;
+
+  async function post(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 200);
+    return response.json();
+  }
+
+  function readEvents(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    return async () => {
+      while (!buffered.includes('\n\n')) {
+        const { value, done } = await reader.read();
+        assert.equal(done, false);
+        buffered += decoder.decode(value, { stream: true });
+      }
+      const boundary = buffered.indexOf('\n\n');
+      const [eventLine, dataLine] = buffered.slice(0, boundary).split('\n');
+      buffered = buffered.slice(boundary + 2);
+      return [eventLine.slice('event: '.length), JSON.parse(dataLine.slice('data: '.length))];
+    };
+  }
+
+  try {
+    const page = await fetch(`${origin}/observe`);
+    assert.match(await page.text(), /手机实时观察/);
+    assert.equal((await fetch(`${origin}/observe/app.js`)).status, 200);
+    assert.equal((await fetch(`${appOrigin}/__wv_agent__/observe`)).status, 403);
+    assert.equal((await fetch(`${origin}/observe`, { headers: { Origin: appOrigin } })).status, 403);
+
+    const phoneUrl = `${appOrigin}/__wv_agent__/poll`;
+    const { clientId } = await post(`${phoneUrl}/register`, {
+      meta: { clientId: 'harmony-observe', platform: 'harmony', hasBridge: true },
+    });
+    const push = (events) => post(`${phoneUrl}/push`, { clientId, events });
+    const click = { action: 'click', label: '保存相册' };
+    await push([{ eventType: 'interaction', payload: click }]);
+
+    const response = await fetch(`${origin}/observe/events?device=${clientId}`, { signal: controller.signal });
+    assert.match(response.headers.get('content-type'), /^text\/event-stream/);
+    const nextEvent = readEvents(response);
+    const [snapshotType, snapshot] = await nextEvent();
+    assert.equal(snapshotType, 'snapshot');
+    assert.equal(snapshot[0].item.label, click.label);
+
+    android = await connectMockPhone(port, { clientId: 'android-observe', platform: 'android' });
+    const registered = new Promise((resolve) => android.ws.addEventListener('message', resolve, { once: true }));
+    await registered;
+    const otherStream = await fetch(`${origin}/observe/events?device=android-observe`, { signal: controller.signal });
+    const nextAndroidEvent = readEvents(otherStream);
+    assert.deepEqual(await nextAndroidEvent(), ['snapshot', []]);
+    android.emit('interaction', { action: 'click', label: '另一台设备' });
+    assert.equal((await nextAndroidEvent())[1].item.label, '另一台设备');
+
+    const call = { id: 1, documentId: 'doc-one', path: 'album/save', params: { images: ['fixture.png'] } };
+    await push([
+      { eventType: 'bridge_start', payload: call },
+      { eventType: 'network', payload: { status: 200, ok: true } },
+      { eventType: 'network', payload: { status: 503, ok: false } },
+      { eventType: 'page_error', payload: { message: 'fixture error' } },
+    ]);
+    const [eventName, start] = await nextEvent();
+    assert.equal(eventName, 'activity');
+    assert.equal(start.type, 'bridge_start');
+    assert.equal(start.item.documentId, call.documentId);
+    assert.deepEqual(start.item.params, call.params);
+    assert.equal((await nextEvent())[1].item.status, 503);
+    assert.equal((await nextEvent())[1].type, 'page_error');
+    assert.deepEqual((await (await fetch(`${origin}/api/traces?device=${clientId}`)).json()).traces, []);
+
+    const trace = { ...call, source: 'page', status: 'resolved', data: { saved: true }, durationMs: 12 };
+    await push([{ eventType: 'bridge_trace', payload: trace }]);
+    const [, completed] = await nextEvent();
+    assert.equal(completed.type, 'bridge_trace');
+    assert.equal(completed.item.documentId, call.documentId);
+    assert.deepEqual(completed.item.data, trace.data);
+    assert.equal((await (await fetch(`${origin}/api/traces?device=${clientId}`)).json()).traces.length, 1);
+
+    await push([
+      { eventType: 'bridge_start', payload: { ...call, id: 2, source: 'agent' } },
+      { eventType: 'bridge_trace', payload: { ...call, id: 2, source: 'agent', status: 'timeout' } },
+    ]);
+    assert.equal((await nextEvent())[1].item.source, 'agent');
+    assert.equal((await nextEvent())[1].item.status, 'timeout');
+
+    await fetch(`${origin}/api/state?device=${clientId}`, { method: 'DELETE' });
+    assert.deepEqual(await nextEvent(), ['snapshot', []]);
+  } finally {
+    controller.abort();
+    android?.close();
+    appServer.close();
+    appServer.closeAllConnections();
+    await hub.stop();
+  }
+});
+
 test('CLI plugin build / install / status / uninstall works for Antigravity & Codex with zero source leakage', async () => {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wv-agent-plugin-test-'));
   const outDir = path.join(tmpRoot, 'dist-plugins');

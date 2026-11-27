@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手机实时观察 · wv-agent</title>
+  <link rel="stylesheet" href="/observe/style.css">
+  <script src="/observe/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="product">wv-agent</p>
+      <h1>手机实时观察</h1>
+    </header>
+
+    <div class="toolbar">
+      <label for="device">设备</label>
+      <select id="device" disabled><option value="">等待设备</option></select>
+      <span id="status" role="status">正在连接 Hub…</span>
+    </div>
+    <p id="page" hidden></p>
+
+    <section aria-labelledby="timeline-title">
+      <h2 id="timeline-title">事件时间线</h2>
+      <div id="timeline" role="region" aria-labelledby="timeline-title" tabindex="0">
+        <p id="empty">请在手机 App 中打开接入 wv-agent 的开发页。</p>
+        <ol id="events"></ol>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

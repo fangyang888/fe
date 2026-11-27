@@ -221,13 +221,18 @@
   var deviceModel = detectDeviceModel(navigator.userAgent, platform);
   var baseName = computeBaseDeviceName();
   var instanceId = getOrCreateInstanceId();
+  var documentId = 'doc-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   var clientId = cfg.clientId || getOrCreateClientId(baseName);
   var ws = null;
   var pendingEvents = [];
   var flushTimer = null;
+  var httpRegistered = false;
   var refMap = {};
   var rawBridgeInvoke = null;
-  var rawBridgeOn = null;
+  var currentBridge = null;
+  var currentBridgeInvoke = null;
+  var tracedBridgeInvoke = null;
+  var bridgeCapture = 'unavailable';
   var traceSeq = 1;
 
   function emitEvent(type, payload) {
@@ -266,14 +271,24 @@
 
   function flushHttpEvents() {
     flushTimer = null;
-    if (!useHttpPoll || pendingEvents.length === 0) return;
+    if (!httpRegistered || pendingEvents.length === 0) return;
     var batch = pendingEvents.splice(0, 50);
-    httpRequest('POST', proxyPath + '/poll/push', { clientId: clientId, events: batch }, function (err) {
-      if (err) {
+    httpRequest('POST', proxyPath + '/poll/push', { clientId: clientId, events: batch }, function (err, data) {
+      if (err || !data || !data.ok) {
         pendingEvents = batch.concat(pendingEvents).slice(-200);
       }
       if (pendingEvents.length > 0 && !flushTimer) {
         flushTimer = setTimeout(flushHttpEvents, 500);
+      }
+    });
+  }
+
+  if (useHttpPoll && typeof navigator.sendBeacon === 'function') {
+    window.addEventListener('pagehide', function () {
+      if (!httpRegistered || pendingEvents.length === 0) return;
+      var batch = { clientId: clientId, events: pendingEvents };
+      if (navigator.sendBeacon(proxyPath + '/poll/push', JSON.stringify(batch))) {
+        pendingEvents = [];
       }
     });
   }
@@ -289,6 +304,7 @@
       url: location.href,
       title: document.title || '',
       hasBridge: !!(window.MeiYouJSBridge && typeof window.MeiYouJSBridge.invoke === 'function' && !window.MeiYouJSBridge.__wvAgentShim__),
+      bridgeCapture: bridgeCapture,
       viewport: {
         width: window.innerWidth || 0,
         height: window.innerHeight || 0,
@@ -515,53 +531,93 @@
 
   installBridgeDebugShimIfNeeded();
 
-  // ===== 1. Hook window.MeiYouJSBridge (Zero-intrusion for @meetyou/toolbox & meetyou.bridge) =====
-  function hookMeiYouBridge() {
-    var bridge = window.MeiYouJSBridge;
-    if (!bridge || bridge.__wvAgentHooked__ || bridge.__wvAgentShim__) return !!bridge;
-    bridge.__wvAgentHooked__ = true;
-
-    if (typeof bridge.invoke === 'function') {
-      rawBridgeInvoke = bridge.invoke.bind(bridge);
-      bridge.invoke = function (path, params, callback) {
-        var id = traceSeq++;
-        var startedAt = Date.now();
-        var cleanParams = safeClone(params || {});
-        if (typeof callback !== 'function') {
+  // ===== 1. Observe native invocations through the Bridge or the development SDK =====
+  function tracePageInvoke(invoke) {
+    return function (path, params, callback) {
+      var callbackIsSecondArg = typeof params === 'function' && callback === undefined;
+      if (callbackIsSecondArg) callback = params;
+      var id = traceSeq++;
+      var startedAt = Date.now();
+      var cleanParams = safeClone(callbackIsSecondArg ? {} : (params || {}));
+      if (typeof callback !== 'function') {
+        emitEvent('bridge_trace', {
+          id: id,
+          kind: 'invoke',
+          source: 'page',
+          path: String(path || ''),
+          params: cleanParams,
+          status: 'fire_and_forget',
+          durationMs: 0,
+          url: location.href,
+        });
+        return invoke.apply(null, arguments);
+      }
+      emitEvent('bridge_start', {
+        id: id,
+        documentId: documentId,
+        source: 'page',
+        path: String(path || ''),
+        params: cleanParams,
+        url: location.href,
+      });
+      var callbackEntered = false;
+      var wrappedCb = function (cbPath, data) {
+        callbackEntered = true;
+        emitEvent('bridge_trace', {
+          id: id,
+          documentId: documentId,
+          kind: 'invoke',
+          source: 'page',
+          path: String(path || ''),
+          cbPath: cbPath,
+          params: cleanParams,
+          data: safeClone(data),
+          status: 'resolved',
+          durationMs: Date.now() - startedAt,
+          url: location.href,
+        });
+        return callback.apply(this, arguments);
+      };
+      try {
+        var args = Array.prototype.slice.call(arguments);
+        args[callbackIsSecondArg ? 1 : 2] = wrappedCb;
+        return invoke.apply(null, args);
+      } catch (err) {
+        if (!callbackEntered) {
           emitEvent('bridge_trace', {
             id: id,
+            documentId: documentId,
             kind: 'invoke',
             source: 'page',
             path: String(path || ''),
             params: cleanParams,
-            status: 'fire_and_forget',
-            durationMs: 0,
-            url: location.href,
-          });
-          return rawBridgeInvoke(path, params, callback);
-        }
-        var wrappedCb = function (cbPath, data) {
-          emitEvent('bridge_trace', {
-            id: id,
-            kind: 'invoke',
-            source: 'page',
-            path: String(path || ''),
-            cbPath: cbPath,
-            params: cleanParams,
-            data: safeClone(data),
-            status: 'resolved',
+            status: 'error',
+            error: err && err.message ? err.message : String(err),
             durationMs: Date.now() - startedAt,
             url: location.href,
           });
-          return callback.apply(this, arguments);
-        };
-        return rawBridgeInvoke(path, params, wrappedCb);
-      };
-    }
+        }
+        throw err;
+      }
+    };
+  }
 
-    if (typeof bridge.on === 'function') {
-      rawBridgeOn = bridge.on.bind(bridge);
-      bridge.on = function (path, params, callback) {
+  function hookMeiYouBridge() {
+    var bridge = window.MeiYouJSBridge;
+    if (!bridge || bridge.__wvAgentShim__ || typeof bridge.invoke !== 'function') return false;
+    var sameBridge = bridge === currentBridge;
+    if (sameBridge && (bridge.invoke === currentBridgeInvoke || bridge.invoke === tracedBridgeInvoke)) return true;
+
+    currentBridge = bridge;
+    currentBridgeInvoke = bridge.invoke;
+    rawBridgeInvoke = currentBridgeInvoke.bind(bridge);
+    tracedBridgeInvoke = tracePageInvoke(rawBridgeInvoke);
+    try { bridge.invoke = tracedBridgeInvoke; } catch (e) {}
+    bridgeCapture = bridge.invoke === tracedBridgeInvoke ? 'native' : 'readonly';
+
+    if (!sameBridge && typeof bridge.on === 'function') {
+      var rawBridgeOn = bridge.on.bind(bridge);
+      var tracedOn = function (path, params, callback) {
         var id = traceSeq++;
         var cleanParams = safeClone(params || {});
         if (typeof callback !== 'function') {
@@ -584,10 +640,24 @@
         };
         return rawBridgeOn(path, params, wrappedCb);
       };
+      try { bridge.on = tracedOn; } catch (e) {}
     }
 
     emitEvent('meta', getDeviceMeta());
     return true;
+  }
+
+  function getBridgeInvoker(bridge) {
+    if (bridge === window.MeiYouJSBridge) hookMeiYouBridge();
+    var invoke = bridge.invoke;
+    var boundInvoke = invoke.bind(bridge);
+    if (bridge.__wvAgentShim__ || invoke === tracedBridgeInvoke) return boundInvoke;
+
+    if (bridge === currentBridge && bridgeCapture !== 'sdk') {
+      bridgeCapture = 'sdk';
+      emitEvent('meta', getDeviceMeta());
+    }
+    return tracePageInvoke(boundInvoke);
   }
 
   hookMeiYouBridge();
@@ -640,62 +710,47 @@
 
       var id = traceSeq++;
       var startedAt = Date.now();
+      var trace = {
+        id: id,
+        documentId: documentId,
+        kind: 'invoke',
+        source: 'agent',
+        path: path,
+        params: safeClone(params),
+        url: location.href,
+      };
+      emitEvent('bridge_start', trace);
+
       var settled = false;
-      var timer = setTimeout(function () {
+      function finish(fields) {
         if (settled) return;
         settled = true;
-        var res = {
-          id: id,
-          kind: 'invoke',
-          source: 'agent',
-          path: path,
-          params: safeClone(params),
+        clearTimeout(timer);
+        var result = Object.assign({ durationMs: Date.now() - startedAt }, trace, fields);
+        emitEvent('bridge_trace', result);
+        reply(result);
+      }
+      var timer = setTimeout(function () {
+        finish({
           status: 'timeout',
-          durationMs: Date.now() - startedAt,
           error: 'Bridge callback timed out after ' + timeoutMs + 'ms',
-          url: location.href,
-        };
-        emitEvent('bridge_trace', res);
-        reply(res);
+        });
       }, timeoutMs);
 
       try {
         rawBridgeInvoke(path, params, function (cbPath, data) {
           if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          var res = {
-            id: id,
-            kind: 'invoke',
-            source: 'agent',
-            path: path,
+          finish({
             cbPath: cbPath,
-            params: safeClone(params),
             data: safeClone(data),
             status: 'resolved',
-            durationMs: Date.now() - startedAt,
-            url: location.href,
-          };
-          emitEvent('bridge_trace', res);
-          reply(res);
+          });
         });
       } catch (err) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        var resErr = {
-          id: id,
-          kind: 'invoke',
-          source: 'agent',
-          path: path,
-          params: safeClone(params),
+        finish({
           status: 'error',
-          durationMs: Date.now() - startedAt,
           error: err && err.message ? err.message : String(err),
-          url: location.href,
-        };
-        emitEvent('bridge_trace', resErr);
-        reply(resErr);
+        });
       }
     });
   }
@@ -795,6 +850,34 @@
       }
       return origSend.apply(this, arguments);
     };
+  }
+
+  // Capture before business click handlers so synchronous Bridge calls follow the click.
+  if (platform !== 'web') {
+    document.addEventListener('click', function (event) {
+      if (event.isTrusted === false) return;
+      var target = event.target;
+      if (target && target.nodeType !== 1) target = target.parentElement;
+      if (!target || target.nodeType !== 1) return;
+
+      var element = target;
+      while (element && element !== document.body) {
+        if (element.tagName.toLowerCase() === 'label' || isInteractive(element)) break;
+        element = element.parentElement;
+      }
+      if (!element || element === document.body) element = target;
+
+      var tag = element.tagName.toLowerCase();
+      var label = element.getAttribute('aria-label') ||
+        (/^(body|input|select|textarea)$/.test(tag) || element.isContentEditable ? '' : element.innerText);
+      emitEvent('interaction', {
+        action: 'click',
+        tag: tag,
+        label: String(label || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        testId: (element.getAttribute('data-testid') || '').slice(0, 120),
+        url: location.href,
+      });
+    }, true);
   }
 
   // ===== 3. Lightweight DOM Snapshot & H5 Action Executor =====
@@ -1014,14 +1097,13 @@
 
     function registerAndPoll() {
       httpRequest('POST', proxyPath + '/poll/register', { meta: getDeviceMeta() }, function (err, data) {
-        if (err) {
+        if (err || !data || !data.clientId) {
           setTimeout(registerAndPoll, retryDelay);
           retryDelay = Math.min(retryDelay * 1.5, 4000);
           return;
         }
-        if (data && data.clientId) {
-          saveAssignedClientId(data.clientId);
-        }
+        saveAssignedClientId(data.clientId);
+        httpRegistered = true;
         retryDelay = 500;
         flushHttpEvents();
         if (!polling) pollNext();
@@ -1032,11 +1114,12 @@
       polling = true;
       httpRequest('GET', proxyPath + '/poll/next?clientId=' + encodeURIComponent(clientId), undefined, function (err, data) {
         polling = false;
-        if (err) {
+        if (err || !data || !data.ok) {
+          httpRegistered = false;
           setTimeout(registerAndPoll, 1000);
           return;
         }
-        var cmds = (data && data.commands) || [];
+        var cmds = data.commands || [];
         for (var i = 0; i < cmds.length; i++) {
           handleCommand(cmds[i]);
         }
@@ -1108,6 +1191,7 @@
   window.__WV_AGENT_API__ = {
     getClientId: function () { return clientId; },
     getMeta: getDeviceMeta,
+    getBridgeInvoker: getBridgeInvoker,
     snapshot: buildSnapshot,
     callBridge: function (path, params, timeoutMs) {
       return new Promise(function (resolve) {

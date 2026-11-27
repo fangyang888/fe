@@ -1,0 +1,113 @@
+:root {
+  color-scheme: light;
+  font: 15px/1.5 system-ui, sans-serif;
+  color: #172428;
+  background: #f2f5f4;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 58px) clamp(16px, 4vw, 42px);
+}
+
+header { margin-bottom: 26px; }
+.product {
+  margin: 0 0 4px;
+  color: #526568;
+  font: 600 0.86rem/1.5 ui-monospace, monospace;
+}
+h1 { margin: 0; font-size: clamp(1.75rem, 5vw, 2.4rem); line-height: 1.2; }
+h2 { margin: 0 0 10px; font-size: 1rem; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  min-height: 44px;
+}
+
+label { font-weight: 600; }
+select {
+  max-width: min(100%, 28rem);
+  min-height: 42px;
+  padding: 6px 10px;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #a8b8b5;
+  border-radius: 7px;
+  font: inherit;
+}
+:focus-visible { outline: 2px solid #117972; outline-offset: 3px; }
+
+#status, #page, #empty { color: #526568; }
+#status { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
+#status::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #879995; }
+#status[data-state="online"]::before { background: #15836b; }
+#status[data-state="error"]::before { background: #bd543f; }
+#page { margin: 8px 0 0; overflow-wrap: anywhere; font-size: .85rem; }
+
+section { margin-top: 26px; }
+#timeline {
+  min-height: 220px;
+  max-height: max(260px, calc(100dvh - 275px));
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #cedbd8;
+  border-radius: 10px;
+}
+#empty { margin: 28px 20px; }
+#events { list-style: none; margin: 0; padding: 0; }
+#events > li + li { border-top: 1px solid #e2eae8; }
+
+summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: 7rem 78px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px 14px;
+  padding: 12px 38px 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary::after {
+  content: '';
+  position: absolute;
+  top: 17px;
+  right: 17px;
+  width: 6px;
+  height: 6px;
+  border: solid #526568;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
+details[open] summary::after { transform: rotate(45deg); }
+summary:hover, details[open] summary { background: #f4f8f7; }
+summary:focus-visible { outline-offset: -2px; }
+summary time { color: #526568; font: .85rem ui-monospace, monospace; white-space: nowrap; }
+.event-type { font-size: .82rem; font-weight: 650; color: #355966; }
+.bridge { color: #107167; }
+.problem { color: #a03f2a; }
+.event-message { overflow-wrap: anywhere; }
+.event-message small { color: #566a6d; margin-left: 10px; }
+.event-message small[data-state="late"] { color: #a03f2a; }
+pre {
+  margin: 0;
+  padding: 12px 16px 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f4f8f7;
+  font: .86rem/1.55 ui-monospace, monospace;
+}
+
+@media (max-width: 520px) {
+  summary { grid-template-columns: 7rem minmax(0, 1fr); }
+  .event-message { grid-column: 1 / -1; }
+  #status { width: 100%; }
+}

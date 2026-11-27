@@ -97,6 +97,7 @@ function printHelp() {
 Usage:
   wv-agent hub [--port 19527]
       启动本机 WebSocket + HTTP 调试中心（手机扫码打开带探针的页面后自动连入）
+      电脑浏览器打开 http://127.0.0.1:19527/observe 查看手机实时操作
 
   wv-agent devices [--json] [--port 19527]
       列出在线的 WebView 会话（Android / iOS / 鸿蒙）以及本机连接的 USB/模拟器设备
@@ -172,6 +173,7 @@ async function main() {
           message: 'wv-agent hub started',
           port: info.port,
           lanIps: info.lanIps,
+          observerUrl: `http://127.0.0.1:${info.port}/observe`,
           clientScriptUrl: `http://127.0.0.1:${info.port}/client.js`,
           wsUrls: info.lanIps.map((ip) => `ws://${ip}:${info.port}/ws`),
         },

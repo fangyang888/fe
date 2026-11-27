@@ -1,0 +1,217 @@
+[
+  {
+    "doc_id": "doc_0001",
+    "source_id": "05_full_demo.md",
+    "node_type": "page",
+    "parent_id": null,
+    "breadcrumbs": [
+      "产品手册"
+    ],
+    "content": "本手册用于指导工程师完成设备安装、参数核对与 SDK 接入。\n\n{{REF:doc_0002|类型=子章节|摘要=安装指南}}\n\n{{REF:doc_0008|类型=子章节|摘要=故障排查}}",
+    "surrounding_context": "",
+    "child_refs": [
+      {
+        "ref_doc_id": "doc_0002",
+        "node_type": "heading",
+        "summary": "安装指南"
+      },
+      {
+        "ref_doc_id": "doc_0008",
+        "node_type": "heading",
+        "summary": "故障排查"
+      }
+    ],
+    "indexable": true,
+    "meta": {
+      "title": "产品手册",
+      "level": 0,
+      "source_node_id": "node_001"
+    }
+  },
+  {
+    "doc_id": "doc_0002",
+    "source_id": "05_full_demo.md",
+    "node_type": "heading",
+    "parent_id": "doc_0001",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南"
+    ],
+    "content": "安装前请先确认供电环境和防护等级要求：\n\n{{REF:doc_0003|类型=表格|摘要=表格[型号、功率、防护](共3行)}}\n\n> 注意：户外场景请至少选择 IP65 及以上型号。\n\n{{REF:doc_0004|类型=图片|摘要=设备接线示意图(标准接线图)}}\n\n{{REF:doc_0005|类型=子章节|摘要=快速启动代码}}",
+    "surrounding_context": "",
+    "child_refs": [
+      {
+        "ref_doc_id": "doc_0003",
+        "node_type": "table",
+        "summary": "表格[型号、功率、防护](共3行)"
+      },
+      {
+        "ref_doc_id": "doc_0004",
+        "node_type": "image",
+        "summary": "设备接线示意图(标准接线图)"
+      },
+      {
+        "ref_doc_id": "doc_0005",
+        "node_type": "heading",
+        "summary": "快速启动代码"
+      }
+    ],
+    "indexable": true,
+    "meta": {
+      "title": "安装指南",
+      "level": 1,
+      "source_node_id": "node_003"
+    }
+  },
+  {
+    "doc_id": "doc_0003",
+    "source_id": "05_full_demo.md",
+    "node_type": "table",
+    "parent_id": "doc_0002",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南"
+    ],
+    "content": "| 型号 | 功率 | 防护 |\n| --- | --- | --- |\n| A100 | 10 W | IP54 |\n| A200 | 20 W | IP65 |\n| A300 | 30 W | IP67 |",
+    "surrounding_context": "安装前请先确认供电环境和防护等级要求：",
+    "child_refs": [],
+    "indexable": true,
+    "meta": {
+      "headers": [
+        "型号",
+        "功率",
+        "防护"
+      ],
+      "rows": [
+        [
+          "A100",
+          "10 W",
+          "IP54"
+        ],
+        [
+          "A200",
+          "20 W",
+          "IP65"
+        ],
+        [
+          "A300",
+          "30 W",
+          "IP67"
+        ]
+      ],
+      "num_rows": 3,
+      "num_cols": 3,
+      "source_node_id": "node_005"
+    }
+  },
+  {
+    "doc_id": "doc_0004",
+    "source_id": "05_full_demo.md",
+    "node_type": "image",
+    "parent_id": "doc_0002",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南"
+    ],
+    "content": "设备接线示意图 - 标准接线图",
+    "surrounding_context": "> 注意：户外场景请至少选择 IP65 及以上型号。",
+    "child_refs": [],
+    "indexable": true,
+    "meta": {
+      "url": "images/wiring.png",
+      "alt": "设备接线示意图",
+      "title": "标准接线图",
+      "source_node_id": "node_007"
+    }
+  },
+  {
+    "doc_id": "doc_0005",
+    "source_id": "05_full_demo.md",
+    "node_type": "heading",
+    "parent_id": "doc_0002",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南",
+      "快速启动代码"
+    ],
+    "content": "下面演示如何用 Python 调用初始化函数：\n\n{{REF:doc_0006|类型=代码|摘要=python代码: def init_device(model: str) -> str:}}\n\n{{REF:doc_0007|类型=子章节|摘要=常见检查项}}",
+    "surrounding_context": "",
+    "child_refs": [
+      {
+        "ref_doc_id": "doc_0006",
+        "node_type": "code",
+        "summary": "python代码: def init_device(model: str) -> str:"
+      },
+      {
+        "ref_doc_id": "doc_0007",
+        "node_type": "heading",
+        "summary": "常见检查项"
+      }
+    ],
+    "indexable": true,
+    "meta": {
+      "title": "快速启动代码",
+      "level": 2,
+      "source_node_id": "node_008"
+    }
+  },
+  {
+    "doc_id": "doc_0006",
+    "source_id": "05_full_demo.md",
+    "node_type": "code",
+    "parent_id": "doc_0005",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南",
+      "快速启动代码"
+    ],
+    "content": "def init_device(model: str) -> str:\n    return f\"Device {model} ready\"\n\nprint(init_device(\"A200\"))",
+    "surrounding_context": "下面演示如何用 Python 调用初始化函数：",
+    "child_refs": [],
+    "indexable": true,
+    "meta": {
+      "language": "python",
+      "source_node_id": "node_010"
+    }
+  },
+  {
+    "doc_id": "doc_0007",
+    "source_id": "05_full_demo.md",
+    "node_type": "heading",
+    "parent_id": "doc_0005",
+    "breadcrumbs": [
+      "产品手册",
+      "安装指南",
+      "快速启动代码",
+      "常见检查项"
+    ],
+    "content": "- 确认电源线连接牢固\n\n- 确认指示灯呈绿色常亮",
+    "surrounding_context": "",
+    "child_refs": [],
+    "indexable": true,
+    "meta": {
+      "title": "常见检查项",
+      "level": 3,
+      "source_node_id": "node_011"
+    }
+  },
+  {
+    "doc_id": "doc_0008",
+    "source_id": "05_full_demo.md",
+    "node_type": "heading",
+    "parent_id": "doc_0001",
+    "breadcrumbs": [
+      "产品手册",
+      "故障排查"
+    ],
+    "content": "若设备无法上线，请先检查网络配置。",
+    "surrounding_context": "",
+    "child_refs": [],
+    "indexable": true,
+    "meta": {
+      "title": "故障排查",
+      "level": 1,
+      "source_node_id": "node_014"
+    }
+  }
+]

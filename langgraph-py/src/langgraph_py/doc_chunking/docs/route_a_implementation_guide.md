@@ -94,8 +94,8 @@ for t in tokens:
 | :--- | :--- | :--- | :--- | :--- |
 | **Step 1** | ✅ 已完成 | `config.py`<br>`schemas.py`<br>`tokenizer.py` | 搭建地基：定义全局阈值配置、3 阶段数据模型、精确 Token 计数工具 | 运行 `tests/test_step1.py` |
 | **Step 2** | ✅ 已完成 | `parsers/base.py`<br>`parsers/markdown_parser.py` | **阶段一（解析）**：用 `markdown-it-py` 把 `.md` 文件解析成 `TreeNode` 标准结构树（识别页面、H1~H6 标题层级、段落、代码块、表格行列、图片） | 运行 `tests/test_step2.py` |
-| **Step 3** | ⏳ 下一步 | `structurer.py` | **阶段二（结构化拆解）**：把 `TreeNode` 树拆成带 `parent_id`、带摘要占位符 `{{REF:...}}` 的 `StructuredDocument`，过滤空壳标题，为代码/表格/图片自动摘取紧邻前文 | 导出并检查 `documents.json` |
-| **Step 4** | ⏳ 待实现 | `chunkers/text_chunker.py`<br>`chunkers/image_chunker.py` | **阶段三（正文 + 图片）**：实现正文 `段落→句子→控长 + Overlap + 面包屑`；实现图片整体保留（及超长 OCR 拆分共享 `image_id`） | 测试超长正文与图片的 Chunk 产出 |
+| **Step 3** | ✅ 已完成 | `structurer.py`<br>复习：[step3_structurer.md](./step3_structurer.md) | **阶段二（结构化拆解）**：把 `TreeNode` 树拆成带 `parent_id`、带摘要占位符 `{{REF:...}}` 的 `StructuredDocument`，过滤空壳标题，为代码/表格/图片自动摘取紧邻前文 | 运行 `tests/test_step3.py` |
+| **Step 4** | ⏳ 下一步 | `chunkers/text_chunker.py`<br>`chunkers/image_chunker.py` | **阶段三（正文 + 图片）**：实现正文 `段落→句子→控长 + Overlap + 面包屑`；实现图片整体保留（及超长 OCR 拆分共享 `image_id`） | 测试超长正文与图片的 Chunk 产出 |
 | **Step 5** | ⏳ 待实现 | `chunkers/code_chunker.py` | **阶段三（代码）**：实现 `<= 800t` 整体保留；超长代码按语言语法切分 + 非代码/日志按空行带 overlap 兜底 + 面包屑 | 测试短代码整留 & 1500t 长代码拆分 |
 | **Step 6** | ⏳ 待实现 | `table_normalizer.py`<br>`chunkers/table_chunker.py` | **阶段三（表格）**：表头压平/空洞填充 + `<= 600t` 小表整留 + 大表多行打包重复表头 + 超宽单行转 KV + 面包屑 | 测试小表、大表、超宽行 3 种边界 |
 | **Step 7** | ⏳ 待实现 | `pipeline.py` | **总装演练**：串联 1~6 步，输入 1 份真实综合 Markdown（含多级标题、长代码、大表格、图片），一键输出 `documents.json` 和 `chunks.json` | 完整端到端脚本跑通，肉眼核对全部输出 |

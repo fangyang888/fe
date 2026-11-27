@@ -8,6 +8,11 @@ import { diffBridgeResults, summarizeBridgeDiff, formatDiffMarkdown } from './di
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_SCRIPT_PATH = path.join(__dirname, 'client.js');
+const OBSERVE_ASSETS = new Map([
+  ['/observe', ['observe.html', 'text/html']],
+  ['/observe/app.js', ['observe.js', 'application/javascript']],
+  ['/observe/style.css', ['observe.css', 'text/css']],
+]);
 
 export const DEFAULT_HUB_PORT = Number(process.env.WV_AGENT_PORT || 19527);
 const MAX_BUFFER = 300;
@@ -61,6 +66,7 @@ export class WvAgentHub {
     this.host = host;
     this.sessions = new Map(); // clientId -> Session
     this.pendingRpc = new Map(); // reqId -> { resolve, reject, timer }
+    this.observers = new Map(); // SSE response -> exact clientId
     this.rpcSeq = 1;
     this.server = null;
     this.pingTimer = null;
@@ -82,6 +88,7 @@ export class WvAgentHub {
         consoles: [],
         errors: [],
         network: [],
+        observations: [],
         httpCommandQueue: [],
         httpPollWaiter: null, // { res, timer }
       };
@@ -138,6 +145,7 @@ export class WvAgentHub {
       session.httpPollWaiter = null;
     }
     session.httpCommandQueue = [];
+    this._clearObservations(session);
     session.connectedAt = Date.now();
   }
 
@@ -156,6 +164,22 @@ export class WvAgentHub {
     if (arr.length > MAX_BUFFER) arr.shift();
   }
 
+  _publishObservation(session, type, data) {
+    for (const [res, clientId] of this.observers) {
+      if (clientId !== session.clientId) continue;
+      if (res.writableLength > 1024 * 1024) {
+        res.destroy();
+      } else {
+        res.write(`event: ${type}\ndata: ${JSON.stringify(data)}\n\n`);
+      }
+    }
+  }
+
+  _clearObservations(session) {
+    session.observations = [];
+    this._publishObservation(session, 'snapshot', session.observations);
+  }
+
   _recordEvent(session, eventType, payload, ts) {
     session.lastSeenAt = Date.now();
     const item = { ts: ts || Date.now(), ...(payload || {}) };
@@ -169,6 +193,14 @@ export class WvAgentHub {
       this._pushBounded(session.errors, item);
     } else if (eventType === 'network') {
       this._pushBounded(session.network, item);
+    }
+
+    if (eventType === 'interaction' || eventType === 'bridge_start' || eventType === 'bridge_trace' ||
+        eventType === 'page_error' || eventType === 'console' ||
+        (eventType === 'network' && (!item.ok || item.status >= 400))) {
+      const event = { type: eventType, receivedAt: session.lastSeenAt, item };
+      this._pushBounded(session.observations, event);
+      this._publishObservation(session, 'activity', event);
     }
   }
 
@@ -295,9 +327,8 @@ export class WvAgentHub {
       }
 
       if (msg.type === 'event') {
-        const cid = msg.clientId || boundClientId;
-        if (!cid) return;
-        const session = this._getOrCreateSession(cid);
+        const session = this.sessions.get(boundClientId);
+        if (!session || session.conn !== conn) return;
         this._recordEvent(session, msg.eventType, msg.payload, msg.ts);
         return;
       }
@@ -318,14 +349,65 @@ export class WvAgentHub {
     });
   }
 
+  async _serveObserver(req, res, url) {
+    const host = req.headers.host || '';
+    const localSocket = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+    const localHost = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
+    const origin = req.headers.origin;
+    if (!localSocket || !localHost || (origin && origin !== `http://${host}`)) {
+      res.writeHead(403).end('Open the observer on the computer running wv-agent.');
+      return;
+    }
+
+    const headers = {
+      'Cache-Control': 'no-store',
+      'Cross-Origin-Resource-Policy': 'same-origin',
+      'X-Content-Type-Options': 'nosniff',
+    };
+    const asset = OBSERVE_ASSETS.get(url.pathname);
+    if (req.method === 'GET' && asset) {
+      const [filename, contentType] = asset;
+      const content = await fs.readFile(path.join(__dirname, filename));
+      res.writeHead(200, {
+        ...headers,
+        'Content-Type': `${contentType}; charset=utf-8`,
+        'Content-Security-Policy': "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+      }).end(content);
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/observe/events') {
+      const session = this.sessions.get(url.searchParams.get('device'));
+      if (!session) {
+        res.writeHead(404, headers).end('WebView session not found.');
+        return;
+      }
+      res.writeHead(200, { ...headers, 'Content-Type': 'text/event-stream; charset=utf-8' });
+      res.on('close', () => this.observers.delete(res));
+      this.observers.set(res, session.clientId);
+      res.write(`event: snapshot\ndata: ${JSON.stringify(session.observations)}\n\n`);
+      return;
+    }
+
+    res.writeHead(404, headers).end();
+  }
+
   async _handleHttp(req, res) {
+    const urlObj = new URL(req.url || '/', `http://localhost:${this.port}`);
+    const pathname = urlObj.pathname;
+    if (pathname === '/observe' || pathname.startsWith('/observe/')) {
+      try {
+        await this._serveObserver(req, res, urlObj);
+      } catch {
+        res.writeHead(500).end('Unable to load the observer.');
+      }
+      return;
+    }
+
     if (req.method === 'OPTIONS') {
       sendJson(res, 200, { ok: true });
       return;
     }
-
-    const urlObj = new URL(req.url || '/', `http://localhost:${this.port}`);
-    const pathname = urlObj.pathname;
 
     try {
       // Serve browser probe script
@@ -452,6 +534,7 @@ export class WvAgentHub {
           url: s.meta.url,
           title: s.meta.title,
           hasBridge: s.meta.hasBridge,
+          bridgeCapture: s.meta.bridgeCapture,
           viewport: s.meta.viewport,
           ua: s.meta.ua,
           connectedAt: s.connectedAt,
@@ -577,19 +660,13 @@ export class WvAgentHub {
 
       if (req.method === 'DELETE' && pathname === '/api/state') {
         const device = urlObj.searchParams.get('device');
-        if (device) {
-          const session = this.resolveDevice(device);
+        const sessions = device ? [this.resolveDevice(device)] : this.sessions.values();
+        for (const session of sessions) {
           session.traces = [];
           session.consoles = [];
           session.errors = [];
           session.network = [];
-        } else {
-          for (const session of this.sessions.values()) {
-            session.traces = [];
-            session.consoles = [];
-            session.errors = [];
-            session.network = [];
-          }
+          this._clearObservations(session);
         }
         sendJson(res, 200, { ok: true });
         return;
@@ -619,6 +696,10 @@ export class WvAgentHub {
           for (const s of this.sessions.values()) {
             if (s.transport === 'ws' && s.connected && s.conn) s.conn.ping('hb');
           }
+          for (const res of this.observers.keys()) {
+            if (res.writableLength > 1024 * 1024) res.destroy();
+            else res.write(': heartbeat\n\n');
+          }
         }, 20000);
         this.pingTimer.unref();
         resolve({ port: this.port, host: this.host, lanIps: getLanIps() });
@@ -633,6 +714,8 @@ export class WvAgentHub {
       reject(new Error('Hub stopped'));
     }
     this.pendingRpc.clear();
+    for (const res of this.observers.keys()) res.end();
+    this.observers.clear();
     for (const s of this.sessions.values()) {
       if (s.conn) s.conn.close(1001, 'Hub shutting down');
       if (s.httpPollWaiter) {

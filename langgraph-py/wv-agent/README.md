@@ -164,6 +164,18 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 > - **macOS：** `export ADB_PATH="/path/to/adb"`、`export HDC_PATH="/path/to/hdc"`
 > - **Windows（PowerShell）：** `$env:ADB_PATH="D:\Android\Sdk\platform-tools\adb.exe"`、`$env:HDC_PATH="D:\DevEco\sdk\...\hdc.exe"`
 
+### 从电脑实时观察手机操作
+
+1. 启动 `wv-agent hub`，在电脑浏览器打开 [手机实时观察](http://127.0.0.1:19527/observe)。如果改过端口，用 Hub 启动时输出的 `observerUrl`。
+2. 在手机 App 里打开已接入探针的开发页。升级后重新打开或刷新手机页面，再从观察页的「设备」下拉框选中这台手机。
+3. 在手机上加载页面或操作。电脑会显示 H5 点击、页面自动或手动发起的业务 Bridge 调用、Live 或 CLI 发起的业务调试调用，以及 JS 异常和 Console 警告/错误。点开记录可以查看入参、回包和错误详情。
+
+时间线隐藏 HTTP 请求、`http` / `http/*` 协议及 `ga`、`mobclick` 埋点。原始记录仍可通过 `inspect` 和 `bridge trace` 查询。
+
+页面发起的带回调调用会先显示「等待原生回调」，10 秒后标为「超过 10 秒未回调」，迟到的回包仍会出现。Live 和 CLI 调试调用遵循各自的超时设置。观察页仅在 Hub 所在电脑上打开，无需给手机页面加 URL 参数或连接 USB。系统弹窗和原生界面的点击不在 H5 观察范围内。
+
+部分鸿蒙 WebView 的原生 Bridge 为只读。使用 `wvAgentVitePlugin()` 的项目可通过开发态的 `@meetyou/toolbox/lib/jssdk` 采集调用。更新后重启 Vite 和 Hub，再刷新手机页。此方式覆盖经过该 SDK 的调用。
+
 ---
 
 ## 四、常用跟 AI Agent 交互的话术模板（直接复制使用）

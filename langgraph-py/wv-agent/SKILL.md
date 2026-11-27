@@ -7,19 +7,18 @@ description: WebView 自测与 MeiYouJSBridge（Android / iOS / 鸿蒙）三端�
 
 ## 工具入口
 
-推荐先在 `wv-agent` 目录执行一次 `npm link` 全局注册 `wv-agent` 命令（macOS & Windows 通用）；若未全局安装，请直接调用脚本：
+推荐通过 npm 全局安装 `wv-agent`（macOS & Windows 通用，CLI / Hub 需要 Node 18+）：
 
 ```bash
-# macOS / Linux (zsh/bash)
-node /Users/yang/fe/fe/langgraph-py/wv-agent/bin/wv-agent.mjs <command>
+# 推荐：全局安装一次后直接调用
+npm install -g wv-agent
+wv-agent <command>
 
-# Windows (PowerShell / CMD)
-node <path-to-wv-agent>\bin\wv-agent.mjs <command>
+# 或免安装直接通过 npx 调用
+npx -y wv-agent <command>
 ```
 
-> 注意：在 macOS `zsh` 中不要使用 `WV_CLI="node ..." && $WV_CLI ...`（zsh 不拆分变量内空格），请使用 `wv-agent` 或直接 `node .../wv-agent.mjs`。
-
-所有命令默认输出 JSON（可显式加 `--json`），默认连接本机 Hub `127.0.0.1:19527`（可通过 `--port` 或 `WV_AGENT_PORT` 覆盖）。
+> 所有命令默认输出 JSON（可显式加 `--json`），默认连接本机 Hub `127.0.0.1:19527`（可通过 `--port` 或 `WV_AGENT_PORT` 覆盖）。
 
 ## 标准自测与联调 SOP
 

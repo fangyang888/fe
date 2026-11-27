@@ -341,6 +341,25 @@
 
   var liveProxyState = null;
 
+  function createLockedBridgeShim(methods) {
+    var shim = {};
+    var keys = Object.keys(methods);
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      try {
+        Object.defineProperty(shim, k, {
+          value: methods[k],
+          writable: false,
+          configurable: false,
+          enumerable: true,
+        });
+      } catch (e) {
+        shim[k] = methods[k];
+      }
+    }
+    return shim;
+  }
+
   // ===== 0. PC Browser Bridge Shims (?bridgeDebug=live|replay or ?bridgeProxy=<device>) =====
   // When viewing on PC browser without native MeiYouJSBridge:
   //   - live mode: forward MeiYouJSBridge.invoke in real time to an online phone via wv-agent hub
@@ -396,88 +415,97 @@
         });
       }
 
-      window.MeiYouJSBridge = {
-        __wvAgentShim__: 'live',
-        config: function () {},
-        invoke: function (path, params, callback) {
-          if (typeof params === 'function') {
-            callback = params;
-            params = {};
+      var liveInvoke = function (path, params, callback) {
+        if (typeof params === 'function') {
+          callback = params;
+          params = {};
+        }
+        var cleanPath = String(path || '');
+        var cleanParams = params && typeof params === 'object' ? params : {};
+        var callTimeout = liveProxyState.timeoutMs;
+
+        resolveTargetDevice(function (devErr, device) {
+          if (devErr || !device) {
+            if (window.console) {
+              console.warn('[wv-agent live] invoke failed (' + cleanPath + '):', devErr ? devErr.message : 'no target device');
+            }
+            if (typeof callback === 'function') callback(cleanPath, {});
+            return;
           }
-          var cleanPath = String(path || '');
-          var cleanParams = params && typeof params === 'object' ? params : {};
-          var callTimeout = liveProxyState.timeoutMs;
-
-          resolveTargetDevice(function (devErr, device) {
-            if (devErr || !device) {
-              if (window.console) {
-                console.warn('[wv-agent live] invoke failed (' + cleanPath + '):', devErr ? devErr.message : 'no target device');
-              }
-              if (typeof callback === 'function') callback(cleanPath, {});
-              return;
+          if (device === clientId) {
+            if (window.console) {
+              console.warn('[wv-agent live] refusing to forward bridge call to self (' + clientId + ')');
             }
-            if (device === clientId) {
-              if (window.console) {
-                console.warn('[wv-agent live] refusing to forward bridge call to self (' + clientId + ')');
-              }
-              if (typeof callback === 'function') callback(cleanPath, {});
-              return;
-            }
+            if (typeof callback === 'function') callback(cleanPath, {});
+            return;
+          }
 
-            var rpcBody = {
-              device: device,
-              cmd: 'bridge.call',
-              payload: {
-                path: cleanPath,
-                params: cleanParams,
-                timeoutMs: callTimeout,
-              },
-              timeoutMs: callTimeout + 3000,
-            };
+          var rpcBody = {
+            device: device,
+            cmd: 'bridge.call',
+            payload: {
+              path: cleanPath,
+              params: cleanParams,
+              timeoutMs: callTimeout,
+            },
+            timeoutMs: callTimeout + 3000,
+          };
 
-            httpRequest('POST', liveProxyState.hubBase + '/api/rpc', rpcBody, function (err, payload) {
-              var res = payload && payload.result;
-              var ok = !err && payload && payload.ok && res && res.status === 'resolved';
-              var actualDevice = (payload && payload.clientId) || device;
-              if (ok) {
-                var cbPath = res.cbPath || cleanPath;
-                var data = res.data !== undefined ? res.data : {};
-                if (liveProxyState.logEnabled && window.console) {
-                  console.log(
-                    '[wv-agent live -> ' + actualDevice + '] invoke',
-                    cleanPath,
-                    cleanParams,
-                    '=>',
-                    data,
-                    '(' + (res.durationMs || 0) + 'ms)'
-                  );
-                }
-                if (typeof callback === 'function') {
-                  callback(cbPath, data);
-                }
-                return;
-              }
-
-              var reason = err
-                ? (err.message || String(err))
-                : (payload && !payload.ok
-                  ? (payload.error || 'Hub RPC failed')
-                  : ((res && (res.error || res.status)) || 'Bridge call failed'));
-              if (window.console) {
-                console.warn('[wv-agent live -> ' + actualDevice + '] invoke failed', cleanPath, cleanParams, '=>', reason);
+          httpRequest('POST', liveProxyState.hubBase + '/api/rpc', rpcBody, function (err, payload) {
+            var res = payload && payload.result;
+            var ok = !err && payload && payload.ok && res && res.status === 'resolved';
+            var actualDevice = (payload && payload.clientId) || device;
+            if (ok) {
+              var cbPath = res.cbPath || cleanPath;
+              var data = res.data !== undefined ? res.data : {};
+              if (liveProxyState.logEnabled && window.console) {
+                console.log(
+                  '[wv-agent live -> ' + actualDevice + '] invoke',
+                  cleanPath,
+                  cleanParams,
+                  '=>',
+                  data,
+                  '(' + (res.durationMs || 0) + 'ms)'
+                );
               }
               if (typeof callback === 'function') {
-                callback(cleanPath, {});
+                callback(cbPath, data);
               }
-            });
+              return;
+            }
+
+            var reason = err
+              ? (err.message || String(err))
+              : (payload && !payload.ok
+                ? (payload.error || 'Hub RPC failed')
+                : ((res && (res.error || res.status)) || 'Bridge call failed'));
+            if (window.console) {
+              console.warn('[wv-agent live -> ' + actualDevice + '] invoke failed', cleanPath, cleanParams, '=>', reason);
+            }
+            if (typeof callback === 'function') {
+              callback(cleanPath, {});
+            }
           });
-        },
-        on: function (path, params, callback) {
-          if (liveProxyState.logEnabled && window.console) {
-            console.log('[wv-agent live] on (event listener stub)', path, params || {});
-          }
-        },
+        });
       };
+
+      var liveOn = function (path, params, callback) {
+        if (liveProxyState.logEnabled && window.console) {
+          console.log('[wv-agent live] on (event listener stub)', path, params || {});
+        }
+      };
+      var liveOff = function () {};
+
+      window.MeiYouJSBridge = createLockedBridgeShim({
+        __wvAgentShim__: 'live',
+        config: function () {},
+        invoke: liveInvoke,
+        wait: liveInvoke,
+        on: liveOn,
+        listen: liveOn,
+        off: liveOff,
+        unlisten: liveOff,
+      });
 
       if (logEnabled && window.console) {
         console.log(
@@ -497,32 +525,41 @@
     var server = getQueryParam(search, 'bridgeDebugServer').replace(/\/$/, '');
     var logEnabledReplay = search.indexOf('bridgeDebugLog=1') !== -1;
 
-    window.MeiYouJSBridge = {
+    var replayInvoke = function (path, params, callback) {
+      if (typeof params === 'function') {
+        callback = params;
+        params = {};
+      }
+      var qs = 'path=' + encodeURIComponent(String(path || '')) + '&params=' + encodeURIComponent(JSON.stringify(params || {}));
+      var url = server + '/__bridge-debug__/invoke?' + qs;
+      httpRequest('GET', url, undefined, function (err, payload) {
+        var data = (!err && payload && payload.ok && payload.data !== undefined) ? payload.data : {};
+        if (logEnabledReplay && window.console) {
+          console.log('[wv-agent replay] invoke', path, params || {}, '=>', data, payload && payload.ok ? '(hit)' : '(miss)');
+        }
+        if (typeof callback === 'function') {
+          callback(path, data);
+        }
+      });
+    };
+
+    var replayOn = function (path, params, callback) {
+      if (logEnabledReplay && window.console) {
+        console.log('[wv-agent replay] on', path, params || {});
+      }
+    };
+    var replayOff = function () {};
+
+    window.MeiYouJSBridge = createLockedBridgeShim({
       __wvAgentShim__: 'replay',
       config: function () {},
-      invoke: function (path, params, callback) {
-        if (typeof params === 'function') {
-          callback = params;
-          params = {};
-        }
-        var qs = 'path=' + encodeURIComponent(String(path || '')) + '&params=' + encodeURIComponent(JSON.stringify(params || {}));
-        var url = server + '/__bridge-debug__/invoke?' + qs;
-        httpRequest('GET', url, undefined, function (err, payload) {
-          var data = (!err && payload && payload.ok && payload.data !== undefined) ? payload.data : {};
-          if (logEnabledReplay && window.console) {
-            console.log('[wv-agent replay] invoke', path, params || {}, '=>', data, payload && payload.ok ? '(hit)' : '(miss)');
-          }
-          if (typeof callback === 'function') {
-            callback(path, data);
-          }
-        });
-      },
-      on: function (path, params, callback) {
-        if (logEnabledReplay && window.console) {
-          console.log('[wv-agent replay] on', path, params || {});
-        }
-      },
-    };
+      invoke: replayInvoke,
+      wait: replayInvoke,
+      on: replayOn,
+      listen: replayOn,
+      off: replayOff,
+      unlisten: replayOff,
+    });
     if (logEnabledReplay && window.console) {
       console.log('[wv-agent replay] MeiYouJSBridge replay shim installed (server=' + (server || 'same-origin') + ')');
     }
@@ -602,62 +639,172 @@
     };
   }
 
+  function tracePageOn(rawOn) {
+    var wrapped = function (path, params, callback) {
+      var id = traceSeq++;
+      var cleanParams = safeClone(params || {});
+      if (typeof callback !== 'function') {
+        return rawOn.apply(null, arguments);
+      }
+      var wrappedCb = function (cbPath, data) {
+        emitEvent('bridge_trace', {
+          id: id,
+          kind: 'event',
+          source: 'page',
+          path: String(path || ''),
+          cbPath: cbPath,
+          params: cleanParams,
+          data: safeClone(data),
+          status: 'event',
+          durationMs: 0,
+          url: location.href,
+        });
+        return callback.apply(this, arguments);
+      };
+      var args = Array.prototype.slice.call(arguments);
+      args[2] = wrappedCb;
+      return rawOn.apply(null, args);
+    };
+    wrapped.__wvAgentWrapped__ = true;
+    return wrapped;
+  }
+
   function hookMeiYouBridge() {
     var bridge = window.MeiYouJSBridge;
     if (!bridge || bridge.__wvAgentShim__ || typeof bridge.invoke !== 'function') return false;
     var sameBridge = bridge === currentBridge;
-    if (sameBridge && (bridge.invoke === currentBridgeInvoke || bridge.invoke === tracedBridgeInvoke)) return true;
+    if (sameBridge && (bridge.invoke === currentBridgeInvoke || bridge.invoke === tracedBridgeInvoke || bridge.invoke.__wvAgentWrapped__)) {
+      return true;
+    }
 
     currentBridge = bridge;
-    currentBridgeInvoke = bridge.invoke;
-    rawBridgeInvoke = currentBridgeInvoke.bind(bridge);
-    tracedBridgeInvoke = tracePageInvoke(rawBridgeInvoke);
-    try { bridge.invoke = tracedBridgeInvoke; } catch (e) {}
-    bridgeCapture = bridge.invoke === tracedBridgeInvoke ? 'native' : 'readonly';
+    if (bridge.invoke.__wvAgentWrapped__) {
+      tracedBridgeInvoke = bridge.invoke;
+      if (bridgeCapture === 'unavailable') bridgeCapture = 'sdk';
+    } else {
+      currentBridgeInvoke = bridge.invoke;
+      rawBridgeInvoke = currentBridgeInvoke.bind(bridge);
+      tracedBridgeInvoke = tracePageInvoke(rawBridgeInvoke);
+      tracedBridgeInvoke.__wvAgentWrapped__ = true;
+      try { bridge.invoke = tracedBridgeInvoke; } catch (e) {}
+      bridgeCapture = bridge.invoke === tracedBridgeInvoke ? 'native' : 'readonly';
+    }
 
-    if (!sameBridge && typeof bridge.on === 'function') {
-      var rawBridgeOn = bridge.on.bind(bridge);
-      var tracedOn = function (path, params, callback) {
-        var id = traceSeq++;
-        var cleanParams = safeClone(params || {});
-        if (typeof callback !== 'function') {
-          return rawBridgeOn(path, params, callback);
-        }
-        var wrappedCb = function (cbPath, data) {
-          emitEvent('bridge_trace', {
-            id: id,
-            kind: 'event',
-            source: 'page',
-            path: String(path || ''),
-            cbPath: cbPath,
-            params: cleanParams,
-            data: safeClone(data),
-            status: 'event',
-            durationMs: 0,
-            url: location.href,
-          });
-          return callback.apply(this, arguments);
-        };
-        return rawBridgeOn(path, params, wrappedCb);
-      };
+    if (typeof bridge.wait === 'function' && !bridge.wait.__wvAgentWrapped__) {
+      var tracedWait = bridge.wait === currentBridgeInvoke
+        ? tracedBridgeInvoke
+        : tracePageInvoke(bridge.wait.bind(bridge));
+      tracedWait.__wvAgentWrapped__ = true;
+      try { bridge.wait = tracedWait; } catch (e) {}
+    }
+
+    var origOn = typeof bridge.on === 'function' && !bridge.on.__wvAgentWrapped__ ? bridge.on : null;
+    var tracedOn = null;
+    if (origOn) {
+      tracedOn = tracePageOn(origOn.bind(bridge));
       try { bridge.on = tracedOn; } catch (e) {}
+    }
+    if (typeof bridge.listen === 'function' && !bridge.listen.__wvAgentWrapped__) {
+      var tracedListen = origOn && bridge.listen === origOn
+        ? tracedOn
+        : tracePageOn(bridge.listen.bind(bridge));
+      try { bridge.listen = tracedListen; } catch (e) {}
     }
 
     emitEvent('meta', getDeviceMeta());
     return true;
   }
 
-  function getBridgeInvoker(bridge) {
+  function getBridgeInvoker(bridge, methodName) {
     if (bridge === window.MeiYouJSBridge) hookMeiYouBridge();
-    var invoke = bridge.invoke;
+    var key = methodName || 'invoke';
+    var invoke = bridge[key];
+    if (typeof invoke !== 'function' && key !== 'invoke' && typeof bridge.invoke === 'function') {
+      invoke = bridge.invoke;
+    }
     var boundInvoke = invoke.bind(bridge);
-    if (bridge.__wvAgentShim__ || invoke === tracedBridgeInvoke) return boundInvoke;
+    if (bridge.__wvAgentShim__ || invoke === tracedBridgeInvoke || invoke.__wvAgentWrapped__) {
+      return boundInvoke;
+    }
 
     if (bridge === currentBridge && bridgeCapture !== 'sdk') {
       bridgeCapture = 'sdk';
       emitEvent('meta', getDeviceMeta());
     }
-    return tracePageInvoke(boundInvoke);
+    var traced = tracePageInvoke(boundInvoke);
+    traced.__wvAgentWrapped__ = true;
+    return traced;
+  }
+
+  function wrapBridgeMethod(bridge, api, fn) {
+    if (!bridge || bridge.__wvAgentShim__) return (bridge && bridge[api]) || fn;
+    if (typeof fn !== 'function' || fn.__wvAgentWrapped__) return fn;
+    currentBridge = bridge;
+    if (api === 'invoke' || !rawBridgeInvoke) {
+      rawBridgeInvoke = fn.bind(bridge);
+    }
+    if (bridgeCapture !== 'sdk') {
+      bridgeCapture = 'sdk';
+      emitEvent('meta', getDeviceMeta());
+    }
+    var wrapped = tracePageInvoke(fn.bind(bridge));
+    wrapped.__wvAgentWrapped__ = true;
+    if (api === 'invoke') {
+      tracedBridgeInvoke = wrapped;
+    }
+    return wrapped;
+  }
+
+  function wrapBridgeExport(bridge) {
+    hookMeiYouBridge();
+    if (!bridge || bridge.__wvAgentShim__) return bridge;
+    if (bridge.invoke && (bridge.invoke === tracedBridgeInvoke || bridge.invoke.__wvAgentWrapped__)) {
+      return bridge;
+    }
+    if (typeof Proxy === 'function') {
+      // Use a fresh plain object as Proxy target so non-configurable read-only
+      // properties on native HarmonyOS bridges never violate Proxy invariants.
+      return new Proxy({}, {
+        get: function (_dummy, prop) {
+          if (prop === 'invoke' || prop === 'wait') {
+            if (typeof bridge[prop] === 'function' || typeof bridge.invoke === 'function') {
+              return getBridgeInvoker(bridge, prop);
+            }
+          }
+          var value = bridge[prop];
+          return typeof value === 'function' ? value.bind(bridge) : value;
+        },
+        set: function (_dummy, prop, value) {
+          try { bridge[prop] = value; } catch (e) {}
+          return true;
+        },
+        has: function (_dummy, prop) {
+          return prop in bridge;
+        },
+      });
+    }
+    try {
+      var wrapper = Object.create(bridge);
+      if (typeof bridge.invoke === 'function') {
+        Object.defineProperty(wrapper, 'invoke', {
+          value: getBridgeInvoker(bridge, 'invoke'),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      }
+      if (typeof bridge.wait === 'function' || typeof bridge.invoke === 'function') {
+        Object.defineProperty(wrapper, 'wait', {
+          value: getBridgeInvoker(bridge, 'wait'),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      }
+      return wrapper;
+    } catch (e) {
+      return bridge;
+    }
   }
 
   hookMeiYouBridge();
@@ -899,7 +1046,10 @@
     if (el.getAttribute('data-testid')) return true;
     if (typeof el.onclick === 'function' || el.hasAttribute('onclick')) return true;
     var cls = typeof el.className === 'string' ? el.className : '';
-    if (/\b(btn|button|tab|submit|confirm|cancel|close|action)\b/i.test(cls)) return true;
+    if (/(?:^|[\s_-])(btn|button|tab|submit|confirm|cancel|close|action|clickable|switch|checkbox|radio)(?=$|[\s_-])/i.test(cls)) return true;
+    try {
+      if (el.__vue__ && el.__vue__.$listeners && typeof el.__vue__.$listeners.click === 'function') return true;
+    } catch (e) {}
     var style = window.getComputedStyle(el);
     if (style && style.cursor === 'pointer') return true;
     return false;
@@ -1192,6 +1342,8 @@
     getClientId: function () { return clientId; },
     getMeta: getDeviceMeta,
     getBridgeInvoker: getBridgeInvoker,
+    wrapBridgeMethod: wrapBridgeMethod,
+    wrapBridgeExport: wrapBridgeExport,
     snapshot: buildSnapshot,
     callBridge: function (path, params, timeoutMs) {
       return new Promise(function (resolve) {

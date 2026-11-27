@@ -8,41 +8,33 @@
 
 ---
 
-## 一、安装 CLI 命令（macOS & Windows 通用）
+## 一、安装（macOS & Windows 通用）
 
-### 方式 1：全局注册 `wv-agent` 命令（推荐，Win / Mac 写法完全一致）
-在 `wv-agent` 目录下执行一次：
+### 1. 安装 CLI（Hub & 命令行工具，需要 Node 18+）
 
 ```bash
-cd <你的路径>/wv-agent
-npm link
+# 全局安装（推荐，Win / Mac 写法完全一致）
+npm install -g wv-agent
+wv-agent --version
+
+# 或免全局安装，直接通过 npx 执行
+npx -y wv-agent --help
 ```
 
-注册后，无论在 macOS（zsh/bash）还是 Windows（PowerShell / CMD / Git Bash），都可以直接敲 `wv-agent ...`。
+### 2. 在前端开发项目中安装中间件（Connect / Express 兼容 Node 14+）
 
-### 方式 2：不全局 link，临时设置快捷命令
-- **macOS / Linux（zsh / bash）：**
-  ```zsh
-  alias wv-agent="node /path/to/wv-agent/bin/wv-agent.mjs"
-  ```
-  > 注意：在 zsh 中不要写 `CLI="node ..." && $CLI devices`，因为 zsh 默认不会拆分变量中的空格。
+```bash
+npm install -D wv-agent
+```
 
-- **Windows（PowerShell）：**
-  ```powershell
-  function wv-agent { node "D:\path\to\wv-agent\bin\wv-agent.mjs" @args }
-  ```
-
-- **Windows（CMD）：**
-  ```cmd
-  doskey wv-agent=node "D:\path\to\wv-agent\bin\wv-agent.mjs" $*
-  ```
+> 若在源码目录做本地联调开发，可在 `wv-agent` 目录执行 `npm link` 进行本地链接。
 
 ---
 
 ## 二、快速上手（3 步）
 
 ### 第 1 步：启动本机调度中心（Hub）
-单开一个终端运行（保持开启）：
+单开一个终端运行（保持开启，需要 Node 18+）：
 
 ```bash
 wv-agent hub
@@ -53,35 +45,53 @@ wv-agent hub
 
 ### 第 2 步：在前端开发服务里挂载中间件（仅 dev 生效，绝不进生产包）
 
-将下面示例中的 `WV_AGENT_MIDDLEWARE` 替换为本机 `wv-agent/src/middleware.cjs` 的实际路径（Windows 路径可用正斜杠 `/` 或双反斜杠 `\\`）。
+先在业务项目安装开发依赖：`npm install -D wv-agent`（支持 ESM / CommonJS 与 TypeScript 类型提示）。
 
-#### A. Vite 5 项目（如 `nodejs-user/modules/subscribe` 的 `ctrm.mjs`）
+#### A. Vite 5 项目（ESM，如 `vite.config.ts` / `ctrm.mjs`）
 ```js
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const { wvAgentVitePlugin } = require('/path/to/wv-agent/src/middleware.cjs');
+import { wvAgentVitePlugin } from 'wv-agent';
+// 或使用独立子路径：import wvAgentVitePlugin from 'wv-agent/vite';
 
-// 放入 commonViteConfig.plugins 数组中（不要写在顶层）：
+// 放入 Vite plugins 数组中（不要写在顶层）：
 plugins: [
   // ...其他插件
   wvAgentVitePlugin(), // 或传 { onlyWhenEnv: true } 按环境变量按需开启
 ],
 ```
 
-#### B. Parcel 1 + Express 项目（如 `puzzle` 的 `ctrm.js`，兼容 Node 14）
+#### B. Parcel 1 + Express 项目（CommonJS，兼容 Node 14+）
 ```js
-const createWvAgentMiddleware = require('/path/to/wv-agent/src/middleware.cjs');
+const createWvAgentMiddleware = require('wv-agent');
+// 或 const createWvAgentMiddleware = require('wv-agent/middleware');
 
 // 在 dev() 里、app.use(bundler.middleware()) 之前加一行：
 app.use(createWvAgentMiddleware());
 ```
 
-#### C. Webpack 3 / Express 老项目（如 `nodejs-user`）
+#### C. Webpack 3 / Express 老项目（CommonJS，兼容 Node 14+）
 在本地 dev Express `app` 业务路由之前加：
 ```js
-const createWvAgentMiddleware = require('/path/to/wv-agent/src/middleware.cjs');
+const createWvAgentMiddleware = require('wv-agent');
 app.use(createWvAgentMiddleware());
 ```
+
+#### D. Koa 2 + Webpack 4/5 + Vue 2 项目（如 `bbj`，兼容 Node 14+）
+1. 在 Koa 入口（如 `app/koa.js`，建议放在 `bodyParser()` 之前）仅开发环境挂载 Koa 中间件（同时覆盖 Koa 直连端口与 BrowserSync 代理端口）：
+   ```js
+   if (config.env === 'development') {
+     const createWvAgentKoaMiddleware = require('wv-agent/koa');
+     app.use(createWvAgentKoaMiddleware()); // 或传 { onlyWhenEnv: true } 按环境变量按需开启
+   }
+   ```
+   > 备选：如果不想修改 Koa 入口，也可直接把 Connect 中间件挂进 BrowserSync：`middleware: [require('wv-agent')()]`（仅对 BrowserSync 端口生效）。
+
+2. 在 Webpack 配置（如 `build/webpack/webpack.js`）仅开发模式挂载插件，解决鸿蒙只读 WebView 与 `meetyou.bridge` 锁死对象时无法采集 Bridge 报文的问题（生产模式自动跳过，绝不进生产包）：
+   ```js
+   if (mode === 'watch') {
+     const wvAgentWebpackPlugin = require('wv-agent/webpack');
+     plugins.push(wvAgentWebpackPlugin());
+   }
+   ```
 
 #### 若配置了 `{ onlyWhenEnv: true }`，启动开发服务的命令：
 - **macOS / Linux：**
@@ -174,7 +184,7 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 
 页面发起的带回调调用会先显示「等待原生回调」，10 秒后标为「超过 10 秒未回调」，迟到的回包仍会出现。Live 和 CLI 调试调用遵循各自的超时设置。观察页仅在 Hub 所在电脑上打开，无需给手机页面加 URL 参数或连接 USB。系统弹窗和原生界面的点击不在 H5 观察范围内。
 
-部分鸿蒙 WebView 的原生 Bridge 为只读。使用 `wvAgentVitePlugin()` 的项目可通过开发态的 `@meetyou/toolbox/lib/jssdk` 采集调用。更新后重启 Vite 和 Hub，再刷新手机页。此方式覆盖经过该 SDK 的调用。
+部分鸿蒙 WebView 的原生 Bridge（或加载了 `meetyou.bridge` 的页面）为只读。使用 `wvAgentVitePlugin()` 或 `wvAgentWebpackPlugin()` 的项目可通过开发态插桩采集 `@meetyou/toolbox/lib/jssdk`、`meetyou.jssdk` 与 `meetyou.bridge` 的调用。更新后重启 dev 服务和 Hub，再刷新手机页即可生效。
 
 ---
 
@@ -183,7 +193,7 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 手机扫码打开页面后，直接把下面的话发给 AI Agent 即可（首次对话建议带上 `SKILL.md` 路径，让 Agent 严格按规范执行）。
 
 ### 1. 开场初始化（确认设备已连上）
-> 请先阅读 `/Users/yang/fe/fe/langgraph-py/wv-agent/SKILL.md`，用 `wv-agent` 查看当前在线的真机设备，确认 Android / iOS / 鸿蒙是否都已连上且 `hasBridge: true`。
+> 请使用 `wv-agent` 技能（或阅读 `node_modules/wv-agent/SKILL.md`），用 `wv-agent` 查看当前在线的真机设备，确认 Android / iOS / 鸿蒙是否都已连上且 `hasBridge: true`。
 
 ### 2. 页面功能自测（H5 交互 + 报错 + 接口 + Bridge 全查）
 > 用 `wv-agent` 在当前在线的鸿蒙和安卓真机上，帮我自测这个页面：
@@ -227,26 +237,30 @@ wv-agent bridge export-debug -d harmony --target http://127.0.0.1:1234/__bridge-
 
 ---
 
-## 五、发布到你的 npm 仓库 & 一键打包/安装 Antigravity & Codex 插件
+## 五、发布到 npmjs.org & 一键打包/安装 Antigravity & Codex 插件
 
-为了不把工具源码塞进插件目录，推荐先发布到你自己的（或公司私有）npm 仓库，再生成/安装纯技能插件（**插件内只含 `plugin.json`、`agents/openai.yaml` 与 `SKILL.md`，不含任何 JS 源码**）。
+为了不把工具源码塞进插件目录，推荐直接发布 `wv-agent` 到 npmjs.org，再生成/安装纯技能插件（**插件内只含 `plugin.json`、`agents/openai.yaml` 与 `SKILL.md`，不含任何 JS 源码**）。
 
-### 第 1 步：改包名并发布到你的 npm 仓库
-1. 修改 `package.json` 中的 `"name"`（例如改为 `@your-scope/wv-agent` 或你的私有包名）。
-2. 发布到你的 npm 源：
-   ```bash
-   cd wv-agent
-   npm publish --registry <你的npm源地址>
-   ```
-   > 生产项目里引入中间件时，直接 `npm i -D <你的包名>`，然后 `require('<你的包名>/middleware')` 即可，彻底告别本机绝对路径。
+### 第 1 步：打包校验并发布到 npmjs.org
+```bash
+cd wv-agent
+npm run pack:check    # 预览打包清单
+npm login             # 登录 npmjs.org 账号
+npm publish           # 自动执行 prepublishOnly (npm test) 并公开推送
+```
+
+业务项目接入时直接 `npm i -D wv-agent`，按项目模块类型引入：
+- **ESM / Vite：** `import { wvAgentVitePlugin } from 'wv-agent'` 或 `import wvAgentVitePlugin from 'wv-agent/vite'`
+- **CommonJS / Node 14+：** `const createWvAgentMiddleware = require('wv-agent')`
+- **TypeScript：** 内置完整 `.d.mts` / `.d.cts` / `.d.ts` 类型声明，开箱即用。
 
 ### 第 2 步：打包生成 Antigravity & Codex 插件包（可选，用于分发或归档）
 ```bash
-# 默认读取 package.json 的 name，输出到 ./dist/plugins/
+# 默认读取 package.json 的 name (wv-agent)，输出到 ./dist/plugins/
 wv-agent plugin build
 
-# 或指定发布后的 npm 包名与输出目录
-wv-agent plugin build --pkg @your-scope/wv-agent --out ./dist/plugins
+# 或自定义包名与输出目录
+wv-agent plugin build --pkg wv-agent --out ./dist/plugins
 ```
 生成结果（不含源码）：
 - `dist/plugins/antigravity/wv-agent/`（含 `plugin.json`、`skills/wv-agent/SKILL.md`、`README.md`）
@@ -256,12 +270,12 @@ wv-agent plugin build --pkg @your-scope/wv-agent --out ./dist/plugins
 其他同事或你自己装完 npm 包后，只需执行**一条命令**即可同时装好 Antigravity 和 Codex 插件：
 
 ```bash
-# 方式 A：先全局安装你的 npm 包，再一键安装双端插件
-npm install -g @your-scope/wv-agent
+# 方式 A：先全局安装 npm 包，再一键安装双端插件
+npm install -g wv-agent
 wv-agent plugin install
 
 # 方式 B：免全局安装，直接一条 npx 搞定
-npx -y @your-scope/wv-agent plugin install --target all
+npx -y wv-agent plugin install --target all
 ```
 
 支持的子命令与参数：

@@ -1,22 +1,145 @@
 {
   "name": "wv-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WebView self-testing & MeiYouJSBridge protocol debugging toolkit for AI Agents (Android / iOS / HarmonyOS)",
+  "keywords": [
+    "webview",
+    "jsbridge",
+    "ai-agent",
+    "cli",
+    "android",
+    "ios",
+    "harmonyos",
+    "vite-plugin",
+    "webpack-plugin",
+    "koa",
+    "vue",
+    "middleware",
+    "debugging",
+    "testing"
+  ],
+  "license": "MIT",
+  "author": "fangyang",
   "type": "module",
   "main": "./src/middleware.cjs",
+  "module": "./src/middleware.mjs",
+  "types": "./types/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "middleware": [
+        "./types/middleware.d.ts"
+      ],
+      "koa": [
+        "./types/koa.d.ts"
+      ],
+      "vite": [
+        "./types/vite.d.ts"
+      ],
+      "webpack": [
+        "./types/webpack.d.ts"
+      ],
+      "hub": [
+        "./types/hub.d.ts"
+      ],
+      "diff": [
+        "./types/diff.d.ts"
+      ],
+      "plugin": [
+        "./types/plugin.d.ts"
+      ]
+    }
+  },
   "bin": {
     "wv-agent": "./bin/wv-agent.mjs"
   },
   "files": [
     "bin/",
     "src/",
+    "types/",
+    "LICENSE",
     "README.md",
     "SKILL.md"
   ],
   "exports": {
-    ".": "./src/middleware.cjs",
-    "./middleware": "./src/middleware.cjs",
-    "./client": "./src/client.js"
+    ".": {
+      "import": {
+        "types": "./types/middleware.d.mts",
+        "default": "./src/middleware.mjs"
+      },
+      "require": {
+        "types": "./types/middleware.d.cts",
+        "default": "./src/middleware.cjs"
+      },
+      "default": "./src/middleware.cjs"
+    },
+    "./middleware": {
+      "import": {
+        "types": "./types/middleware.d.mts",
+        "default": "./src/middleware.mjs"
+      },
+      "require": {
+        "types": "./types/middleware.d.cts",
+        "default": "./src/middleware.cjs"
+      },
+      "default": "./src/middleware.cjs"
+    },
+    "./koa": {
+      "import": {
+        "types": "./types/koa.d.mts",
+        "default": "./src/koa.mjs"
+      },
+      "require": {
+        "types": "./types/koa.d.cts",
+        "default": "./src/koa.cjs"
+      },
+      "default": "./src/koa.cjs"
+    },
+    "./vite": {
+      "import": {
+        "types": "./types/vite.d.mts",
+        "default": "./src/vite.mjs"
+      },
+      "require": {
+        "types": "./types/vite.d.cts",
+        "default": "./src/vite.cjs"
+      },
+      "default": "./src/vite.cjs"
+    },
+    "./webpack": {
+      "import": {
+        "types": "./types/webpack.d.mts",
+        "default": "./src/webpack.mjs"
+      },
+      "require": {
+        "types": "./types/webpack.d.cts",
+        "default": "./src/webpack.cjs"
+      },
+      "default": "./src/webpack.cjs"
+    },
+    "./hub": {
+      "import": {
+        "types": "./types/hub.d.mts",
+        "default": "./src/hub.mjs"
+      }
+    },
+    "./diff": {
+      "import": {
+        "types": "./types/diff.d.mts",
+        "default": "./src/diff.mjs"
+      }
+    },
+    "./plugin": {
+      "import": {
+        "types": "./types/plugin.d.mts",
+        "default": "./src/plugin.mjs"
+      }
+    },
+    "./client": "./src/client.js",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "hub": "node ./bin/wv-agent.mjs hub",
@@ -24,9 +147,11 @@
     "plugin:install": "node ./bin/wv-agent.mjs plugin install",
     "plugin:status": "node ./bin/wv-agent.mjs plugin status",
     "plugin:uninstall": "node ./bin/wv-agent.mjs plugin uninstall",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm test",
     "test": "node --test ./tests/*.test.mjs"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=14.0.0"
   }
 }

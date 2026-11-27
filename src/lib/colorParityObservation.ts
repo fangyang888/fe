@@ -2,8 +2,6 @@ import {summarizeMissStreaks} from './likely32Tracker';
 
 export type BallColor = '红' | '蓝' | '绿';
 export type BallParity = '单' | '双';
-export type BallSize = '小' | '大';
-export type ObservationMode = 'subWave' | 'halfWave';
 export type ColorParityModelKey = 'ensemble' | 'prior';
 
 export const COLOR_PARITY_YEAR = 2026;
@@ -35,15 +33,6 @@ export const COLOR_PARITY_ROLLING_WINDOWS = [15, 30, 50, 100] as const;
 export const HALF_WAVE_LABELS = ['红单', '红双', '绿单', '绿双', '蓝单', '蓝双'] as const;
 export type HalfWaveLabel = (typeof HALF_WAVE_LABELS)[number];
 
-export const SUB_WAVE_LABELS = [
-  '红小单', '红大单', '红小双', '红大双',
-  '绿小单', '绿大单', '绿小双', '绿大双',
-  '蓝小单', '蓝大单', '蓝小双', '蓝大双',
-] as const;
-export type SubWaveLabel = (typeof SUB_WAVE_LABELS)[number];
-
-export type WaveLabel = HalfWaveLabel | SubWaveLabel;
-
 const RED_NUMBERS = new Set([1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46]);
 const BLUE_NUMBERS = new Set([3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48]);
 const GREEN_NUMBERS = new Set([5, 6, 11, 16, 17, 21, 22, 27, 28, 32, 33, 38, 39, 43, 44, 49]);
@@ -63,117 +52,67 @@ export function parityForNumber(n: number): BallParity {
   return n % 2 === 1 ? '单' : '双';
 }
 
-export function sizeForNumber(n: number): BallSize {
-  return n >= 25 ? '大' : '小';
-}
-
 export function halfWaveLabelOf(n: number, color: BallColor): HalfWaveLabel {
   return `${color}${parityForNumber(n)}` as HalfWaveLabel;
 }
 
-export function subWaveLabelOf(n: number, color: BallColor): SubWaveLabel {
-  return `${color}${sizeForNumber(n)}${parityForNumber(n)}` as SubWaveLabel;
-}
-
-export type ClassMeta = {
-  label: string;
+export type HalfWaveMeta = {
+  label: HalfWaveLabel;
   color: BallColor;
   parity: BallParity;
-  size: BallSize | null;
   numbers: number[];
   ballCount: number;
   prior: number;
   theoreticalNotRate: number;
-  isMinPool: boolean;
 };
 
-function buildClassMetas(mode: ObservationMode): ClassMeta[] {
-  const labels: readonly string[] = mode === 'halfWave' ? HALF_WAVE_LABELS : SUB_WAVE_LABELS;
-  const buckets = new Map<string, number[]>(labels.map(label => [label, []]));
+function buildHalfWaveMetas(): HalfWaveMeta[] {
+  const buckets = new Map<HalfWaveLabel, number[]>(HALF_WAVE_LABELS.map(label => [label, []]));
   for (let n = 1; n <= 49; n++) {
     const color = standardColorForNumber(n)!;
-    const label = mode === 'halfWave' ? halfWaveLabelOf(n, color) : subWaveLabelOf(n, color);
-    buckets.get(label)!.push(n);
+    buckets.get(halfWaveLabelOf(n, color))!.push(n);
   }
-  const minCount = Math.min(...[...buckets.values()].map(arr => arr.length));
-  return labels.map(label => {
+  return HALF_WAVE_LABELS.map(label => {
     const numbers = buckets.get(label)!;
     const color = label[0] as BallColor;
-    const parity = label[label.length - 1] as BallParity;
-    const size = mode === 'subWave' ? (label[1] as BallSize) : null;
+    const parity = label[1] as BallParity;
     const ballCount = numbers.length;
     return {
       label,
       color,
       parity,
-      size,
       numbers,
       ballCount,
       prior: ballCount / 49,
       theoreticalNotRate: (49 - ballCount) / 49,
-      isMinPool: ballCount === minCount,
     };
   });
 }
 
-export const MODE_META: Record<ObservationMode, {
-  title: string;
-  shortTitle: string;
-  description: string;
-  classes: ClassMeta[];
-  theoreticalMaxNotRate: number;
-  marginalDf: number;
-  marginalCritical05: number;
-  markovDf: number;
-  markovCritical05: number;
-}> = {
-  subWave: {
-    title: '12类半半波（波色 × 大小 × 单双）',
-    shortTitle: '12类半半波 · 90%+',
-    description: '将 6 类半波按小(01–24)/大(25–49)细分为 12 类；最小号池为 3 球桶（红大单 / 绿小双 / 蓝小单），理论不开上限 93.88%，真正达标 90%+。',
-    classes: buildClassMetas('subWave'),
-    theoreticalMaxNotRate: 46 / 49,
-    marginalDf: 11,
-    marginalCritical05: 19.68,
-    markovDf: 121,
-    markovCritical05: 147.67,
-  },
-  halfWave: {
-    title: '6类半波（波色 × 单双）',
-    shortTitle: '6类半波',
-    description: '对应红单、红双、绿单、绿双、蓝单、蓝双。最小号池为绿双（7/49 球），独立随机下理论不开上限 85.71%。',
-    classes: buildClassMetas('halfWave'),
-    theoreticalMaxNotRate: 42 / 49,
-    marginalDf: 5,
-    marginalCritical05: 11.07,
-    markovDf: 25,
-    markovCritical05: 37.65,
-  },
-};
+export const HALF_WAVE_CLASSES = buildHalfWaveMetas();
+export const HALF_WAVE_THEORETICAL_MAX_NOT_RATE = 42 / 49;
+export const HALF_WAVE_MARGINAL_DF = 5;
+export const HALF_WAVE_MARGINAL_CRIT05 = 11.07;
+export const HALF_WAVE_MARKOV_DF = 25;
+export const HALF_WAVE_MARKOV_CRIT05 = 37.65;
 
 export const COLOR_PARITY_MODELS: Record<ColorParityModelKey, {
   key: ColorParityModelKey;
   label: string;
   shortLabel: string;
-  summary: Record<ObservationMode, string>;
+  summary: string;
 }> = {
   ensemble: {
     key: 'ensemble',
     label: '多信号先验融合',
     shortLabel: '多信号先验融合',
-    summary: {
-      subWave: '内部融合先验锚定(35%) + 12/24/36期余弦向量 Top-K(25%) + 5期序列 Top-K(20%) + 马尔可夫疲劳(10%) + 60期贝叶斯频率(10%)，并在 3 个最小 3 球桶（红大单 / 绿小双 / 蓝小单）内动态三选一，既随走势轮换又严格锁定 93.88% 理论天花板。',
-      halfWave: '概率层融合先验锚定(35%) + 12/24/36期余弦向量 Top-K(25%) + 5期序列 Top-K(20%) + 马尔可夫疲劳(10%) + 60期贝叶斯频率(10%)，动态排除综合预测开出概率最低项。',
-    },
+    summary: '在概率层融合先验锚定(35%) + 12/24/36期余弦向量 Top-K(25%) + 5期序列相似 Top-K(20%) + 马尔可夫疲劳(10%) + 60期贝叶斯频率(10%)，动态排除 6 类半波中综合开出概率最低项。',
   },
   prior: {
     key: 'prior',
     label: '理论先验最小号池',
     shortLabel: '理论先验最小号池',
-    summary: {
-      subWave: '无参数静态理论最优基准：固定排除 3 球最小号池「红大单」（29 / 35 / 45），理论不开率 46/49 = 93.88%，无过拟合风险。',
-      halfWave: '无参数静态理论最优基准：固定排除唯一 7 球最小号池「绿双」（06 / 16 / 22 / 28 / 32 / 38 / 44），理论不开率 42/49 = 85.71%。',
-    },
+    summary: '无参数静态理论最优基准：固定排除 6 类半波中号码数最少的「绿双」（7 个号码：06 / 16 / 22 / 28 / 32 / 38 / 44），均匀随机下理论不开率 42/49 = 85.71%。',
   },
 };
 
@@ -185,9 +124,8 @@ export type ParsedColorParityDraw = {
   specialNumber: number;
   specialColor: BallColor;
   specialParity: BallParity;
-  specialSize: BallSize;
   specialClassIdx: number;
-  specialLabel: string;
+  specialLabel: HalfWaveLabel;
   regularNumbers: number[] | null;
   regularClassIndices: number[] | null;
 };
@@ -202,7 +140,7 @@ export type DataIntegrity = {
 export type VectorNeighborInfo = {
   No: number;
   specialNumber: number;
-  label: string;
+  label: HalfWaveLabel;
   similarity: number;
   weight: number;
 };
@@ -217,12 +155,10 @@ export type VectorWindowDetail = {
 
 export type ClassScoreItem = {
   classIdx: number;
-  label: string;
+  label: HalfWaveLabel;
   color: BallColor;
   parity: BallParity;
-  size: BallSize | null;
   ballCount: number;
-  isMinPool: boolean;
   openProb: number;
   excludeProb: number;
   theoreticalNotRate: number;
@@ -230,9 +166,9 @@ export type ClassScoreItem = {
 
 export type ModelForecast = {
   pickIdx: number;
-  pickLabel: string;
+  pickLabel: HalfWaveLabel;
   runnerUpIdx: number;
-  runnerUpLabel: string;
+  runnerUpLabel: HalfWaveLabel;
   probs: number[];
   ranked: ClassScoreItem[];
 };
@@ -259,7 +195,7 @@ export type ModelStreakSummary = {
   allLongest: number | null;
 };
 
-export type ClassDiagnostic = ClassMeta & {
+export type ClassDiagnostic = HalfWaveMeta & {
   actualCount: number;
   expectedCount: number;
   actualNotRate: number;
@@ -283,7 +219,6 @@ export type StatisticalDiagnostics = {
 
 export type ColorParityObservation = {
   year: number;
-  mode: ObservationMode;
   validCount: number;
   latestNo: number | null;
   integrity: DataIntegrity;
@@ -304,6 +239,10 @@ export type ColorParityObservation = {
   diagnostics: StatisticalDiagnostics;
 };
 
+const INDEX_BY_LABEL = new Map<HalfWaveLabel, number>(
+  HALF_WAVE_LABELS.map((label, idx) => [label, idx]),
+);
+
 function parseRawNumberInfos(record: Record<string, unknown>): unknown[] | null {
   const raw = record.numberInfos ?? record.number_infos;
   if (Array.isArray(raw)) return raw;
@@ -316,15 +255,12 @@ function parseRawNumberInfos(record: Record<string, unknown>): unknown[] | null 
   }
 }
 
-function classIndexOf(n: number, color: BallColor, mode: ObservationMode, indexByLabel: Map<string, number>): number {
-  const label = mode === 'halfWave' ? halfWaveLabelOf(n, color) : subWaveLabelOf(n, color);
-  return indexByLabel.get(label)!;
+function classIndexOf(n: number, color: BallColor): number {
+  return INDEX_BY_LABEL.get(halfWaveLabelOf(n, color))!;
 }
 
-function parseHistory(input: unknown, mode: ObservationMode) {
+function parseHistory(input: unknown) {
   if (!Array.isArray(input)) throw new Error('历史接口返回格式错误，应为记录数组');
-  const classes = MODE_META[mode].classes;
-  const indexByLabel = new Map(classes.map((item, idx) => [item.label, idx]));
   const buckets = new Map<number, Array<ParsedColorParityDraw | null>>();
   let rejected = 0;
   let latestNo: number | null = null;
@@ -394,19 +330,18 @@ function parseHistory(input: unknown, mode: ObservationMode) {
       }
       seen.add(num);
       regularNumbers.push(num);
-      regularClassIndices.push(classIndexOf(num, info.color, mode, indexByLabel));
+      regularClassIndices.push(classIndexOf(num, info.color));
     }
 
-    const specialClassIdx = classIndexOf(specialNumber, specialColor, mode, indexByLabel);
+    const specialClassIdx = classIndexOf(specialNumber, specialColor);
     entries.push({
       year: COLOR_PARITY_YEAR,
       No: record.No,
       specialNumber,
       specialColor,
       specialParity: parityForNumber(specialNumber),
-      specialSize: sizeForNumber(specialNumber),
       specialClassIdx,
-      specialLabel: classes[specialClassIdx].label,
+      specialLabel: HALF_WAVE_LABELS[specialClassIdx],
       regularNumbers,
       regularClassIndices,
     });
@@ -442,29 +377,20 @@ function normalizeProbs(values: number[]): number[] {
   return values.map(v => v / sum);
 }
 
-function forecastFromProbs(
-  probs: number[],
-  classes: ClassMeta[],
-  lockToMinPool = false,
-): ModelForecast {
+function forecastFromProbs(probs: number[]): ModelForecast {
   const normalized = normalizeProbs(probs);
-  const ranked: ClassScoreItem[] = classes.map((meta, classIdx) => ({
+  const ranked: ClassScoreItem[] = HALF_WAVE_CLASSES.map((meta, classIdx) => ({
     classIdx,
     label: meta.label,
     color: meta.color,
     parity: meta.parity,
-    size: meta.size,
     ballCount: meta.ballCount,
-    isMinPool: meta.isMinPool,
     openProb: normalized[classIdx],
     excludeProb: 1 - normalized[classIdx],
     theoreticalNotRate: meta.theoreticalNotRate,
   }));
 
-  ranked.sort((a, b) => {
-    if (lockToMinPool && a.isMinPool !== b.isMinPool) return a.isMinPool ? -1 : 1;
-    return a.openProb - b.openProb || a.ballCount - b.ballCount || a.classIdx - b.classIdx;
-  });
+  ranked.sort((a, b) => a.openProb - b.openProb || a.ballCount - b.ballCount || a.classIdx - b.classIdx);
 
   return {
     pickIdx: ranked[0].classIdx,
@@ -494,8 +420,8 @@ function buildContextVector(
   targetNo: number,
   lookback: number,
   shortWindow: number,
-  classCount: number,
 ): number[] | null {
+  const classCount = HALF_WAVE_CLASSES.length;
   const regShort = Array<number>(classCount).fill(0);
   const regLong = Array<number>(classCount).fill(0);
   const spShort = Array<number>(classCount).fill(0);
@@ -542,22 +468,20 @@ function precomputeVectorWindows(
   byNo: Map<number, ParsedColorParityDraw>,
   firstTarget: number,
   finalTarget: number,
-  classes: ClassMeta[],
 ) {
   const {neighbors, minimumNeighbors, temperature, halfLife, priorWeight} = COLOR_PARITY_VECTOR_CONFIG;
-  const classCount = classes.length;
-  const priors = classes.map(c => c.prior);
+  const priors = HALF_WAVE_CLASSES.map(c => c.prior);
 
   return COLOR_PARITY_VECTOR_WINDOWS.map(({lookback, shortWindow}) => {
     const library: Array<{draw: ParsedColorParityDraw; vector: number[]}> = [];
     for (const draw of draws) {
-      const vector = buildContextVector(byNo, draw.No, lookback, shortWindow, classCount);
+      const vector = buildContextVector(byNo, draw.No, lookback, shortWindow);
       if (vector) library.push({draw, vector});
     }
 
     const byTarget = new Map<number, WindowRawForecast>();
     for (let targetNo = firstTarget; targetNo <= finalTarget; targetNo++) {
-      const context = buildContextVector(byNo, targetNo, lookback, shortWindow, classCount);
+      const context = buildContextVector(byNo, targetNo, lookback, shortWindow);
       if (!context) continue;
 
       const matched = library
@@ -617,10 +541,9 @@ function computeWindowShares(count: number, feedback: number[][]): number[] {
 function computeSeqTopKProbs(
   byNo: Map<number, ParsedColorParityDraw>,
   targetNo: number,
-  classes: ClassMeta[],
 ): number[] | null {
   const {lags, neighbors, marginalWindow, priorWeight} = COLOR_PARITY_SEQ_CONFIG;
-  const classCount = classes.length;
+  const classCount = HALF_WAVE_CLASSES.length;
   const currentSeq: number[] = [];
   for (let lag = 1; lag <= lags; lag++) {
     const draw = byNo.get(targetNo - lag);
@@ -665,7 +588,7 @@ function computeSeqTopKProbs(
   }
   if (margTotal === 0) return null;
 
-  const raw = classes.map((meta, idx) => {
+  const raw = HALF_WAVE_CLASSES.map((meta, idx) => {
     const cond = (condCounts[idx] + priorWeight * meta.prior) / (selected.length + priorWeight);
     const marg = (margCounts[idx] + priorWeight * meta.prior) / (margTotal + priorWeight);
     return (cond / marg) * meta.prior;
@@ -676,12 +599,11 @@ function computeSeqTopKProbs(
 function computeMarkovPatternProbs(
   byNo: Map<number, ParsedColorParityDraw>,
   targetNo: number,
-  classes: ClassMeta[],
 ): number[] | null {
   const prev = byNo.get(targetNo - 1);
   if (!prev) return null;
   const prev2 = byNo.get(targetNo - 2);
-  const classCount = classes.length;
+  const classCount = HALF_WAVE_CLASSES.length;
 
   const transCounts = Array<number>(classCount).fill(0);
   let transTotal = 0;
@@ -701,7 +623,7 @@ function computeMarkovPatternProbs(
     for (const cIdx of prev.regularClassIndices) prevAllCounts[cIdx] += 1;
   }
 
-  const raw = classes.map((meta, idx) => {
+  const raw = HALF_WAVE_CLASSES.map((meta, idx) => {
     const base = (transCounts[idx] + COLOR_PARITY_MARKOV_PRIOR * meta.prior) / (transTotal + COLOR_PARITY_MARKOV_PRIOR);
     let fatigue = 1.0;
     if (prev2 && prev2.specialClassIdx === idx && prev.specialClassIdx === idx) {
@@ -718,10 +640,9 @@ function computeMarkovPatternProbs(
 function computeBayesFreqProbs(
   byNo: Map<number, ParsedColorParityDraw>,
   targetNo: number,
-  classes: ClassMeta[],
 ): number[] {
   const start = Math.max(1, targetNo - COLOR_PARITY_BAYES_WINDOW);
-  const counts = Array<number>(classes.length).fill(0);
+  const counts = Array<number>(HALF_WAVE_CLASSES.length).fill(0);
   let total = 0;
   for (let no = start; no < targetNo; no++) {
     const draw = byNo.get(no);
@@ -729,7 +650,7 @@ function computeBayesFreqProbs(
     counts[draw.specialClassIdx] += 1;
     total += 1;
   }
-  return classes.map((meta, idx) =>
+  return HALF_WAVE_CLASSES.map((meta, idx) =>
     (counts[idx] + COLOR_PARITY_BAYES_PRIOR * meta.prior) / (total + COLOR_PARITY_BAYES_PRIOR),
   );
 }
@@ -755,10 +676,8 @@ function summarizeAllModels(rows: ColorParityRow[]): Record<ColorParityModelKey,
 function computeDiagnostics(
   draws: ParsedColorParityDraw[],
   byNo: Map<number, ParsedColorParityDraw>,
-  mode: ObservationMode,
 ): StatisticalDiagnostics {
-  const meta = MODE_META[mode];
-  const classCount = meta.classes.length;
+  const classCount = HALF_WAVE_CLASSES.length;
   const sampleCount = draws.length;
   const counts = Array<number>(classCount).fill(0);
   const maxOmission = Array<number>(classCount).fill(0);
@@ -777,7 +696,7 @@ function computeDiagnostics(
   }
 
   let marginalChi2 = 0;
-  const classDiagnostics: ClassDiagnostic[] = meta.classes.map((cls, idx) => {
+  const classDiagnostics: ClassDiagnostic[] = HALF_WAVE_CLASSES.map((cls, idx) => {
     const expectedCount = sampleCount * cls.prior;
     if (expectedCount > 0) {
       marginalChi2 += (counts[idx] - expectedCount) ** 2 / expectedCount;
@@ -818,42 +737,36 @@ function computeDiagnostics(
   return {
     sampleCount,
     marginalChi2,
-    marginalDf: meta.marginalDf,
-    marginalCritical05: meta.marginalCritical05,
-    marginalSignificant: sampleCount >= 30 && marginalChi2 > meta.marginalCritical05,
+    marginalDf: HALF_WAVE_MARGINAL_DF,
+    marginalCritical05: HALF_WAVE_MARGINAL_CRIT05,
+    marginalSignificant: sampleCount >= 30 && marginalChi2 > HALF_WAVE_MARGINAL_CRIT05,
     markovChi2,
-    markovDf: meta.markovDf,
-    markovCritical05: meta.markovCritical05,
-    markovSignificant: pairs >= 60 && markovChi2 > meta.markovCritical05,
-    theoreticalMaxNotRate: meta.theoreticalMaxNotRate,
+    markovDf: HALF_WAVE_MARKOV_DF,
+    markovCritical05: HALF_WAVE_MARKOV_CRIT05,
+    markovSignificant: pairs >= 60 && markovChi2 > HALF_WAVE_MARKOV_CRIT05,
+    theoreticalMaxNotRate: HALF_WAVE_THEORETICAL_MAX_NOT_RATE,
     classes: classDiagnostics,
   };
 }
 
-export function buildColorParityObservation(
-  input: unknown,
-  mode: ObservationMode = 'subWave',
-): ColorParityObservation {
-  const history = parseHistory(input, mode);
-  const classes = MODE_META[mode].classes;
-  const priors = classes.map(c => c.prior);
+export function buildColorParityObservation(input: unknown): ColorParityObservation {
+  const history = parseHistory(input);
+  const priors = HALF_WAVE_CLASSES.map(c => c.prior);
   const byNo = new Map(history.draws.map(draw => [draw.No, draw]));
   const finalTarget = history.latestNo === null ? COLOR_PARITY_BACKTEST_START : history.latestNo + 1;
   const firstTarget = Math.min(COLOR_PARITY_BACKTEST_START, finalTarget);
-  const lockEnsembleToMinPool = mode === 'subWave';
 
   const vectorWindowMaps = precomputeVectorWindows(
     history.draws,
     byNo,
     firstTarget,
     finalTarget,
-    classes,
   );
   const vectorFeedback: number[][] = [];
   const rows: ColorParityRow[] = [];
 
   for (let targetNo = firstTarget; targetNo <= finalTarget; targetNo++) {
-    const priorForecast = forecastFromProbs(priors, classes, false);
+    const priorForecast = forecastFromProbs(priors);
 
     const activeWindows = vectorWindowMaps
       .map(windowMap => windowMap.get(targetNo))
@@ -865,7 +778,7 @@ export function buildColorParityObservation(
       const shares = activeWindows.length === COLOR_PARITY_VECTOR_WINDOWS.length
         ? computeWindowShares(activeWindows.length, vectorFeedback)
         : Array<number>(activeWindows.length).fill(1 / activeWindows.length);
-      vectorProbs = classes.map((_, idx) =>
+      vectorProbs = HALF_WAVE_CLASSES.map((_, idx) =>
         activeWindows.reduce((sum, win, wi) => sum + win.probs[idx] * shares[wi], 0),
       );
       vectorWindows = activeWindows.map((win, wi) => ({
@@ -877,9 +790,9 @@ export function buildColorParityObservation(
       }));
     }
 
-    const seqProbs = computeSeqTopKProbs(byNo, targetNo, classes);
-    const markovProbs = computeMarkovPatternProbs(byNo, targetNo, classes);
-    const bayesProbs = computeBayesFreqProbs(byNo, targetNo, classes);
+    const seqProbs = computeSeqTopKProbs(byNo, targetNo);
+    const markovProbs = computeMarkovPatternProbs(byNo, targetNo);
+    const bayesProbs = computeBayesFreqProbs(byNo, targetNo);
 
     const components: Array<{weight: number; probs: number[]}> = [
       {weight: 0.35, probs: priors},
@@ -890,11 +803,11 @@ export function buildColorParityObservation(
     if (markovProbs) components.push({weight: 0.10, probs: markovProbs});
 
     const totalWeight = components.reduce((acc, item) => acc + item.weight, 0);
-    const ensembleProbs = classes.map((_, idx) =>
+    const ensembleProbs = HALF_WAVE_CLASSES.map((_, idx) =>
       components.reduce((sum, item) => sum + item.probs[idx] * (item.weight / totalWeight), 0),
     );
 
-    const ensembleForecast = forecastFromProbs(ensembleProbs, classes, lockEnsembleToMinPool);
+    const ensembleForecast = forecastFromProbs(ensembleProbs);
     const forecasts: Record<ColorParityModelKey, ModelForecast> = {
       ensemble: ensembleForecast,
       prior: priorForecast,
@@ -965,7 +878,6 @@ export function buildColorParityObservation(
 
   return {
     year: COLOR_PARITY_YEAR,
-    mode,
     validCount: history.draws.length,
     latestNo: history.latestNo,
     integrity: history.integrity,
@@ -975,6 +887,6 @@ export function buildColorParityObservation(
     streaks,
     ranges,
     windows,
-    diagnostics: computeDiagnostics(history.draws, byNo, mode),
+    diagnostics: computeDiagnostics(history.draws, byNo),
   };
 }

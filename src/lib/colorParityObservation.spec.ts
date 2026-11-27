@@ -2,7 +2,9 @@ import {describe, expect, it} from 'vitest';
 import {
   buildColorParityObservation,
   COLOR_PARITY_VECTOR_WINDOWS,
-  MODE_META,
+  HALF_WAVE_CLASSES,
+  HALF_WAVE_LABELS,
+  HALF_WAVE_THEORETICAL_MAX_NOT_RATE,
   MODEL_KEYS,
   standardColorForNumber,
 } from './colorParityObservation';
@@ -29,69 +31,59 @@ function generateSyntheticHistory(count: number) {
   });
 }
 
-describe('color-parity observation dual-model causal engine', () => {
-  it('exposes only ensemble and prior models and partitions all 49 balls cleanly', () => {
+describe('6-class half-wave color-parity observation engine', () => {
+  it('exposes only ensemble and prior models across all 6 half-waves covering 49 balls', () => {
     expect(MODEL_KEYS).toEqual(['ensemble', 'prior']);
-    for (const mode of ['subWave', 'halfWave'] as const) {
-      const classes = MODE_META[mode].classes;
-      const allNumbers = classes.flatMap(c => c.numbers);
-      expect(allNumbers).toHaveLength(49);
-      expect(new Set(allNumbers).size).toBe(49);
-      expect(classes.reduce((sum, c) => sum + c.prior, 0)).toBeCloseTo(1, 10);
-    }
-    const minSubPools = MODE_META.subWave.classes.filter(c => c.isMinPool).map(c => c.label);
-    expect(minSubPools).toEqual(['红大单', '绿小双', '蓝小单']);
-    expect(MODE_META.subWave.theoreticalMaxNotRate).toBeCloseTo(46 / 49, 10);
-    expect(MODE_META.halfWave.theoreticalMaxNotRate).toBeCloseTo(42 / 49, 10);
+    expect(HALF_WAVE_LABELS).toEqual(['红单', '红双', '绿单', '绿双', '蓝单', '蓝双']);
+    const allNumbers = HALF_WAVE_CLASSES.flatMap(c => c.numbers);
+    expect(allNumbers).toHaveLength(49);
+    expect(new Set(allNumbers).size).toBe(49);
+    expect(HALF_WAVE_CLASSES.reduce((sum, c) => sum + c.prior, 0)).toBeCloseTo(1, 10);
+    const greenEven = HALF_WAVE_CLASSES.find(c => c.label === '绿双');
+    expect(greenEven?.ballCount).toBe(7);
+    expect(HALF_WAVE_THEORETICAL_MAX_NOT_RATE).toBeCloseTo(42 / 49, 10);
   });
 
-  it('produces strictly causal predictions without look-ahead and locks subWave ensemble to 3-ball min pools', () => {
+  it('produces strictly causal predictions without look-ahead', () => {
     const fullInput = generateSyntheticHistory(140);
-    const minPools = new Set(['红大单', '绿小双', '蓝小单']);
+    const before = buildColorParityObservation(fullInput.slice(0, 115));
+    const after = buildColorParityObservation(fullInput);
 
-    for (const mode of ['subWave', 'halfWave'] as const) {
-      const before = buildColorParityObservation(fullInput.slice(0, 115), mode);
-      const after = buildColorParityObservation(fullInput, mode);
+    const currentRow = before.current;
+    const settledRow = after.rows.find(row => row.targetNo === 116);
+    expect(currentRow?.targetNo).toBe(116);
+    expect(settledRow).toBeDefined();
 
-      const currentRow = before.current;
-      const settledRow = after.rows.find(row => row.targetNo === 116);
-      expect(currentRow?.targetNo).toBe(116);
-      expect(settledRow).toBeDefined();
-
-      for (const model of MODEL_KEYS) {
-        expect(settledRow?.forecasts[model]).toEqual(currentRow?.forecasts[model]);
-        const forecast = currentRow!.forecasts[model];
-        expect(forecast.probs.reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 8);
-        expect(forecast.pickLabel).toBe(forecast.ranked[0].label);
-      }
-
-      if (mode === 'subWave') {
-        expect(after.rows.every(r => minPools.has(r.forecasts.ensemble.pickLabel))).toBe(true);
-        expect(after.rows.every(r => minPools.has(r.forecasts.prior.pickLabel))).toBe(true);
-      }
-
-      expect(currentRow?.vectorWindows.length).toBe(COLOR_PARITY_VECTOR_WINDOWS.length);
-      for (const win of currentRow!.vectorWindows) {
-        expect(win.nearest.every(neighbor => neighbor.No < 116 - win.lookback)).toBe(true);
-      }
-
-      const actualSpecial = fullInput[115].n7;
-      expect(settledRow?.actual?.specialNumber).toBe(actualSpecial);
-      expect(settledRow?.results.ensemble).toBe(
-        settledRow?.actual?.specialLabel !== currentRow?.forecasts.ensemble.pickLabel,
-      );
+    for (const model of MODEL_KEYS) {
+      expect(settledRow?.forecasts[model]).toEqual(currentRow?.forecasts[model]);
+      const forecast = currentRow!.forecasts[model];
+      expect(forecast.probs).toHaveLength(6);
+      expect(forecast.probs.reduce((sum, p) => sum + p, 0)).toBeCloseTo(1, 8);
+      expect(forecast.pickLabel).toBe(forecast.ranked[0].label);
+      expect(HALF_WAVE_LABELS).toContain(forecast.pickLabel);
     }
+
+    expect(currentRow?.vectorWindows.length).toBe(COLOR_PARITY_VECTOR_WINDOWS.length);
+    for (const win of currentRow!.vectorWindows) {
+      expect(win.nearest.every(neighbor => neighbor.No < 116 - win.lookback)).toBe(true);
+    }
+
+    const actualSpecial = fullInput[115].n7;
+    expect(settledRow?.actual?.specialNumber).toBe(actualSpecial);
+    expect(settledRow?.results.ensemble).toBe(
+      settledRow?.actual?.specialLabel !== currentRow?.forecasts.ensemble.pickLabel,
+    );
   });
 
   it('degrades gracefully when regular-ball metadata is missing', () => {
     const input = generateSyntheticHistory(110);
     input[109].numberInfos[0].number = 0;
 
-    const result = buildColorParityObservation(input, 'subWave');
+    const result = buildColorParityObservation(input);
     expect(result.integrity.vectorMissingMetadata).toBe(1);
     expect(result.current?.vectorWindows).toHaveLength(0);
-    expect(['红大单', '绿小双', '蓝小单']).toContain(result.current?.forecasts.ensemble.pickLabel);
-    expect(result.current?.forecasts.prior.pickLabel).toBe('红大单');
+    expect(HALF_WAVE_LABELS).toContain(result.current?.forecasts.ensemble.pickLabel);
+    expect(result.current?.forecasts.prior.pickLabel).toBe('绿双');
   });
 
   it('rejects duplicate periods and supports JSON-encoded number_infos fallback', () => {
@@ -110,7 +102,7 @@ describe('color-parity observation dual-model causal engine', () => {
     const modified = input.filter(r => r.No !== 95);
     modified.push({...input[97]});
 
-    const result = buildColorParityObservation(modified, 'halfWave');
+    const result = buildColorParityObservation(modified);
     expect(result.integrity.duplicatePeriods).toBe(1);
     expect(result.integrity.missingOrInvalidPeriods).toBe(2);
     expect(result.current?.vectorWindows).toHaveLength(0);

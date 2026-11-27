@@ -6,13 +6,11 @@ import {
   COLOR_PARITY_VECTOR_CONFIG,
   COLOR_PARITY_VECTOR_WINDOWS,
   COLOR_PARITY_YEAR,
-  MODE_META,
   MODEL_KEYS,
   type BallColor,
   type ColorParityModelKey,
   type ColorParityObservation,
   type ModelBacktestSummary,
-  type ObservationMode,
   type VectorWindowDetail,
 } from './lib/colorParityObservation';
 import './PeakShapeObservation.css';
@@ -74,7 +72,7 @@ function VectorNeighborsDetails({windows}: {windows: VectorWindowDetail[]}) {
               <th>历史匹配期</th>
               <th>余弦相似度</th>
               <th>历史第7码</th>
-              <th>实际类别</th>
+              <th>实际半波</th>
               <th>半衰期权重</th>
             </tr>
           </thead>
@@ -127,22 +125,13 @@ function StatSummaryBox({
   );
 }
 
-function ObservationBody({
-  data,
-  mode,
-  onModeChange,
-}: {
-  data: ColorParityObservation;
-  mode: ObservationMode;
-  onModeChange: (next: ObservationMode) => void;
-}) {
+function ObservationBody({data}: {data: ColorParityObservation}) {
   const [activeModel, setActiveModel] = useState<ColorParityModelKey>('ensemble');
   const [filter, setFilter] = useState<'all' | 'failures' | 'diverged'>('all');
   const [limit, setLimit] = useState(35);
 
   const current = data.current;
   const activeForecast = current?.forecasts[activeModel] ?? null;
-  const modeMeta = MODE_META[mode];
   const diag = data.diagnostics;
   const activeStreak = data.streaks[activeModel];
   const pickMeta = activeForecast
@@ -181,38 +170,17 @@ function ObservationBody({
         </div>
       )}
 
-      <section
-        className={`cpo-truth-banner ${mode === 'subWave' ? 'is-qualified' : ''}`}
-        role="note"
-        aria-label="概率上限与统计检验说明"
-      >
+      <section className="cpo-truth-banner" role="note" aria-label="6类半波概率基准说明">
         <div>
           <h3>
-            {mode === 'subWave'
-              ? `12 类半半波（90%+ 模式）：理论排除上限 ${pct(diag.theoreticalMaxNotRate)}，双方案均锁定 3 球最小号池`
-              : `6 类半波模式：最小号池「绿双」7/49 球，独立随机下理论排除上限为 ${pct(diag.theoreticalMaxNotRate)}`}
+            6 类半波基准：红单 / 红双 / 绿单 / 绿双 / 蓝单 / 蓝双（每类 7～9 个号码，理论不开上限 {pct(diag.theoreticalMaxNotRate)}）
           </h3>
-          {mode === 'subWave' ? (
-            <p>
-              按小(01–24)/大(25–49)细分为 12 类后，3 球最小桶（红大单 / 绿小双 / 蓝小单）理论不开率均为 <b>93.88%</b>。
-              <b>多信号先验融合</b>只在这 3 个最小桶内动态三选一（2026 回测 <b>{pct(data.totals.ensemble.successRate, data.totals.ensemble.count)}</b>），
-              <b>理论先验最小号池</b>固定守红大单（2026 回测 <b>{pct(data.totals.prior.successRate, data.totals.prior.count)}</b>），双方案均可稳定达到 90%+。
-            </p>
-          ) : (
-            <p>
-              对 2026 年 {diag.sampleCount} 期做独立性检验：边际分布 χ² = {diag.marginalChi2.toFixed(2)}（显著阈值 {diag.marginalCritical05}），
-              一阶转移 χ² = {diag.markovChi2.toFixed(2)}（显著阈值 {diag.markovCritical05}）。
-              6 类半波难以长期稳定 ≥ 90%；如需真正 90%+，可一键切回「12 类半半波」。
-            </p>
-          )}
+          <p>
+            49 个号码中最小的半波是「绿双」（7/49 球，理论不开 <b>85.71%</b>；红单/蓝单/蓝双为 8 球 83.67%；红双/绿单为 9 球 81.63%）。
+            2026 年 {diag.sampleCount} 期独立性检验：边际 χ² = {diag.marginalChi2.toFixed(2)}（阈值 {diag.marginalCritical05}），
+            一阶转移 χ² = {diag.markovChi2.toFixed(2)}（阈值 {diag.markovCritical05}）。
+          </p>
         </div>
-        <button
-          type="button"
-          className="cpo-truth-switch"
-          onClick={() => onModeChange(mode === 'subWave' ? 'halfWave' : 'subWave')}
-        >
-          {mode === 'subWave' ? '查看 6 类半波对照 →' : '← 切回 12 类半半波（90%+）'}
-        </button>
       </section>
 
       <section className="pso-panel cpo-hero">
@@ -235,7 +203,7 @@ function ObservationBody({
           <span className="pso-eyebrow">
             第 {current.targetNo} 期 · 待开奖 · {COLOR_PARITY_MODELS[activeModel].label}
           </span>
-          <h2>下期预测不会开（排除目标）</h2>
+          <h2>下期预测不会开的半波</h2>
 
           {activeForecast && pickMeta ? (
             <div className="cpo-pick-showcase">
@@ -247,7 +215,7 @@ function ObservationBody({
                 </small>
               </div>
               <div className="cpo-pick-meta">
-                <p>{COLOR_PARITY_MODELS[activeModel].summary[mode]}</p>
+                <p>{COLOR_PARITY_MODELS[activeModel].summary}</p>
                 <p>
                   次选排除：<b>{activeForecast.runnerUpLabel}</b>（预测不开 {pct(activeForecast.ranked[1].excludeProb)}）
                   {' · '}
@@ -300,7 +268,7 @@ function ObservationBody({
         <p className="pso-muted">
           点击任意卡片可切换上方主预测与下方回测口径。融合模型内部采用 {COLOR_PARITY_VECTOR_WINDOWS.map(w => w.lookback).join('/')} 期多窗口余弦向量（Top-{COLOR_PARITY_VECTOR_CONFIG.neighbors}）与 5 期序列 Top-K 等信号。
         </p>
-        <div className="cpo-models-grid cpo-models-two">
+        <div className="cpo-models-grid">
           {MODEL_KEYS.map(key => {
             const stat = data.totals[key];
             const streak = data.streaks[key];
@@ -330,13 +298,11 @@ function ObservationBody({
 
       {activeForecast && (
         <section className="pso-panel">
-          <h2>第 {current.targetNo} 期 · 全类别不开概率排序</h2>
+          <h2>第 {current.targetNo} 期 · 6 类半波不开概率排序</h2>
           <p className="pso-muted">
-            {mode === 'subWave'
-              ? '12 类模式下「多信号先验融合」仅在 3 个最小 3 球桶（红大单 / 绿小双 / 蓝小单）内动态三选一，其余 9 类作为全盘走势参考展示。'
-              : '绿色高亮为当前方案主推排除项，靛蓝色为次选排除项，括号内为均匀随机理论基准。'}
+            绿色高亮为当前方案主推排除项，靛蓝色为次选排除项，下方对比均匀随机理论基准与当前遗漏期数。
           </p>
-          <div className={`cpo-rank-grid ${mode === 'subWave' ? 'is-sub' : ''}`}>
+          <div className="cpo-rank-grid">
             {activeForecast.ranked.map((item, idx) => {
               const clsDiag = diag.classes[item.classIdx];
               return (
@@ -348,7 +314,6 @@ function ObservationBody({
                     <span className="cpo-class-tag">
                       <i className={`cpo-dot ${colorClass(item.color)}`} aria-hidden="true" />
                       {idx + 1}. {item.label}
-                      {mode === 'subWave' && item.isMinPool ? <span className="cpo-min-pill">3码池</span> : null}
                     </span>
                     <span className="cpo-rank-prob">{pct(item.excludeProb)}</span>
                   </div>
@@ -395,7 +360,7 @@ function ObservationBody({
       </section>
 
       <section className="pso-panel">
-        <h2>2026 年第 7 码真实分布与独立性检验（{modeMeta.shortTitle}）</h2>
+        <h2>2026 年第 7 码 6 类半波真实分布与独立性检验</h2>
         <div className="cpo-diag-grid">
           <article className="cpo-diag-card">
             <span>边际均匀性卡方检验 (df={diag.marginalDf})</span>
@@ -416,19 +381,15 @@ function ObservationBody({
           <article className="cpo-diag-card">
             <span>理论最优不开上限（最小号池）</span>
             <strong>{pct(diag.theoreticalMaxNotRate)}</strong>
-            <small>
-              {mode === 'subWave'
-                ? '红大单 / 绿小双 / 蓝小单各仅 3 个号码（46/49 = 93.88%），天然高于 90%。'
-                : '绿双仅 7 个号码（42/49 = 85.71%），这是 6 类半波在均匀随机下的数学天花板。'}
-            </small>
+            <small>绿双仅 7 个号码（42/49 = 85.71%），为 6 类半波在独立均匀随机下的理论上限。</small>
           </article>
         </div>
 
-        <div className="pso-table-wrap" tabIndex={0} aria-label="2026年各类别真实统计">
+        <div className="pso-table-wrap" tabIndex={0} aria-label="2026年6类半波真实统计">
           <table>
             <thead>
               <tr>
-                <th>类别</th>
+                <th>半波</th>
                 <th>号码数</th>
                 <th>包含号码</th>
                 <th>理论不开率</th>
@@ -446,7 +407,7 @@ function ObservationBody({
                   <td>{cls.numbers.map(pad2).join(' · ')}</td>
                   <td>{pct(cls.theoreticalNotRate)}</td>
                   <td>{cls.actualCount} / {cls.expectedCount.toFixed(1)}</td>
-                  <td className={cls.actualNotRate >= 0.9 ? 'pso-ok' : ''}>{pct(cls.actualNotRate)}</td>
+                  <td>{pct(cls.actualNotRate)}</td>
                   <td>{cls.currentOmission} 期</td>
                   <td>{cls.maxOmission} 期</td>
                 </tr>
@@ -536,7 +497,6 @@ function ObservationBody({
 export default function ColorParityObservationPage() {
   const location = useLocation();
   const [rawRecords, setRawRecords] = useState<unknown[] | null>(null);
-  const [mode, setMode] = useState<ObservationMode>('subWave');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -595,8 +555,8 @@ export default function ColorParityObservationPage() {
   }, [refreshKey]);
 
   const data = useMemo(
-    () => (rawRecords ? buildColorParityObservation(rawRecords, mode) : null),
-    [rawRecords, mode],
+    () => (rawRecords ? buildColorParityObservation(rawRecords) : null),
+    [rawRecords],
   );
 
   return (
@@ -604,10 +564,10 @@ export default function ColorParityObservationPage() {
       <div className="pso-shell">
         <header className="pso-head">
           <div>
-            <span className="pso-eyebrow">2026 · 第 7 码波色单双排除</span>
+            <span className="pso-eyebrow">2026 · 第 7 码 6 类半波排除</span>
             <h1>半波预测 · 双方案下期排除</h1>
             <p>
-              精选「多信号先验融合」与「理论先验最小号池」两套核心方案，默认开启 12 类半半波 90%+ 模式，可随时切回 6 类半波对照。
+              针对红单、红双、绿单、绿双、蓝单、蓝双六类半波，并列运行「多信号先验融合」与「理论先验最小号池」严格因果回测。
             </p>
           </div>
           <nav className="azo-history-actions" aria-label="开奖更新">
@@ -617,31 +577,6 @@ export default function ColorParityObservationPage() {
             </button>
           </nav>
         </header>
-
-        <div className="cpo-mode-bar" role="group" aria-label="切换分类粒度">
-          <button
-            type="button"
-            className={`cpo-mode-btn ${mode === 'subWave' ? 'is-active' : ''}`}
-            onClick={() => setMode('subWave')}
-          >
-            <strong>
-              {MODE_META.subWave.title}
-              <span className="cpo-badge-90">真实达标 90%+</span>
-            </strong>
-            <span>{MODE_META.subWave.description}</span>
-          </button>
-          <button
-            type="button"
-            className={`cpo-mode-btn ${mode === 'halfWave' ? 'is-active' : ''}`}
-            onClick={() => setMode('halfWave')}
-          >
-            <strong>
-              {MODE_META.halfWave.title}
-              <span className="cpo-badge-cap">理论上限 85.71%</span>
-            </strong>
-            <span>{MODE_META.halfWave.description}</span>
-          </button>
-        </div>
 
         {loading && !data ? (
           <div className="pso-message" role="status">
@@ -659,9 +594,7 @@ export default function ColorParityObservationPage() {
           <div className="pso-message">暂无有效的 2026 年第 7 码波色记录。</div>
         ) : null}
 
-        {data && data.validCount > 0 ? (
-          <ObservationBody data={data} mode={mode} onModeChange={setMode} />
-        ) : null}
+        {data && data.validCount > 0 ? <ObservationBody data={data} /> : null}
 
         {data ? (
           <footer className="pso-footer">
